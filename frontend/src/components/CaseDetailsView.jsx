@@ -3,6 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FiArrowLeft } from 'react-icons/fi';
 
+const getStatusClass = (status) => {
+    if (!status) return 'other';
+    const s = status.toLowerCase();
+    if (s.includes('certified') && !s.includes('denied')) return 'certified';
+    if (s.includes('denied')) return 'denied';
+    if (s.includes('withdrawn')) return 'withdrawn';
+    return 'other';
+};
+
 const CaseDetailsView = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -10,97 +19,96 @@ const CaseDetailsView = () => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const fetchCase = async () => {
-            try {
-                const { data } = await axios.get(`/api/cases/${id}`);
-                setCaseItem(data);
-            } catch (error) {
-                console.error('Failed to fetch case details', error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchCase();
+        axios.get(`/api/cases/${id}`)
+            .then(({ data }) => setCaseItem(data))
+            .catch(err => console.error('Failed to fetch case details', err))
+            .finally(() => setIsLoading(false));
     }, [id]);
 
     if (isLoading) {
-        return <div style={{ padding: '40px', textAlign: 'center' }}>Loading case details...</div>;
+        return (
+            <div className="loading-overlay">
+                <div className="spinner-large" />
+                <h3>Loading case details</h3>
+            </div>
+        );
     }
 
     if (!caseItem) {
         return (
-            <div style={{ padding: '40px', textAlign: 'center' }}>
-                <h2>Case Not Found</h2>
-                <button className="btn" onClick={() => navigate(-1)} style={{ marginTop: '20px' }}>
-                    Go Back
+            <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+                <h2 style={{ marginBottom: '8px', color: 'var(--text-primary)' }}>Case Not Found</h2>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>This case could not be located in the database.</p>
+                <button className="btn btn-secondary" onClick={() => navigate(-1)}>
+                    <FiArrowLeft size={14} /> Go Back
                 </button>
             </div>
         );
     }
 
-    // Filter out internal MongoDB / React fields
+    const statusClass = getStatusClass(caseItem.CASE_STATUS);
+    const companyName = caseItem.EMPLOYER_LEGAL_BUSINESS_NAME || caseItem.EMP_BUSINESS_NAME || 'Unknown Company';
+
     const hiddenKeys = ['_id', '__v', 'score', 'createdAt', 'updatedAt'];
     const dataEntries = Object.entries(caseItem)
-        .filter(([key]) => !hiddenKeys.includes(key) && caseItem[key] !== null)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB)); // Sort keys alphabetically for better reading
+        .filter(([key, val]) => !hiddenKeys.includes(key) && val !== null && val !== '')
+        .sort(([a], [b]) => a.localeCompare(b));
 
     return (
-        <div className="case-details-container glass-panel" style={{ padding: '30px', animation: 'fadeIn 0.3s' }}>
-            <button
-                className="btn btn-secondary"
-                onClick={() => navigate(-1)}
-                style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-                <FiArrowLeft /> Back to Results
+        <div style={{ animation: 'fadeInUp 0.25s ease' }}>
+            <button className="btn btn-secondary" onClick={() => navigate(-1)}
+                style={{ marginBottom: '24px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <FiArrowLeft size={14} /> Back to Results
             </button>
 
-            <div style={{ marginBottom: '30px', borderBottom: '1px solid var(--border-color)', paddingBottom: '20px' }}>
-                <h2 style={{ fontSize: '28px', color: 'var(--accent-primary)', marginBottom: '8px' }}>
-                    {caseItem.EMPLOYER_LEGAL_BUSINESS_NAME || caseItem.EMP_BUSINESS_NAME || 'Unknown Company'}
-                </h2>
-                <div style={{ display: 'inline-block', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '6px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                    Case Number: {caseItem.CASE_NUMBER} • Status: <span style={{ color: caseItem.CASE_STATUS?.includes('Denied') ? '#ef4444' : '#10b981', fontWeight: 600 }}>{caseItem.CASE_STATUS}</span>
+            {/* Header */}
+            <div style={{ marginBottom: '28px', paddingBottom: '20px', borderBottom: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>
+                        {companyName}
+                    </h2>
+                    <span className={`status-badge status-badge-${statusClass}`} style={{ fontSize: '12px', padding: '4px 10px' }}>
+                        {caseItem.CASE_STATUS || 'Unknown'}
+                    </span>
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+                    <span style={{
+                        background: 'var(--card-badge-bg)', border: '1px solid var(--border-color)',
+                        padding: '4px 10px', borderRadius: '6px', fontSize: '13px', color: 'var(--text-secondary)'
+                    }}>
+                        Case: <span className="mono" style={{ color: 'var(--text-primary)' }}>{caseItem.CASE_NUMBER}</span>
+                    </span>
+                    {caseItem.VISA_CLASS && (
+                        <span style={{
+                            background: 'var(--card-badge-bg)', border: '1px solid var(--border-color)',
+                            padding: '4px 10px', borderRadius: '6px', fontSize: '13px', color: 'var(--text-secondary)'
+                        }}>
+                            Visa: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{caseItem.VISA_CLASS}</span>
+                        </span>
+                    )}
                 </div>
             </div>
 
+            {/* All fields grid */}
             <div className="details-grid">
                 {dataEntries.map(([key, value]) => {
-                    // Format date if needed
-                    let displayValue = value;
+                    let display = value;
                     if (key.includes('DATE') && value && !isNaN(Date.parse(value))) {
-                        displayValue = new Date(value).toLocaleDateString();
+                        display = new Date(value).toLocaleDateString();
                     }
+                    const isMonoField = key.includes('CODE') || key.includes('NUMBER') || key.includes('NAICS');
 
                     return (
-                        <div key={key} className="detail-item" style={{ breakInside: 'avoid', marginBottom: '16px' }}>
-                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', wordBreak: 'break-all' }}>
-                                {key.replace(/_/g, ' ')}
-                            </div>
-                            <div style={{ fontSize: '15px', fontWeight: 500, wordBreak: 'break-word', color: 'var(--text-primary)' }}>
-                                {displayValue.toString() || 'N/A'}
+                        <div key={key} className="detail-item">
+                            <div className="detail-key">{key.replace(/_/g, ' ')}</div>
+                            <div className={`detail-value${isMonoField ? ' mono' : ''}`}>
+                                {display.toString()}
                             </div>
                         </div>
                     );
                 })}
             </div>
-
-            <style dangerouslySetInnerHTML={{
-                __html: `
-        .details-grid {
-          columns: 3 250px;
-          column-gap: 30px;
-        }
-        @media (max-width: 768px) {
-          .details-grid {
-            columns: 1 !important;
-            column-gap: 0;
-          }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}} />
         </div>
     );
 };

@@ -43,20 +43,18 @@ function App() {
       <div className="app-container">
         <header className="header">
           <div>
-            <h1 className="title-gradient">LaborLens</h1>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Comprehensive database of PWD and PERM cases
-            </p>
+            <h1 className="brand-name">LaborLens</h1>
+            <p className="brand-subtitle">U.S. Department of Labor — PWD &amp; PERM case database</p>
           </div>
           <div className="header-right">
             <Navigation />
             <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-              {theme === 'dark' ? <FiSun size={18} /> : <FiMoon size={18} />}
+              {theme === 'dark' ? <FiSun size={17} /> : <FiMoon size={17} />}
             </button>
           </div>
         </header>
 
-        <main className="glass-panel" style={{ padding: '30px' }}>
+        <main className="glass-panel" style={{ padding: '28px 30px' }}>
           <Routes>
             <Route path="/" element={<SearchView />} />
             <Route path="/perm" element={<PermSearchView />} />
