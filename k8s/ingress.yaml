@@ -9,10 +9,10 @@ metadata:
 spec:
   tls:
   - hosts:
-    - YOUR_DOMAIN
+    - labor.blueandhack.com
     secretName: pwd-lookup-tls
   rules:
-  - host: YOUR_DOMAIN
+  - host: labor.blueandhack.com
     http:
       paths:
       - path: /api
