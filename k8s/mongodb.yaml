@@ -13,16 +13,16 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pwd-mongodb
+  name: laborlens-mongodb
   namespace: laborlens
 spec:
   selector:
     matchLabels:
-      app: pwd-mongodb
+      app: laborlens-mongodb
   template:
     metadata:
       labels:
-        app: pwd-mongodb
+        app: laborlens-mongodb
     spec:
       containers:
       - name: mongodb
@@ -40,11 +40,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: pwd-mongodb
+  name: laborlens-mongodb
   namespace: laborlens
 spec:
   selector:
-    app: pwd-mongodb
+    app: laborlens-mongodb
   ports:
     - protocol: TCP
       port: 27017

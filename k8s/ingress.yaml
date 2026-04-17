@@ -30,14 +30,14 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: pwd-backend
+            name: laborlens-backend
             port:
               number: 5001
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: pwd-frontend
+            name: laborlens-frontend
             port:
               number: 80
 ---
@@ -63,6 +63,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: pwd-frontend
+            name: laborlens-frontend
             port:
               number: 80

@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pwd-frontend
+  name: laborlens-frontend
   namespace: laborlens
 spec:
   replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app: pwd-frontend
+      app: laborlens-frontend
   template:
     metadata:
       labels:
-        app: pwd-frontend
+        app: laborlens-frontend
     spec:
       containers:
       - name: frontend
@@ -24,11 +24,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: pwd-frontend
+  name: laborlens-frontend
   namespace: laborlens
 spec:
   selector:
-    app: pwd-frontend
+    app: laborlens-frontend
   ports:
     - protocol: TCP
       port: 80

@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pwd-backend
+  name: laborlens-backend
   namespace: laborlens
 spec:
   replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app: pwd-backend
+      app: laborlens-backend
   template:
     metadata:
       labels:
-        app: pwd-backend
+        app: laborlens-backend
     spec:
       containers:
       - name: backend
@@ -24,7 +24,7 @@ spec:
         - name: PORT
           value: "5001"
         - name: MONGO_URI
-          value: "mongodb://pwd-mongodb:27017/pwd_cases"
+          value: "mongodb://laborlens-mongodb:27017/pwd_cases"
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
@@ -39,11 +39,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: pwd-backend
+  name: laborlens-backend
   namespace: laborlens
 spec:
   selector:
-    app: pwd-backend
+    app: laborlens-backend
   ports:
     - protocol: TCP
       port: 5001
