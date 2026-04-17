@@ -10,6 +10,32 @@
   --border-color: rgba(255, 255, 255, 0.1);
   --glass-bg: rgba(30, 41, 59, 0.7);
   --glass-border: rgba(255, 255, 255, 0.08);
+  --input-bg: rgba(0, 0, 0, 0.2);
+  --nav-bg: rgba(0, 0, 0, 0.2);
+  --card-badge-bg: rgba(255, 255, 255, 0.05);
+  --dropzone-bg: rgba(0, 0, 0, 0.1);
+  --gradient-a: rgba(59, 130, 246, 0.15);
+  --gradient-b: rgba(139, 92, 246, 0.15);
+  --shadow-color: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="light"] {
+  --bg-primary: #f1f5f9;
+  --bg-secondary: #e2e8f0;
+  --accent-primary: #2563eb;
+  --accent-secondary: #7c3aed;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --border-color: rgba(0, 0, 0, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --input-bg: rgba(0, 0, 0, 0.04);
+  --nav-bg: rgba(0, 0, 0, 0.06);
+  --card-badge-bg: rgba(0, 0, 0, 0.05);
+  --dropzone-bg: rgba(0, 0, 0, 0.03);
+  --gradient-a: rgba(59, 130, 246, 0.08);
+  --gradient-b: rgba(139, 92, 246, 0.08);
+  --shadow-color: rgba(0, 0, 0, 0.1);
 }
 
 * {
@@ -22,12 +48,12 @@ body {
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-primary);
   background-image:
-    radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
+    radial-gradient(at 0% 0%, var(--gradient-a) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, var(--gradient-b) 0px, transparent 50%);
   color: var(--text-primary);
   min-height: 100vh;
-  /* Prevent scroll jumping */
   overflow-y: scroll;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Glassmorphism Classes */
@@ -36,7 +62,7 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--glass-border);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px 0 var(--shadow-color);
   border-radius: 16px;
 }
 
@@ -74,14 +100,35 @@ body {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--card-badge-bg);
   border: 1px solid var(--border-color);
   box-shadow: none;
+  color: var(--text-primary);
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--input-bg);
   box-shadow: none;
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  background: var(--card-badge-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
 }
 
 /* Layout */
@@ -98,10 +145,16 @@ body {
   margin-bottom: 40px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .nav-tabs {
   display: flex;
   gap: 12px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--nav-bg);
   padding: 6px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
@@ -138,7 +191,7 @@ body {
   padding: 60px 20px;
   margin-top: 20px;
   transition: all 0.3s ease;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--dropzone-bg);
 }
 
 .drop-zone:hover,
@@ -166,14 +219,18 @@ body {
 
 .search-input {
   flex: 1;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--input-bg);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 16px 20px;
-  color: white;
+  color: var(--text-primary);
   font-family: 'Outfit', sans-serif;
   font-size: 16px;
   transition: all 0.3s ease;
+}
+
+.search-input::placeholder {
+  color: var(--text-secondary);
 }
 
 .search-input:focus {
@@ -218,7 +275,7 @@ body {
 .case-number {
   font-size: 12px;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--card-badge-bg);
   padding: 4px 8px;
   border-radius: 4px;
 }
@@ -279,11 +336,16 @@ body {
     margin-bottom: 24px;
   }
 
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .nav-tabs {
     flex-wrap: wrap;
-    width: 100%;
+    flex: 1;
   }
-  
+
   .tab {
     flex: 1;
     text-align: center;
@@ -292,7 +354,7 @@ body {
   .search-bar-container {
     padding: 15px !important;
   }
-  
+
   .search-bar-container > div:last-child {
     flex-direction: column;
     align-self: stretch !important;
@@ -321,7 +383,7 @@ body {
   .import-container {
     padding: 20px 10px;
   }
-  
+
   .drop-zone {
     padding: 40px 10px;
   }

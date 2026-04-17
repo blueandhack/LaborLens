@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { FiSun, FiMoon } from 'react-icons/fi';
 import ImportView from './components/ImportView';
 import SearchView from './components/SearchView';
 import PermSearchView from './components/PermSearchView';
@@ -28,6 +29,15 @@ const Navigation = () => {
 };
 
 function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
   return (
     <Router>
       <div className="app-container">
@@ -38,7 +48,12 @@ function App() {
               Comprehensive database of PWD and PERM cases
             </p>
           </div>
-          <Navigation />
+          <div className="header-right">
+            <Navigation />
+            <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+              {theme === 'dark' ? <FiSun size={18} /> : <FiMoon size={18} />}
+            </button>
+          </div>
         </header>
 
         <main className="glass-panel" style={{ padding: '30px' }}>
