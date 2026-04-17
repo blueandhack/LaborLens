@@ -7,6 +7,9 @@ const exceljs = require('exceljs');
 const unzipper = require('unzipper');
 const Case = require('../models/Case');
 const PermCase = require('../models/PermCase');
+let invalidateSearchCache = () => {};
+// Lazy import to avoid circular dependency
+setImmediate(() => { ({ invalidateCache: invalidateSearchCache } = require('./search')); });
 
 // Setup multer for uploading files to a temp directory
 const upload = multer({ dest: '/tmp/pwd_uploads/' });
@@ -255,6 +258,7 @@ router.post('/', upload.single('file'), async (req, res) => {
             currentJob.status = 'done';
             currentJob.message = 'Import complete!';
             currentJob.logs.push(`Finished! Inserted: ${currentJob.inserted}, Updated: ${currentJob.updated}, Total Processed: ${currentJob.processed}`);
+            invalidateSearchCache();
 
         } catch (err) {
             console.error('Background import failed:', err);

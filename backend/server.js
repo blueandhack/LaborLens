@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 
 const uploadRoute = require('./routes/upload');
-const searchRoute = require('./routes/search');
+const { router: searchRoute, invalidateCache } = require('./routes/search');
 const caseRoute = require('./routes/cases');
 const { router: adminRoute } = require('./routes/admin');
 const Admin = require('./models/Admin');
