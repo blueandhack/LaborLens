@@ -52,23 +52,24 @@ router.get('/', async (req, res) => {
         const sort = { DETERMINATION_DATE: -1, EMPLOYER_LEGAL_BUSINESS_NAME: 1 };
         const conditions = [];
 
+        // Use pre-computed lowercase fields with case-sensitive prefix regex so
+        // MongoDB can do a B-tree range scan instead of a full collection scan.
         if (company?.trim())
-            conditions.push({ EMPLOYER_LEGAL_BUSINESS_NAME: { $regex: escapeRegex(company.trim()), $options: 'i' } });
+            conditions.push({ EMPLOYER_NAME_LOWER: { $regex: `^${escapeRegex(company.trim().toLowerCase())}` } });
 
         if (location?.trim()) {
-            const loc = escapeRegex(location.trim());
+            const loc = `^${escapeRegex(location.trim().toLowerCase())}`;
             conditions.push({ $or: [
-                { EMPLOYER_CITY:  { $regex: loc, $options: 'i' } },
-                { EMPLOYER_STATE: { $regex: loc, $options: 'i' } }
+                { EMPLOYER_CITY_LOWER: { $regex: loc } },
+                { EMPLOYER_STATE:      { $regex: loc, $options: 'i' } }
             ]});
         }
 
         if (caseNumber?.trim())
-            // Anchored regex lets MongoDB use the CASE_NUMBER index
             conditions.push({ CASE_NUMBER: { $regex: `^${escapeRegex(caseNumber.trim())}`, $options: 'i' } });
 
         if (jobTitle?.trim())
-            conditions.push({ JOB_TITLE: { $regex: escapeRegex(jobTitle.trim()), $options: 'i' } });
+            conditions.push({ JOB_TITLE_LOWER: { $regex: `^${escapeRegex(jobTitle.trim().toLowerCase())}` } });
 
         if (determinationYear && !isNaN(parseInt(determinationYear))) {
             const y = parseInt(determinationYear);
@@ -89,11 +90,19 @@ router.get('/', async (req, res) => {
         const query      = conditions.length > 0 ? { $and: conditions } : {};
         const hasFilters = conditions.length > 0;
 
+        // Hint the most selective index for each filter combination.
+        let hint;
+        if (company?.trim())         hint = { EMPLOYER_NAME_LOWER: 1, DETERMINATION_DATE: -1 };
+        else if (jobTitle?.trim())   hint = { JOB_TITLE_LOWER: 1, DETERMINATION_DATE: -1 };
+        else if (caseNumber?.trim()) hint = { CASE_NUMBER: 1 };
+
         // Run find and count in parallel — halves round-trip time
+        const findQuery = Case.find(query, PWD_CARD_FIELDS)
+            .sort(sort).skip(skip).limit(lim).lean();
+        if (hint) findQuery.hint(hint);
+
         const [cases, totalCount] = await Promise.all([
-            Case.find(query, PWD_CARD_FIELDS)
-                .sort(sort).skip(skip).limit(lim)
-                .lean(),  // plain JS objects, skips Mongoose hydration overhead
+            findQuery,
             hasFilters
                 ? Case.countDocuments(query)
                 : Case.estimatedDocumentCount()
@@ -169,13 +178,13 @@ router.get('/perm', async (req, res) => {
         const conditions = [];
 
         if (company?.trim())
-            conditions.push({ EMP_BUSINESS_NAME: { $regex: escapeRegex(company.trim()), $options: 'i' } });
+            conditions.push({ EMP_BUSINESS_NAME_LOWER: { $regex: `^${escapeRegex(company.trim().toLowerCase())}` } });
 
         if (location?.trim()) {
-            const loc = escapeRegex(location.trim());
+            const loc = `^${escapeRegex(location.trim().toLowerCase())}`;
             conditions.push({ $or: [
-                { EMP_CITY:  { $regex: loc, $options: 'i' } },
-                { EMP_STATE: { $regex: loc, $options: 'i' } }
+                { EMP_CITY_LOWER: { $regex: loc } },
+                { EMP_STATE:      { $regex: loc, $options: 'i' } }
             ]});
         }
 
@@ -183,7 +192,7 @@ router.get('/perm', async (req, res) => {
             conditions.push({ CASE_NUMBER: { $regex: `^${escapeRegex(caseNumber.trim())}`, $options: 'i' } });
 
         if (jobTitle?.trim())
-            conditions.push({ JOB_TITLE: { $regex: escapeRegex(jobTitle.trim()), $options: 'i' } });
+            conditions.push({ JOB_TITLE_LOWER: { $regex: `^${escapeRegex(jobTitle.trim().toLowerCase())}` } });
 
         if (decisionYear && !isNaN(parseInt(decisionYear))) {
             const y = parseInt(decisionYear);
@@ -204,33 +213,44 @@ router.get('/perm', async (req, res) => {
         const query      = conditions.length > 0 ? { $and: conditions } : {};
         const hasFilters = conditions.length > 0;
 
+        // Hint the most selective index for each filter combination.
+        let permHint;
+        if (company?.trim())         permHint = { EMP_BUSINESS_NAME_LOWER: 1, DECISION_DATE: -1 };
+        else if (jobTitle?.trim())   permHint = { JOB_TITLE_LOWER: 1, DECISION_DATE: -1 };
+        else if (caseNumber?.trim()) permHint = { CASE_NUMBER: 1 };
+
+        const permPipeline = [
+            { $match: query },
+            { $sort: sort },
+            { $skip: skip },
+            { $limit: lim },
+            { $project: PERM_CARD_FIELDS },
+            { $lookup: {
+                from: 'cases',
+                localField: 'JOB_OPP_PWD_NUMBER',
+                foreignField: 'CASE_NUMBER',
+                as: 'pwdDoc',
+                pipeline: [{ $project: {
+                    DETERMINATION_DATE: 1,
+                    RECEIVED_DATE: 1,
+                    PWD_WAGE_EXPIRATION_DATE: 1
+                }}]
+            }},
+            { $addFields: { pwdDoc: { $arrayElemAt: ['$pwdDoc', 0] } } },
+            { $addFields: {
+                PWD_DETERMINATION_DATE: '$pwdDoc.DETERMINATION_DATE',
+                PWD_RECEIVED_DATE:      '$pwdDoc.RECEIVED_DATE',
+                PWD_EXPIRATION_DATE:    '$pwdDoc.PWD_WAGE_EXPIRATION_DATE'
+            }},
+            { $project: { pwdDoc: 0 } }
+        ];
+
+        const permAggQuery = PermCase.aggregate(permPipeline);
+        if (permHint) permAggQuery.option({ hint: permHint });
+
         // Run aggregation and count in parallel
         const [results, totalCount] = await Promise.all([
-            PermCase.aggregate([
-                { $match: query },
-                { $sort: sort },
-                { $skip: skip },
-                { $limit: lim },
-                { $project: PERM_CARD_FIELDS },
-                { $lookup: {
-                    from: 'cases',
-                    localField: 'JOB_OPP_PWD_NUMBER',
-                    foreignField: 'CASE_NUMBER',
-                    as: 'pwdDoc',
-                    pipeline: [{ $project: {
-                        DETERMINATION_DATE: 1,
-                        RECEIVED_DATE: 1,
-                        PWD_WAGE_EXPIRATION_DATE: 1
-                    }}]
-                }},
-                { $addFields: { pwdDoc: { $arrayElemAt: ['$pwdDoc', 0] } } },
-                { $addFields: {
-                    PWD_DETERMINATION_DATE: '$pwdDoc.DETERMINATION_DATE',
-                    PWD_RECEIVED_DATE:      '$pwdDoc.RECEIVED_DATE',
-                    PWD_EXPIRATION_DATE:    '$pwdDoc.PWD_WAGE_EXPIRATION_DATE'
-                }},
-                { $project: { pwdDoc: 0 } }
-            ]),
+            permAggQuery,
             hasFilters
                 ? PermCase.countDocuments(query)
                 : PermCase.estimatedDocumentCount()

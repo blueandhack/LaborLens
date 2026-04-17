@@ -197,6 +197,23 @@ router.post('/', upload.single('file'), async (req, res) => {
                         }
                     });
 
+                    // Populate normalized lowercase fields for fast indexed search
+                    if (importType === 'pwd') {
+                        if (caseObj['EMPLOYER_LEGAL_BUSINESS_NAME'])
+                            caseObj['EMPLOYER_NAME_LOWER'] = caseObj['EMPLOYER_LEGAL_BUSINESS_NAME'].toLowerCase();
+                        if (caseObj['JOB_TITLE'])
+                            caseObj['JOB_TITLE_LOWER'] = caseObj['JOB_TITLE'].toLowerCase();
+                        if (caseObj['EMPLOYER_CITY'])
+                            caseObj['EMPLOYER_CITY_LOWER'] = caseObj['EMPLOYER_CITY'].toLowerCase();
+                    } else {
+                        if (caseObj['EMP_BUSINESS_NAME'])
+                            caseObj['EMP_BUSINESS_NAME_LOWER'] = caseObj['EMP_BUSINESS_NAME'].toLowerCase();
+                        if (caseObj['JOB_TITLE'])
+                            caseObj['JOB_TITLE_LOWER'] = caseObj['JOB_TITLE'].toLowerCase();
+                        if (caseObj['EMP_CITY'])
+                            caseObj['EMP_CITY_LOWER'] = caseObj['EMP_CITY'].toLowerCase();
+                    }
+
                     currentJob.processed++;
                     currentJob.status = 'progress';
 
