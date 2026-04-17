@@ -1,75 +1,82 @@
-# Labor Case Lookup Portal
+# LaborLens
 
-A web application for looking up and managing Prevailing Wage Determination (PWD) and PERM cases. The application features a React frontend, an Express/Node.js backend, and a MongoDB 8.x database, all containerized with Docker.
-
-## Project Structure
-
-- `frontend/`: React application built with Vite
-- `backend/`: Node.js & Express API server
-- `docker-compose.yml`: Configuration for running the entire stack locally
+A web application for searching U.S. Department of Labor Prevailing Wage Determination (PWD) and PERM labor certification cases. Built with React, Express/Node.js, and MongoDB.
 
 ## Features
 
-- **Import Excel Data**: Upload and parse large `.xlsx` datasets for PWD and PERM cases into the MongoDB database with real-time progress tracking.
-- **Admin Authentication**: Secure the import and data cleanup functionality with an admin login system.
-- **Advanced Search**: Search and filter cases by company, job title, case number, and dynamic year dropdowns that sync with existing database records.
-- **Data Cleanup**: Quickly clear all case records from the database to start fresh.
-- **Dockerized**: Easy setup and local development using Docker Compose.
+- **PWD & PERM Search** — filter by company, job title, case number, location, and year
+- **Case Detail View** — full field breakdown for individual PWD and PERM records
+- **Excel Import** — stream-process large DOL `.xlsx` disclosure files into MongoDB with real-time progress
+- **Admin Auth** — JWT-protected import and data management endpoints
 
-## Prerequisites
+## Local Development
 
-- [Docker](https://www.docker.com/products/docker-desktop/) installed on your machine.
-- [Node.js](https://nodejs.org/) (if running outside of Docker).
-- **MongoDB 8.x** (if running outside of Docker).
-
-## Getting Started
-
-### Using Docker (Recommended)
-
-To start the entire application stack (Frontend, Backend, and MongoDB), simply run:
+### Docker (recommended)
 
 ```bash
 docker-compose up --build -d
 ```
 
-The services will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5001
-- **MongoDB**: mongodb://localhost:27017
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:5001 |
+| MongoDB | mongodb://localhost:27017 |
 
-### Local Development (Without Docker)
+### Without Docker
 
-You can also run the services individually for development. Configure the `.env` files in both directories according to your local setup as needed.
-
-#### 1. Start MongoDB
-Ensure you have a MongoDB 8.x instance running locally on port `27017`.
-
-#### 2. Start the Backend server
 ```bash
+# Backend
 cd backend
+cp .env.example .env   # fill in values
 npm install
 npm run dev
-```
-*(Runs on `http://localhost:5001` or the port defined in `PORT` env var)*
 
-#### 3. Start the Frontend dev server
-The frontend proxy dynamically points to the backend URL. You can specify it using the `BACKEND_URL` environment variable if your backend is not running on the default `localhost:5001`.
-```bash
+# Frontend (separate terminal)
 cd frontend
-export BACKEND_URL=http://localhost:5001
 npm install
 npm run dev
 ```
 
-## API Endpoints Overview
+## Environment Variables
 
-- `POST /api/upload`: Upload an Excel `.xlsx` file and stream progress as it processes into MongoDB (Requires Admin Auth).
-- `DELETE /api/cases`: Clear all records from the database (Requires Admin Auth).
-- `GET /api/search`: Search cases with filters.
-- `GET /api/search/years`: Retrieve dynamic dropdown options for determination and received years.
-- `GET /api/cases/:id`: Get case details by ID.
-- `POST /api/admin/*`: Admin authentication, setup, and validation routes.
+See `backend/.env.example` for all required variables:
 
-## Performance Note
+| Variable | Description |
+|---|---|
+| `MONGO_URI` | MongoDB connection string |
+| `JWT_SECRET` | Secret for signing JWT tokens |
+| `ADMIN_INIT_PASSWORD` | Password for the initial admin account (used only when no admin exists) |
 
-The application includes an optimized Excel import pipeline utilizing asynchronous unordered batch inserts to process massive files efficiently with minimal memory overhead.
+## Deployment
+
+The project uses GitHub Actions + ArgoCD on k3s:
+
+1. Push to `main` → GitHub Actions builds and pushes images to `ghcr.io/blueandhack/laborlens-*`
+2. CI commits updated image tags to `k8s/`
+3. ArgoCD detects the change and syncs the cluster automatically
+
+To deploy your own instance:
+
+1. Edit `k8s/argocd-app.yaml` with your repo URL
+2. Create the required secret on your cluster:
+   ```bash
+   kubectl create secret generic laborlens-secrets \
+     --from-literal=jwt-secret='...' \
+     --from-literal=admin-init-password='...' \
+     -n pwd-lookup
+   kubectl label secret laborlens-secrets -n pwd-lookup app.kubernetes.io/instance=external
+   ```
+3. Update `k8s/ingress.yaml` with your domain
+4. Apply the ArgoCD app:
+   ```bash
+   kubectl apply -f k8s/argocd-app.yaml
+   ```
+
+See `docs/secret.example.yaml` for the secret format.
+
+## Data Source
+
+Import DOL disclosure data from:
+- [Foreign Labor Certification Data Center](https://flcdatacenter.com/) — PWD datasets
+- [DOL PERM Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance) — PERM datasets
