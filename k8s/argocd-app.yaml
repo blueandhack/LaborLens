@@ -4,6 +4,7 @@ metadata:
   name: laborlens
   namespace: argocd
 spec:
+  revisionHistoryLimit: 3
   project: default
   source:
     repoURL: https://github.com/blueandhack/LaborLens.git
