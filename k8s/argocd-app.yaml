@@ -12,12 +12,12 @@ spec:
     path: k8s
   destination:
     server: https://kubernetes.default.svc
-    namespace: pwd-lookup
+    namespace: laborlens
   ignoreDifferences:
   - group: ""
     kind: Secret
     name: laborlens-secrets
-    namespace: pwd-lookup
+    namespace: laborlens
   syncPolicy:
     automated:
       prune: false

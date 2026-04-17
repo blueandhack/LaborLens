@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mongodb-data-pvc
-  namespace: pwd-lookup
+  namespace: laborlens
 spec:
   accessModes:
     - ReadWriteOnce
@@ -14,7 +14,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pwd-mongodb
-  namespace: pwd-lookup
+  namespace: laborlens
 spec:
   selector:
     matchLabels:
@@ -41,7 +41,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: pwd-mongodb
-  namespace: pwd-lookup
+  namespace: laborlens
 spec:
   selector:
     app: pwd-mongodb
