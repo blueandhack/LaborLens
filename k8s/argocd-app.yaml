@@ -12,9 +12,14 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: pwd-lookup
+  ignoreDifferences:
+  - group: ""
+    kind: Secret
+    name: laborlens-secrets
+    namespace: pwd-lookup
   syncPolicy:
     automated:
-      prune: true
+      prune: false
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
