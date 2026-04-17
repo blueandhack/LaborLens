@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pwd-lookup-ingress
+  namespace: pwd-lookup
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: "letsencrypt-http"
+spec:
+  tls:
+  - hosts:
+    - YOUR_DOMAIN
+    secretName: pwd-lookup-tls
+  rules:
+  - host: YOUR_DOMAIN
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: pwd-backend
+            port:
+              number: 5001
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pwd-frontend
+            port:
+              number: 80

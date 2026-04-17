@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pwd-backend
+  namespace: pwd-lookup
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pwd-backend
+  template:
+    metadata:
+      labels:
+        app: pwd-backend
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/blueandhack/laborlens-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5001
+        env:
+        - name: PORT
+          value: "5001"
+        - name: MONGO_URI
+          value: "mongodb://pwd-mongodb:27017/pwd_cases"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: laborlens-secrets
+              key: jwt-secret
+        - name: ADMIN_INIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: laborlens-secrets
+              key: admin-init-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pwd-backend
+  namespace: pwd-lookup
+spec:
+  selector:
+    app: pwd-backend
+  ports:
+    - protocol: TCP
+      port: 5001
+      targetPort: 5001
