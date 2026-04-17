@@ -33,7 +33,7 @@ function App() {
       <div className="app-container">
         <header className="header">
           <div>
-            <h1 className="title-gradient">Labor Case Lookup Portal</h1>
+            <h1 className="title-gradient">LaborLens</h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
               Comprehensive database of PWD and PERM cases
             </p>
