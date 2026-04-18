@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { FiSun, FiMoon } from 'react-icons/fi';
+import { FiSun, FiMoon, FiGithub } from 'react-icons/fi';
 import ImportView from './components/ImportView';
 import SearchView from './components/SearchView';
 import PermSearchView from './components/PermSearchView';
@@ -64,6 +64,18 @@ function App() {
             <Route path="/cases/:id" element={<CaseDetailsView />} />
           </Routes>
         </main>
+
+        <footer className="site-footer">
+          <a
+            href="https://github.com/blueandhack/LaborLens"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="footer-github-link"
+          >
+            <FiGithub size={16} />
+            <span>Open source — star &amp; contribute on GitHub</span>
+          </a>
+        </footer>
       </div>
     </Router>
   );

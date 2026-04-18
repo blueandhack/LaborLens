@@ -130,6 +130,29 @@ body {
   padding: 36px 44px;
 }
 
+.site-footer {
+  margin-top: 28px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: center;
+}
+
+.footer-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  font-family: 'Figtree', sans-serif;
+  transition: color 0.2s ease;
+}
+
+.footer-github-link:hover {
+  color: var(--accent-primary);
+}
+
 .header {
   display: flex;
   justify-content: space-between;
