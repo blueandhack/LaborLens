@@ -21,11 +21,16 @@ const formatStatus = (status) => {
     return status.length > 18 ? status.slice(0, 18) + '…' : status;
 };
 
-const formatWage = (rate, unit) => {
-    if (!rate) return 'N/A';
-    const num = parseFloat(rate);
-    if (isNaN(num)) return 'N/A';
-    return `$${num.toLocaleString()} / ${unit || 'yr'}`;
+const formatWage = (from, to, per) => {
+    if (!from) return 'N/A';
+    const lo = parseFloat(from);
+    if (isNaN(lo)) return 'N/A';
+    const unit = per || 'yr';
+    if (to && parseFloat(to) !== lo) {
+        const hi = parseFloat(to);
+        return `$${lo.toLocaleString()} – $${hi.toLocaleString()} / ${unit}`;
+    }
+    return `$${lo.toLocaleString()} / ${unit}`;
 };
 
 const PermSearchView = () => {
@@ -218,7 +223,7 @@ const PermSearchView = () => {
                                     <div className="card-body">
                                         <div className="info-row">
                                             <span className="info-label">Wage</span>
-                                            <span className="info-value">{formatWage(c.PWD_WAGE_RATE, c.PWD_UNIT_OF_PAY)}</span>
+                                            <span className="info-value">{formatWage(c.JOB_OPP_WAGE_FROM, c.JOB_OPP_WAGE_TO, c.JOB_OPP_WAGE_PER)}</span>
                                         </div>
                                         {c.PWD_OES_WAGE_LEVEL && (
                                             <div className="info-row">
