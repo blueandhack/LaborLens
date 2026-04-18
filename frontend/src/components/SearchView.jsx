@@ -100,6 +100,17 @@ const SearchView = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Reset all filters when navigating to / with no params (e.g. clicking the H1)
+    useEffect(() => {
+        if (!searchParams.toString()) {
+            setCompany(''); setLocation(''); setCaseNumber(''); setJobTitle('');
+            setDeterminationYear(''); setReceivedYear('');
+            setCurrentPage(1);
+            fetchResults(1, limit);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
+
     const handleSearchClick = () => {
         updateURL(company, location, caseNumber, jobTitle, determinationYear, receivedYear, 1, limit);
         fetchResults(1, limit);
