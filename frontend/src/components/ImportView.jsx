@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { FiUploadCloud, FiLogOut, FiSettings, FiX } from 'react-icons/fi';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { FiUploadCloud, FiLogOut, FiSettings, FiX, FiShield, FiUnlock } from 'react-icons/fi';
 
 const ImportView = () => {
     const [file, setFile]                           = useState(null);
@@ -16,6 +16,7 @@ const ImportView = () => {
     const [passwordForm, setPasswordForm]           = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
     const [authError, setAuthError]                 = useState('');
     const [pwdMessage, setPwdMessage]               = useState({ type: '', text: '' });
+    const [blockedIPs, setBlockedIPs]               = useState([]);
 
     const fileInputRef = useRef(null);
     const logsEndRef   = useRef(null);
@@ -97,6 +98,23 @@ const ImportView = () => {
         localStorage.removeItem('adminToken'); localStorage.removeItem('adminUsername');
         setIsAuthenticated(false); setLoginForm({ username: '', password: '' });
         setLogs([]); setProgress({ processed: 0, total: 0, percentage: 0, inserted: 0, updated: 0 });
+        setBlockedIPs([]);
+    };
+
+    const fetchBlockedIPs = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('adminToken');
+            const res = await fetch('/api/admin/blocked-ips', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) setBlockedIPs(await res.json());
+        } catch { /* ignore */ }
+    }, []);
+
+    const handleUnblock = async (ip) => {
+        try {
+            const token = localStorage.getItem('adminToken');
+            await fetch(`/api/admin/blocked-ips/${encodeURIComponent(ip)}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+            fetchBlockedIPs();
+        } catch { /* ignore */ }
     };
 
     const handleChangePassword = async (e) => {
@@ -134,6 +152,13 @@ const ImportView = () => {
         if (isUploading) iv = setInterval(fetchStatus, 1500);
         return () => { if (iv) clearInterval(iv); };
     }, [isUploading, isAuthenticated]);
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        fetchBlockedIPs();
+        const iv = setInterval(fetchBlockedIPs, 30000);
+        return () => clearInterval(iv);
+    }, [isAuthenticated, fetchBlockedIPs]);
 
     if (isCheckingAuth) {
         return <div className="loading-overlay"><div className="spinner-large" /><p>Checking authentication…</p></div>;
@@ -289,6 +314,49 @@ const ImportView = () => {
                     <div ref={logsEndRef} />
                 </div>
             )}
+
+            {/* Blocked IPs */}
+            <div style={{ marginTop: '32px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: 600 }}>
+                        <FiShield size={15} style={{ color: blockedIPs.length > 0 ? '#ef4444' : 'var(--text-secondary)' }} />
+                        Blocked IPs
+                        {blockedIPs.length > 0 && (
+                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '999px', background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
+                                {blockedIPs.length}
+                            </span>
+                        )}
+                    </div>
+                    <button onClick={fetchBlockedIPs} className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '12px' }}>
+                        Refresh
+                    </button>
+                </div>
+
+                {blockedIPs.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>
+                        No IPs currently blocked.
+                    </p>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {blockedIPs.map(({ ip, attempts, secsLeft }) => {
+                            const mins = Math.floor(secsLeft / 60);
+                            const secs = secsLeft % 60;
+                            const timeLeft = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                            return (
+                                <div key={ip} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)', borderRadius: '8px', fontSize: '13px', gap: '12px' }}>
+                                    <span className="mono" style={{ color: 'var(--text-primary)', flex: '1 1 auto' }}>{ip}</span>
+                                    <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{attempts} attempts</span>
+                                    <span style={{ color: '#f59e0b', whiteSpace: 'nowrap', fontWeight: 600 }}>{timeLeft} left</span>
+                                    <button onClick={() => handleUnblock(ip)} className="btn btn-secondary"
+                                        style={{ padding: '4px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                        <FiUnlock size={12} /> Unblock
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

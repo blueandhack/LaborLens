@@ -134,4 +134,33 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     }
 });
 
+// GET /api/admin/blocked-ips
+router.get('/blocked-ips', authMiddleware, (req, res) => {
+    const now = Date.now();
+    const blocked = [];
+    for (const [ip, state] of loginAttempts) {
+        if (state.lockedUntil && now < state.lockedUntil) {
+            blocked.push({
+                ip,
+                attempts: state.count,
+                lockedUntil: new Date(state.lockedUntil).toISOString(),
+                secsLeft: Math.ceil((state.lockedUntil - now) / 1000),
+            });
+        }
+    }
+    blocked.sort((a, b) => b.secsLeft - a.secsLeft);
+    res.json(blocked);
+});
+
+// DELETE /api/admin/blocked-ips/:ip
+router.delete('/blocked-ips/:ip', authMiddleware, (req, res) => {
+    const ip = req.params.ip;
+    if (loginAttempts.has(ip)) {
+        loginAttempts.delete(ip);
+        res.json({ message: `Unblocked ${ip}` });
+    } else {
+        res.status(404).json({ error: 'IP not found or not blocked' });
+    }
+});
+
 module.exports = { router, authMiddleware };
