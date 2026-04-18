@@ -9,6 +9,7 @@ on:
       - '*.md'
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
   BACKEND_IMAGE: ghcr.io/blueandhack/laborlens-backend
   FRONTEND_IMAGE: ghcr.io/blueandhack/laborlens-frontend
