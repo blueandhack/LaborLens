@@ -23,7 +23,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 function getClientIP(req) {
-    return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+    return req.socket.remoteAddress || '';
 }
 
 function checkRateLimit(ip) {

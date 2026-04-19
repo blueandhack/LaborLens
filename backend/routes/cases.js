@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Case = require('../models/Case');
 const PermCase = require('../models/PermCase');
+const { authMiddleware } = require('./admin');
 
 router.get('/:id', async (req, res) => {
     try {
@@ -22,7 +23,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Delete all cases endpoint
-router.delete('/', async (req, res) => {
+router.delete('/', authMiddleware, async (req, res) => {
     try {
         const type = req.query.type || 'pwd';
         const Model = type === 'perm' ? PermCase : Case;

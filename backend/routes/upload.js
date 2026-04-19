@@ -7,6 +7,7 @@ const exceljs = require('exceljs');
 const unzipper = require('unzipper');
 const Case = require('../models/Case');
 const PermCase = require('../models/PermCase');
+const { authMiddleware } = require('./admin');
 let invalidateSearchCache = () => {};
 // Lazy import to avoid circular dependency
 setImmediate(() => { ({ invalidateCache: invalidateSearchCache } = require('./search')); });
@@ -86,11 +87,11 @@ let currentJob = {
 };
 
 // Polling endpoint for frontend
-router.get('/status', (req, res) => {
+router.get('/status', authMiddleware, (req, res) => {
     res.json(currentJob);
 });
 
-router.post('/', upload.single('file'), async (req, res) => {
+router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
