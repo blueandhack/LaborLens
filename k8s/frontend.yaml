@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: ghcr.io/blueandhack/laborlens-frontend:493602800ad8ce5533c3ccbe6073309ee6b9e0b8
+        image: ghcr.io/blueandhack/laborlens-frontend:0e3c7b617ba589429d6c2da3a64f516d95719695
         imagePullPolicy: Always
         ports:
         - containerPort: 80
