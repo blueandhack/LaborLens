@@ -172,7 +172,7 @@ const ImportView = () => {
                     Authentication required to import data.
                 </p>
                 {authError && (
-                    <div style={{ color: '#ef4444', marginBottom: '16px', padding: '10px 14px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', fontSize: '13px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    <div style={{ color: 'var(--status-denied)', marginBottom: '16px', padding: '10px 14px', background: 'rgba(181,83,58,0.1)', borderRadius: '6px', fontSize: '13px', border: '1px solid rgba(181,83,58,0.2)' }}>
                         {authError}
                     </div>
                 )}
@@ -213,7 +213,7 @@ const ImportView = () => {
                         </button>
                         <h2 style={{ marginBottom: '20px', fontSize: '17px', fontWeight: 600 }}>Change Password</h2>
                         {pwdMessage.text && (
-                            <div style={{ color: pwdMessage.type === 'error' ? '#ef4444' : '#22c55e', marginBottom: '14px', padding: '10px 14px', background: pwdMessage.type === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', borderRadius: '8px', fontSize: '13px' }}>
+                            <div style={{ color: pwdMessage.type === 'error' ? 'var(--status-denied)' : 'var(--status-certified)', marginBottom: '14px', padding: '10px 14px', background: pwdMessage.type === 'error' ? 'rgba(181,83,58,0.1)' : 'rgba(78,140,92,0.1)', borderRadius: '6px', fontSize: '13px' }}>
                                 {pwdMessage.text}
                             </div>
                         )}
@@ -319,10 +319,10 @@ const ImportView = () => {
             <div style={{ marginTop: '32px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: 600 }}>
-                        <FiShield size={15} style={{ color: blockedIPs.length > 0 ? '#ef4444' : 'var(--text-secondary)' }} />
+                        <FiShield size={15} style={{ color: blockedIPs.length > 0 ? 'var(--status-denied)' : 'var(--text-secondary)' }} />
                         Blocked IPs
                         {blockedIPs.length > 0 && (
-                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '999px', background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '999px', background: 'rgba(181,83,58,0.15)', color: 'var(--status-denied)' }}>
                                 {blockedIPs.length}
                             </span>
                         )}
@@ -343,10 +343,10 @@ const ImportView = () => {
                             const secs = secsLeft % 60;
                             const timeLeft = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
                             return (
-                                <div key={ip} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)', borderRadius: '8px', fontSize: '13px', gap: '12px' }}>
+                                <div key={ip} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(181,83,58,0.06)', border: '1px solid rgba(181,83,58,0.18)', borderRadius: '6px', fontSize: '13px', gap: '12px' }}>
                                     <span className="mono" style={{ color: 'var(--text-primary)', flex: '1 1 auto' }}>{ip}</span>
                                     <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{attempts} attempts</span>
-                                    <span style={{ color: '#f59e0b', whiteSpace: 'nowrap', fontWeight: 600 }}>{timeLeft} left</span>
+                                    <span style={{ color: 'var(--status-withdrawn)', whiteSpace: 'nowrap', fontWeight: 600 }}>{timeLeft} left</span>
                                     <button onClick={() => handleUnblock(ip)} className="btn btn-secondary"
                                         style={{ padding: '4px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                                         <FiUnlock size={12} /> Unblock

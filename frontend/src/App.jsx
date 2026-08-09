@@ -44,7 +44,10 @@ function App() {
         <header className="header">
           <div>
             <Link to={{ pathname: '/', search: '' }} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <h1 className="brand-name">LaborLens</h1>
+              <div className="brand-mark">
+                <span className="brand-seal" aria-hidden="true">LL</span>
+                <h1 className="brand-name">LaborLens</h1>
+              </div>
             </Link>
             <p className="brand-subtitle">U.S. Department of Labor — PWD &amp; PERM case database</p>
           </div>
