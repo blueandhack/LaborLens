@@ -4,6 +4,8 @@ metadata:
   name: laborlens-auto-import
   namespace: laborlens
 spec:
+  # Temporary maintenance pause while MongoDB is migrated to 9.0.
+  suspend: true
   # Sunday 03:00 Pacific, including daylight saving time changes.
   schedule: "0 3 * * 0"
   timeZone: America/Los_Angeles
@@ -66,6 +68,8 @@ metadata:
   name: laborlens-history-import
   namespace: laborlens
 spec:
+  # Temporary maintenance pause while MongoDB is migrated to 9.0.
+  suspend: true
   # Resume two archived files per hour, oldest first, until coverage is complete.
   # Completed files are skipped without downloading them again.
   schedule: "15 * * * *"
