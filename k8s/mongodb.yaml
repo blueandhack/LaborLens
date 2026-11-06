@@ -10,6 +10,19 @@ spec:
     requests:
       storage: 10Gi
 ---
+# Retain mongodb-data-pvc as the pre-upgrade recovery volume.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-data-v9-skycat-pvc
+  namespace: laborlens
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,9 +39,10 @@ spec:
       labels:
         app: laborlens-mongodb
     spec:
+      automountServiceAccountToken: false
       containers:
       - name: mongodb
-        image: mongo:8
+        image: mongo:9.0.4
         # Start as mongodb directly to avoid a hang in the image's gosu wrapper.
         # The existing data volume is already owned by UID/GID 999.
         securityContext:
@@ -36,6 +50,12 @@ spec:
           runAsGroup: 999
           runAsNonRoot: true
         args: ["--wiredTigerCacheSizeGB=0.5"]
+        resources:
+          requests:
+            memory: 768Mi
+            cpu: 100m
+          limits:
+            memory: 1536Mi
         ports:
         - containerPort: 27017
         startupProbe:
@@ -64,7 +84,7 @@ spec:
       volumes:
       - name: mongodb-data
         persistentVolumeClaim:
-          claimName: mongodb-data-pvc
+          claimName: mongodb-data-v9-skycat-pvc
 ---
 apiVersion: v1
 kind: Service
