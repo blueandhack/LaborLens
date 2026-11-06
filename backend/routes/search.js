@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Case = require('../models/Case');
 const PermCase = require('../models/PermCase');
+const { getAvailableYears } = require('../services/searchYears');
 
 // Escape special regex characters to prevent injection and ensure index use
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -127,32 +128,8 @@ router.get('/years', async (req, res) => {
         const cached = getCached('pwd_years');
         if (cached) return res.json(cached);
 
-        const result = await Case.aggregate([
-            { $group: {
-                _id: null,
-                minDet: { $min: '$DETERMINATION_DATE' },
-                maxDet: { $max: '$DETERMINATION_DATE' },
-                minRec: { $min: '$RECEIVED_DATE' },
-                maxRec: { $max: '$RECEIVED_DATE' }
-            }}
-        ]);
-
-        if (!result?.length) return res.json([]);
-
-        const { minDet, maxDet, minRec, maxRec } = result[0];
-        const years = new Set();
-        [minDet, maxDet, minRec, maxRec].forEach(d => {
-            if (d instanceof Date) {
-                const y = d.getFullYear();
-                if (y > 1900 && y < 2100) years.add(y);
-            }
-        });
-
-        if (!years.size) return res.json([]);
-
-        const min = Math.min(...years);
-        const max = Math.max(...years);
-        const range = Array.from({ length: max - min + 1 }, (_, i) => max - i);
+        const range = await getAvailableYears(Case, ['DETERMINATION_DATE', 'RECEIVED_DATE']);
+        if (!range.length) return res.json([]);
 
         setCached('pwd_years', range);
         res.json(range);
@@ -275,32 +252,8 @@ router.get('/perm/years', async (req, res) => {
         const cached = getCached('perm_years');
         if (cached) return res.json(cached);
 
-        const result = await PermCase.aggregate([
-            { $group: {
-                _id: null,
-                minDec: { $min: '$DECISION_DATE' },
-                maxDec: { $max: '$DECISION_DATE' },
-                minRec: { $min: '$RECEIVED_DATE' },
-                maxRec: { $max: '$RECEIVED_DATE' }
-            }}
-        ]);
-
-        if (!result?.length) return res.json([]);
-
-        const { minDec, maxDec, minRec, maxRec } = result[0];
-        const years = new Set();
-        [minDec, maxDec, minRec, maxRec].forEach(d => {
-            if (d instanceof Date) {
-                const y = d.getFullYear();
-                if (y > 1900 && y < 2100) years.add(y);
-            }
-        });
-
-        if (!years.size) return res.json([]);
-
-        const min = Math.min(...years);
-        const max = Math.max(...years);
-        const range = Array.from({ length: max - min + 1 }, (_, i) => max - i);
+        const range = await getAvailableYears(PermCase, ['DECISION_DATE', 'RECEIVED_DATE']);
+        if (!range.length) return res.json([]);
 
         setCached('perm_years', range);
         res.json(range);

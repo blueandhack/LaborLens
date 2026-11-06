@@ -1,130 +1,326 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { FiArrowLeft } from 'react-icons/fi';
-import { formatDisclosureDate } from '../utils/disclosureDate';
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import axios from "axios";
+import {
+  FiArrowLeft,
+  FiExternalLink,
+  FiMapPin,
+  FiRefreshCw,
+} from "react-icons/fi";
+import { StatusBadge } from "./CaseResults";
+import { presentCase, formatCaseDate } from "../utils/casePresentation";
 
-const getStatusClass = (status) => {
-    if (!status) return 'other';
-    const s = status.toLowerCase();
-    if (s.includes('certified') && !s.includes('denied')) return 'certified';
-    if (s.includes('denied')) return 'denied';
-    if (s.includes('withdrawn')) return 'withdrawn';
-    return 'other';
+const FIELD_LABELS = {
+  CASE_NUMBER: "Case number",
+  CASE_STATUS: "Case status",
+  EMP_BUSINESS_NAME: "Employer name",
+  EMPLOYER_LEGAL_BUSINESS_NAME: "Employer legal name",
+  EMP_CITY: "Employer city",
+  EMP_STATE: "Employer state",
+  JOB_OPP_PWD_NUMBER: "Related PWD case number",
+  JOB_OPP_WAGE_FROM: "Offered wage from",
+  JOB_OPP_WAGE_TO: "Offered wage to",
+  JOB_OPP_WAGE_PER: "Offered wage pay period",
+  PWD_WAGE_RATE: "Prevailing wage rate",
+  PWD_UNIT_OF_PAY: "Prevailing wage pay period",
+  PWD_SOC_CODE: "Occupation code (SOC)",
+  PWD_SOC_TITLE: "Occupation title (SOC)",
 };
+const fieldLabel = (key) =>
+  FIELD_LABELS[key] ||
+  key
+    .split("_")
+    .map((word) =>
+      ["PWD", "SOC", "OES", "NAICS", "H1B", "H2B", "FEIN", "ZIP"].includes(word)
+        ? word
+        : word.charAt(0) + word.slice(1).toLowerCase(),
+    )
+    .join(" ");
+const visibleEntries = (record) =>
+  Object.entries(record).filter(
+    ([key, value]) =>
+      !["_id", "__v", "score", "createdAt", "updatedAt"].includes(key) &&
+      !key.startsWith("_DOL_") &&
+      !key.endsWith("_LOWER") &&
+      value != null &&
+      value !== "",
+  );
+function Field({ entry: [key, value], raw = false }) {
+  const display =
+    !raw &&
+    key.includes("DATE") &&
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T/.test(value)
+      ? formatCaseDate(value)
+      : typeof value === "object"
+        ? JSON.stringify(value)
+        : String(value);
+  return (
+    <div className="detail-item">
+      <dt className="detail-key" title={key}>
+        {fieldLabel(key)}
+      </dt>
+      <dd
+        className={`detail-value${/CODE|NUMBER|NAICS/.test(key) ? " mono" : ""}`}
+      >
+        {display}
+      </dd>
+    </div>
+  );
+}
 
-const CaseDetailsView = () => {
-    const { id } = useParams();
-    const navigate = useNavigate();
-    const [caseItem, setCaseItem] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        axios.get(`/api/cases/${id}`)
-            .then(({ data }) => setCaseItem(data))
-            .catch(err => console.error('Failed to fetch case details', err))
-            .finally(() => setIsLoading(false));
-    }, [id]);
-
-    if (isLoading) {
-        return (
-            <div className="loading-overlay">
-                <div className="spinner-large" />
-                <h3>Loading case details</h3>
-            </div>
-        );
-    }
-
-    if (!caseItem) {
-        return (
-            <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-                <h2 style={{ marginBottom: '8px', color: 'var(--text-primary)' }}>Case Not Found</h2>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>This case could not be located in the database.</p>
-                <button className="btn btn-secondary" onClick={() => navigate(-1)}>
-                    <FiArrowLeft size={14} /> Go Back
-                </button>
-            </div>
-        );
-    }
-
-    const statusClass = getStatusClass(caseItem.CASE_STATUS);
-    const companyName = caseItem.EMPLOYER_LEGAL_BUSINESS_NAME || caseItem.EMP_BUSINESS_NAME || 'Unknown Company';
-
-    const hiddenKeys = ['_id', '__v', 'score', 'createdAt', 'updatedAt'];
-    const dataEntries = Object.entries(caseItem)
-        .filter(([key, val]) => !hiddenKeys.includes(key) && !key.startsWith('_DOL_') && !key.endsWith('_LOWER') && val !== null && val !== '')
-        .sort(([a], [b]) => a.localeCompare(b));
-    const originalIssues = Object.entries({ ...caseItem._DOL_RAW_VALUES, ...caseItem._DOL_CELL_ERRORS });
-    const variants = caseItem._DOL_ALTERNATE_RECORDS || [];
-    const source = caseItem._DOL_SOURCE || caseItem._DOL_SUPPLEMENT_SOURCE;
-    const renderField = ([key, value]) => {
-        let display = typeof value === 'object' ? JSON.stringify(value) : String(value);
-        if (key.includes('DATE') && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) display = formatDisclosureDate(value);
-        const isMonoField = key.includes('CODE') || key.includes('NUMBER') || key.includes('NAICS');
-        return <div key={key} className="detail-item">
-            <div className="detail-key">{key.replace(/_/g, ' ')}</div>
-            <div className={`detail-value${isMonoField ? ' mono' : ''}`}>{display}</div>
-        </div>;
+export default function CaseDetailsView() {
+  const { id } = useParams();
+  const location = useLocation();
+  const [response, setResponse] = useState({
+    key: null,
+    data: null,
+    error: null,
+  });
+  const [retry, setRetry] = useState(0);
+  const requestKey = `${id}-${retry}`;
+  const heading = useRef(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    let current = true;
+    axios
+      .get(`/api/cases/${id}`, { signal: controller.signal })
+      .then(({ data }) => {
+        if (current) setResponse({ key: requestKey, data, error: null });
+      })
+      .catch((error) => {
+        if (current && !axios.isCancel(error))
+          setResponse({
+            key: requestKey,
+            data: null,
+            error: error.response?.status === 404 ? "missing" : "failed",
+          });
+      });
+    return () => {
+      current = false;
+      controller.abort();
     };
-
+  }, [id, requestKey]);
+  const item = response.key === requestKey ? response.data : null;
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
+  useEffect(() => {
+    document.title = item
+      ? `${item.CASE_NUMBER} | LaborLens`
+      : "Case details | LaborLens";
+    if (item) heading.current?.focus({ preventScroll: true });
+  }, [item]);
+  const perm =
+    item?._DOL_SOURCE?.type === "perm" ||
+    Boolean(item?.EMP_BUSINESS_NAME && !item?.EMPLOYER_LEGAL_BUSINESS_NAME);
+  const from = location.state?.from;
+  const back =
+    typeof from === "string" && /^\/(?:\?.*|perm(?:\?.*)?)?$/.test(from)
+      ? from
+      : perm
+        ? "/perm"
+        : "/";
+  if (response.key !== requestKey)
     return (
-        <div style={{ animation: 'fadeInUp 0.25s ease' }}>
-            <button className="btn btn-secondary" onClick={() => navigate(-1)}
-                style={{ marginBottom: '24px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <FiArrowLeft size={14} /> Back to Results
-            </button>
-
-            {/* Header */}
-            <div style={{ marginBottom: '28px', paddingBottom: '20px', borderBottom: '1px solid var(--border-color)' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>
-                        {companyName}
-                    </h2>
-                    <span className={`status-badge status-badge-${statusClass}`} style={{ fontSize: '12px', padding: '4px 10px' }}>
-                        {caseItem.CASE_STATUS || 'Unknown'}
-                    </span>
-                </div>
-
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
-                    <span style={{
-                        background: 'var(--card-badge-bg)', border: '1px solid var(--border-color)',
-                        padding: '4px 10px', borderRadius: '6px', fontSize: '13px', color: 'var(--text-secondary)'
-                    }}>
-                        Case: <span className="mono" style={{ color: 'var(--text-primary)' }}>{caseItem.CASE_NUMBER}</span>
-                    </span>
-                    {caseItem.VISA_CLASS && (
-                        <span style={{
-                            background: 'var(--card-badge-bg)', border: '1px solid var(--border-color)',
-                            padding: '4px 10px', borderRadius: '6px', fontSize: '13px', color: 'var(--text-secondary)'
-                        }}>
-                            Visa: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{caseItem.VISA_CLASS}</span>
-                        </span>
-                    )}
-                </div>
-            </div>
-
-            {source?.url && <p style={{ fontSize: '13px', marginBottom: '20px', color: 'var(--text-secondary)' }}>
-                Source: <a href={source.url} target="_blank" rel="noreferrer">DOL disclosure, FY{source.fiscalYear}</a>. Historical files may omit fields; missing values have not been inferred.
-            </p>}
-            {originalIssues.length > 0 && <details style={{ marginBottom: '24px' }}>
-                <summary style={{ cursor: 'pointer', color: 'var(--status-withdrawn)' }}>Unavailable or invalid source values ({originalIssues.length})</summary>
-                <p style={{ fontSize: '13px', margin: '12px 0', color: 'var(--text-secondary)' }}>These values could not be interpreted reliably. The originals are preserved here.</p>
-                <div className="details-grid">{originalIssues.map(renderField)}</div>
-            </details>}
-
-            {/* All fields grid */}
-            <div className="details-grid">
-                {dataEntries.map(renderField)}
-            </div>
-            {variants.length > 0 && <details style={{ marginTop: '24px' }}>
-                <summary style={{ cursor: 'pointer' }}>Additional source records or worksites ({variants.length})</summary>
-                <p style={{ fontSize: '13px', margin: '12px 0', color: 'var(--text-secondary)' }}>The primary record uses the latest recorded event. Differing rows from the same disclosure are retained below.</p>
-                {variants.map(variant => <div key={variant.row} className="details-grid" style={{ margin: '20px 0' }}>
-                    {Object.entries(variant.data).filter(([key, value]) => !key.startsWith('_DOL_') && !key.endsWith('_LOWER') && value != null && value !== '').map(renderField)}
-                </div>)}
-            </details>}
-        </div>
+      <div className="loading-overlay" role="status">
+        <div className="spinner-large" />
+        <h2>Loading case details</h2>
+      </div>
     );
-};
-
-export default CaseDetailsView;
+  if (!item || response.error)
+    return (
+      <div className="search-state" role="alert">
+        <h2>
+          {response.error === "missing"
+            ? "Case not found"
+            : "Couldn’t load this case"}
+        </h2>
+        <p>
+          {response.error === "missing"
+            ? "This case is not available in the database."
+            : "The connection failed. You can retry or return to your search."}
+        </p>
+        {response.error !== "missing" && (
+          <button
+            className="btn"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            <FiRefreshCw aria-hidden="true" />
+            Try again
+          </button>
+        )}
+        <Link className="btn btn-secondary" to={back}>
+          <FiArrowLeft aria-hidden="true" />
+          Back to results
+        </Link>
+      </div>
+    );
+  const program = perm ? "perm" : "pwd";
+  const data = presentCase(item, program);
+  const entries = visibleEntries(item);
+  const grouped = [
+    {
+      name: "Case and processing",
+      matches: (key) =>
+        /^(CASE_|VISA_|RECEIVED_|DECISION_|DETERMINATION_|REDETERMINATION_|WITHDRAWAL_|CENTER_|ORIGINAL_)/.test(
+          key,
+        ),
+    },
+    { name: "Employer", matches: (key) => /^(EMPLOYER_|EMP_)/.test(key) },
+    {
+      name: "Job, worksite, and wages",
+      matches: (key) =>
+        /^(JOB_|PWD_|PW_|WORKSITE_|WAGE_|SOC_|ALT_|BLS_|H2B_)/.test(key),
+    },
+    {
+      name: "Agent and attorney",
+      matches: (key) => /^(AGENT_|ATTORNEY_)/.test(key),
+    },
+  ];
+  const groups = [
+    ...grouped.map((group) => ({
+      ...group,
+      entries: entries.filter(([key]) => group.matches(key)),
+    })),
+    {
+      name: "Other reported information",
+      entries: entries.filter(
+        ([key]) => !grouped.some((group) => group.matches(key)),
+      ),
+    },
+  ].filter((group) => group.entries.length);
+  const issues = Object.entries({
+    ...item._DOL_RAW_VALUES,
+    ...item._DOL_CELL_ERRORS,
+  });
+  const variants = item._DOL_ALTERNATE_RECORDS || [];
+  const source = item._DOL_SOURCE || item._DOL_SUPPLEMENT_SOURCE;
+  return (
+    <article className="case-details-page">
+      <Link className="back-to-results" to={back}>
+        <FiArrowLeft aria-hidden="true" />
+        Back to results
+      </Link>
+      <header className="case-details-header">
+        <div className="case-detail-meta">
+          <span className="section-kicker">
+            {program.toUpperCase()} disclosure
+          </span>
+          <span className="mono">{item.CASE_NUMBER}</span>
+          <StatusBadge status={data.status} statusClass={data.statusClass} />
+        </div>
+        <h2 ref={heading} tabIndex={-1}>
+          {data.employer}
+        </h2>
+        <p className="detail-job-title">{data.title}</p>
+        <p className="detail-location">
+          <FiMapPin aria-hidden="true" />
+          {data.location}
+          {item.VISA_CLASS && <span>{item.VISA_CLASS}</span>}
+        </p>
+      </header>
+      <dl className="case-overview">
+        <div>
+          <dt>{perm ? "Offered wage" : "Prevailing wage"}</dt>
+          <dd>{data.wage === "N/A" ? "Not reported" : data.wage}</dd>
+          {item.PWD_OES_WAGE_LEVEL && <span>{item.PWD_OES_WAGE_LEVEL}</span>}
+        </div>
+        <div>
+          <dt>Received</dt>
+          <dd>{formatCaseDate(item.RECEIVED_DATE)}</dd>
+        </div>
+        <div>
+          <dt>{perm ? "Decision date" : "Determination date"}</dt>
+          <dd>{formatCaseDate(data.eventDate)}</dd>
+        </div>
+        <div>
+          <dt>Receipt to {perm ? "decision" : "determination"}</dt>
+          <dd>
+            {data.elapsed === null
+              ? "Not reported"
+              : `${data.elapsed.toLocaleString()} calendar days`}
+          </dd>
+        </div>
+      </dl>
+      {source?.url && (
+        <p className="source-note">
+          Source:{" "}
+          <a href={source.url} target="_blank" rel="noreferrer">
+            DOL disclosure, FY{source.fiscalYear}
+            <FiExternalLink aria-hidden="true" />
+          </a>
+          . Missing historical values have not been inferred.
+        </p>
+      )}
+      {issues.length > 0 && (
+        <details className="source-records source-warning">
+          <summary>
+            Unavailable or invalid source values ({issues.length})
+          </summary>
+          <p>
+            These values could not be interpreted reliably. Their original
+            contents are preserved below.
+          </p>
+          <dl className="details-grid">
+            {issues.map((entry) => (
+              <Field raw key={entry[0]} entry={entry} />
+            ))}
+          </dl>
+        </details>
+      )}
+      {perm && item.JOB_OPP_PWD_NUMBER && (
+        <p className="source-note">
+          <Link
+            className="related-pwd-link"
+            to={`/?caseNumber=${encodeURIComponent(item.JOB_OPP_PWD_NUMBER)}`}
+          >
+            Find related PWD case {item.JOB_OPP_PWD_NUMBER}
+          </Link>
+        </p>
+      )}
+      <nav
+        className="detail-section-nav"
+        aria-label="Case information sections"
+      >
+        {groups.map((group, index) => (
+          <a key={group.name} href={`#case-section-${index}`}>
+            {group.name}
+          </a>
+        ))}
+      </nav>
+      {groups.map((group, index) => (
+        <section
+          key={group.name}
+          className="detail-section"
+          id={`case-section-${index}`}
+        >
+          <h3>{group.name}</h3>
+          <dl className="details-grid">
+            {group.entries.map((entry) => (
+              <Field key={entry[0]} entry={entry} />
+            ))}
+          </dl>
+        </section>
+      ))}
+      {variants.length > 0 && (
+        <details className="source-records">
+          <summary>
+            Additional source records or worksites ({variants.length})
+          </summary>
+          <p>
+            The primary record uses the latest recorded event. Differing rows
+            from the same disclosure are retained below.
+          </p>
+          {variants.map((variant) => (
+            <dl className="details-grid alternate-record" key={variant.row}>
+              {visibleEntries(variant.data).map((entry) => (
+                <Field key={entry[0]} entry={entry} />
+              ))}
+            </dl>
+          ))}
+        </details>
+      )}
+    </article>
+  );
+}

@@ -14,26 +14,26 @@ const Navigation = () => {
   const isPwd = location.pathname === '/';
 
   return (
-    <div className="nav-tabs">
-      <Link to="/" className={`tab ${isPwd ? 'active' : ''}`} style={{ textDecoration: 'none' }}>
+    <nav className="nav-tabs" aria-label="Main navigation">
+      <Link to="/" className={`tab ${isPwd ? 'active' : ''}`} aria-current={isPwd ? 'page' : undefined}>
         PWD Search
       </Link>
-      <Link to="/perm" className={`tab ${isPerm ? 'active' : ''}`} style={{ textDecoration: 'none' }}>
+      <Link to="/perm" className={`tab ${isPerm ? 'active' : ''}`} aria-current={isPerm ? 'page' : undefined}>
         PERM Search
       </Link>
-      <Link to="/import" className={`tab ${isImport ? 'active' : ''}`} style={{ textDecoration: 'none' }}>
+      <Link to="/import" className={`tab ${isImport ? 'active' : ''}`} aria-current={isImport ? 'page' : undefined}>
         Import Data
       </Link>
-    </div>
+    </nav>
   );
 };
 
 function App() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem('theme') || 'dark'; } catch { return 'dark'; } });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
+    try { localStorage.setItem('theme', theme); } catch { /* Theme still works without browser storage. */ }
   }, [theme]);
 
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
@@ -41,6 +41,7 @@ function App() {
   return (
     <Router>
       <div className="app-container">
+        <a className="skip-link" href="#main-content">Skip to content</a>
         <header className="header">
           <div>
             <Link to={{ pathname: '/', search: '' }} style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -49,7 +50,7 @@ function App() {
                 <h1 className="brand-name">LaborLens</h1>
               </div>
             </Link>
-            <p className="brand-subtitle">U.S. Department of Labor — PWD &amp; PERM case database</p>
+            <p className="brand-subtitle">U.S. Department of Labor disclosure records</p>
           </div>
           <div className="header-right">
             <Navigation />
@@ -59,7 +60,7 @@ function App() {
           </div>
         </header>
 
-        <main className="glass-panel" style={{ padding: '28px 30px' }}>
+        <main id="main-content" className="glass-panel app-main" tabIndex={-1}>
           <Routes>
             <Route path="/" element={<SearchView />} />
             <Route path="/perm" element={<PermSearchView />} />
@@ -76,7 +77,7 @@ function App() {
             className="footer-github-link"
           >
             <FiGithub size={16} />
-            <span>Open source — star &amp; contribute on GitHub</span>
+            <span>Open source on GitHub</span>
           </a>
         </footer>
       </div>

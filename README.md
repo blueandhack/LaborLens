@@ -5,9 +5,12 @@ A web application for searching U.S. Department of Labor Prevailing Wage Determi
 ## Features
 
 - **PWD & PERM Search** — filter by company, job title, case number, location, and year
-- **Case Detail View** — full field breakdown for individual PWD and PERM records
+- **Comparison table & cards** — wide-screen tables with sticky headers and employer columns, plus responsive cards and a saved layout preference
+- **Case Detail View** — wage and date summaries, grouped disclosure fields, original source values, and related PWD lookups
 - **Excel Import** — stream-process large DOL `.xlsx` disclosure files into MongoDB with real-time progress
 - **Admin Auth** — JWT-protected import and data management endpoints
+
+Search filters, page size, pagination, and explicit layout choices stay in the URL. Employer, job-title, city/state, and case-number searches match the beginning of the reported value. Year filters use recorded calendar dates; missing dates are never inferred from fiscal years. PWD rates and PERM offered wages retain their reported pay periods.
 
 ## Local Development
 
