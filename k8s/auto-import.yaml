@@ -37,7 +37,7 @@ spec:
                   topologyKey: kubernetes.io/hostname
           containers:
           - name: importer
-            image: ghcr.io/blueandhack/laborlens-backend:3d674e1918c8dd84939e83b17a638d7926775877
+            image: ghcr.io/blueandhack/laborlens-backend:3ddfb504d8f9820c513f62a7651b56de95ecc064
             imagePullPolicy: Always
             command: ["node", "scripts/auto-import.js", "--from-year=2008", "--max-files=4"]
             env:
@@ -101,7 +101,7 @@ spec:
                   topologyKey: kubernetes.io/hostname
           containers:
           - name: importer
-            image: ghcr.io/blueandhack/laborlens-backend:3d674e1918c8dd84939e83b17a638d7926775877
+            image: ghcr.io/blueandhack/laborlens-backend:3ddfb504d8f9820c513f62a7651b56de95ecc064
             imagePullPolicy: Always
             command: ["node", "scripts/auto-import.js", "--from-year=2008", "--max-files=2", "--backfill"]
             env:
