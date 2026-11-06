@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FiArrowLeft } from 'react-icons/fi';
+import { formatDisclosureDate } from '../utils/disclosureDate';
 
 const getStatusClass = (status) => {
     if (!status) return 'other';
@@ -51,8 +52,20 @@ const CaseDetailsView = () => {
 
     const hiddenKeys = ['_id', '__v', 'score', 'createdAt', 'updatedAt'];
     const dataEntries = Object.entries(caseItem)
-        .filter(([key, val]) => !hiddenKeys.includes(key) && val !== null && val !== '')
+        .filter(([key, val]) => !hiddenKeys.includes(key) && !key.startsWith('_DOL_') && !key.endsWith('_LOWER') && val !== null && val !== '')
         .sort(([a], [b]) => a.localeCompare(b));
+    const originalIssues = Object.entries({ ...caseItem._DOL_RAW_VALUES, ...caseItem._DOL_CELL_ERRORS });
+    const variants = caseItem._DOL_ALTERNATE_RECORDS || [];
+    const source = caseItem._DOL_SOURCE || caseItem._DOL_SUPPLEMENT_SOURCE;
+    const renderField = ([key, value]) => {
+        let display = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        if (key.includes('DATE') && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) display = formatDisclosureDate(value);
+        const isMonoField = key.includes('CODE') || key.includes('NUMBER') || key.includes('NAICS');
+        return <div key={key} className="detail-item">
+            <div className="detail-key">{key.replace(/_/g, ' ')}</div>
+            <div className={`detail-value${isMonoField ? ' mono' : ''}`}>{display}</div>
+        </div>;
+    };
 
     return (
         <div style={{ animation: 'fadeInUp 0.25s ease' }}>
@@ -90,25 +103,26 @@ const CaseDetailsView = () => {
                 </div>
             </div>
 
+            {source?.url && <p style={{ fontSize: '13px', marginBottom: '20px', color: 'var(--text-secondary)' }}>
+                Source: <a href={source.url} target="_blank" rel="noreferrer">DOL disclosure, FY{source.fiscalYear}</a>. Historical files may omit fields; missing values have not been inferred.
+            </p>}
+            {originalIssues.length > 0 && <details style={{ marginBottom: '24px' }}>
+                <summary style={{ cursor: 'pointer', color: 'var(--status-withdrawn)' }}>Unavailable or invalid source values ({originalIssues.length})</summary>
+                <p style={{ fontSize: '13px', margin: '12px 0', color: 'var(--text-secondary)' }}>These values could not be interpreted reliably. The originals are preserved here.</p>
+                <div className="details-grid">{originalIssues.map(renderField)}</div>
+            </details>}
+
             {/* All fields grid */}
             <div className="details-grid">
-                {dataEntries.map(([key, value]) => {
-                    let display = value;
-                    if (key.includes('DATE') && value && !isNaN(Date.parse(value))) {
-                        display = new Date(value).toLocaleDateString();
-                    }
-                    const isMonoField = key.includes('CODE') || key.includes('NUMBER') || key.includes('NAICS');
-
-                    return (
-                        <div key={key} className="detail-item">
-                            <div className="detail-key">{key.replace(/_/g, ' ')}</div>
-                            <div className={`detail-value${isMonoField ? ' mono' : ''}`}>
-                                {display.toString()}
-                            </div>
-                        </div>
-                    );
-                })}
+                {dataEntries.map(renderField)}
             </div>
+            {variants.length > 0 && <details style={{ marginTop: '24px' }}>
+                <summary style={{ cursor: 'pointer' }}>Additional source records or worksites ({variants.length})</summary>
+                <p style={{ fontSize: '13px', margin: '12px 0', color: 'var(--text-secondary)' }}>The primary record uses the latest recorded event. Differing rows from the same disclosure are retained below.</p>
+                {variants.map(variant => <div key={variant.row} className="details-grid" style={{ margin: '20px 0' }}>
+                    {Object.entries(variant.data).filter(([key, value]) => !key.startsWith('_DOL_') && !key.endsWith('_LOWER') && value != null && value !== '').map(renderField)}
+                </div>)}
+            </details>}
         </div>
     );
 };

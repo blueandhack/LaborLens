@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FiSearch, FiMapPin } from 'react-icons/fi';
+import { formatWageRange } from '../utils/wage';
+import { formatDisclosureDate } from '../utils/disclosureDate';
 
 const getStatusClass = (status) => {
     if (!status) return 'other';
@@ -22,15 +24,7 @@ const formatStatus = (status) => {
 };
 
 const formatWage = (from, to, per) => {
-    if (!from) return 'N/A';
-    const lo = parseFloat(from);
-    if (isNaN(lo)) return 'N/A';
-    const unit = per || 'yr';
-    if (to && parseFloat(to) !== lo) {
-        const hi = parseFloat(to);
-        return `$${lo.toLocaleString()} – $${hi.toLocaleString()} / ${unit}`;
-    }
-    return `$${lo.toLocaleString()} / ${unit}`;
+    return formatWageRange(from, to, per);
 };
 
 const PermSearchView = () => {
@@ -238,14 +232,14 @@ const PermSearchView = () => {
                                         <div className="info-row">
                                             <span className="info-label">Decision Date</span>
                                             <span className="info-value">
-                                                {c.DECISION_DATE ? new Date(c.DECISION_DATE).toLocaleDateString() : 'N/A'}
+                                                {formatDisclosureDate(c.DECISION_DATE)}
                                             </span>
                                         </div>
                                         {c.PWD_DETERMINATION_DATE && (
                                             <div className="info-row">
                                                 <span className="info-label">PWD Det. Date</span>
                                                 <span className="info-value">
-                                                    {new Date(c.PWD_DETERMINATION_DATE).toLocaleDateString()}
+                                                    {formatDisclosureDate(c.PWD_DETERMINATION_DATE)}
                                                 </span>
                                             </div>
                                         )}

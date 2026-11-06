@@ -45,5 +45,8 @@ permCaseSchema.index({ JOB_OPP_PWD_NUMBER: 1 });
 
 // Compound index for default sorting
 permCaseSchema.index({ DECISION_DATE: -1, EMP_BUSINESS_NAME: 1 });
+permCaseSchema.index({ EMP_BUSINESS_NAME_LOWER: 1, DECISION_DATE: -1 }, { name: 'EMP_NAME_LOWER_1_DEC_DATE_-1' });
+permCaseSchema.index({ JOB_TITLE_LOWER: 1, DECISION_DATE: -1 }, { name: 'JOB_TITLE_LOWER_1_DEC_DATE_-1' });
+permCaseSchema.index({ EMP_CITY_LOWER: 1 });
 
 module.exports = mongoose.model('PermCase', permCaseSchema);

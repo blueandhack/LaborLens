@@ -156,5 +156,8 @@ caseSchema.index({ RECEIVED_DATE: -1 });
 
 // Compound index for the default sorting
 caseSchema.index({ DETERMINATION_DATE: -1, EMPLOYER_LEGAL_BUSINESS_NAME: 1 });
+caseSchema.index({ EMPLOYER_NAME_LOWER: 1, DETERMINATION_DATE: -1 }, { name: 'EMPLOYER_NAME_LOWER_1_DET_DATE_-1' });
+caseSchema.index({ JOB_TITLE_LOWER: 1, DETERMINATION_DATE: -1 }, { name: 'JOB_TITLE_LOWER_1_DET_DATE_-1' });
+caseSchema.index({ EMPLOYER_CITY_LOWER: 1 });
 
 module.exports = mongoose.model('Case', caseSchema);

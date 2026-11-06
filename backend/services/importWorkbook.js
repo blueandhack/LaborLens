@@ -1,95 +1,190 @@
+const { createHash } = require('crypto');
 const { readWorkbookRows } = require('./xlsxRows');
+const { ALIASES, DATE_FIELDS, NUMBER_FIELDS, buildLayout, normalizeHeader, normalizeRecord, excelDateToJSDate, isMissing, eventTime } = require('./dolLayout');
 
-const DATE_FIELDS = {
-    pwd: ['RECEIVED_DATE', 'DETERMINATION_DATE', 'PREVAIL_WAGE_DETERM_DATE',
-        'PWD_WAGE_EXPIRATION_DATE', 'REDETERMINATION_DATE', 'CENTER_DIRECTOR_REVIEW_DATE',
-        'WITHDRAWAL_DATE', 'SURVEY_PUBLICATION_DATE'],
-    perm: ['RECEIVED_DATE', 'DECISION_DATE', 'RECR_INFO_JOB_START_DATE',
-        'RECR_INFO_JOB_END_DATE', 'RECR_INFO_AD_DATE1', 'RECR_INFO_AD_DATE2'],
-};
+const VALIDATION_VERSION = 2;
+const rowKey = row => `${row.sheet}:${row.number}`;
+const sourceRank = source => source.fiscalYear * 100 + source.quarter * 10
+    + (/new_form|revised_form/i.test(source.filename || '') ? 2 : /old_form/i.test(source.filename || '') ? 1 : 0);
 
-function cellValue(value) {
-    if (value && typeof value === 'object' && !(value instanceof Date)) {
-        if ('result' in value) return cellValue(value.result);
-        if (value.richText) return value.richText.map(part => part.text).join('');
-        if ('text' in value) return value.text;
-        return null;
-    }
-    return value;
-}
-
-function excelDateToJSDate(value) {
-    if (value === null || value === undefined || value === '') return null;
-    const date = typeof value === 'number'
-        ? new Date(Math.round((value - 25569) * 86400000)) : new Date(value);
-    return Number.isFinite(date.getTime()) && date.getUTCFullYear() > 1970 ? date : null;
-}
-
-function normalizeRecord(record, type) {
-    record.CASE_NUMBER = String(record.CASE_NUMBER).trim();
-    for (const field of DATE_FIELDS[type]) {
-        if (record[field] !== undefined) record[field] = excelDateToJSDate(record[field]);
-    }
-    const fields = type === 'pwd'
-        ? { EMPLOYER_LEGAL_BUSINESS_NAME: 'EMPLOYER_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMPLOYER_CITY: 'EMPLOYER_CITY_LOWER' }
-        : { EMP_BUSINESS_NAME: 'EMP_BUSINESS_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMP_CITY: 'EMP_CITY_LOWER' };
-    for (const [source, target] of Object.entries(fields)) {
-        record[target] = record[source] == null ? '' : String(record[source]).toLowerCase();
-    }
-    return record;
-}
-
-// The same streaming, case-number upsert path serves uploads and scheduled jobs.
-// Write failures propagate: a partially imported workbook must be retried.
-async function importWorkbook(filePath, { type, Model, batchSize = 1000, onProgress = async () => {}, ensureActive = () => {} }) {
-    if (!DATE_FIELDS[type]) throw new Error('Import type must be pwd or perm');
-    const stats = { processed: 0, inserted: 0, updated: 0 };
-    let foundSheet;
-    let currentSheet;
-    let headers;
-    let batch = [];
-    async function flush() {
-        if (!batch.length) return;
-        ensureActive();
-        const result = await Model.bulkWrite(batch, { ordered: false, throwOnValidationError: true });
-        stats.inserted += result.upsertedCount || 0;
-        stats.updated += result.modifiedCount || 0;
-        batch = [];
-        await onProgress({ ...stats });
-    }
+async function* records(filePath, { type, ensureActive = () => {} }) {
+    let sheet;
+    let layout;
     for await (const row of readWorkbookRows(filePath)) {
-        if (currentSheet !== row.sheet) {
-            currentSheet = row.sheet;
-            headers = undefined;
-        }
-        if (foundSheet && row.sheet !== foundSheet) continue;
         ensureActive();
-        const values = row.values.slice(1).map(cellValue);
-        if (!headers) {
-            const candidate = values.map(value => typeof value === 'string' ? value.trim().toUpperCase() : '');
-            const employer = type === 'pwd' ? 'EMPLOYER_LEGAL_BUSINESS_NAME' : 'EMP_BUSINESS_NAME';
-            if (candidate.includes('CASE_NUMBER') && candidate.includes(employer)) {
-                headers = candidate;
-                foundSheet = row.sheet;
+        if (sheet !== row.sheet) { sheet = row.sheet; layout = null; }
+        const values = row.values.slice(1);
+        if (!layout) {
+            layout = buildLayout(values, type);
+            if (layout) yield { layout, sheet };
+            else if (values.length >= 3 && values.map(normalizeHeader).some(field => ['CASE_NUMBER', 'CASE_NO'].includes(field))) {
+                throw new Error(`No ${type.toUpperCase()} case rows: unsupported program/employer headers in ${sheet}`);
             }
             continue;
         }
+        if (values.every(isMissing)) { yield { blank: true }; continue; }
+        // Some releases repeat the column headings between sections.
+        const idColumn = layout.headers.indexOf(layout.mapped.CASE_NUMBER);
+        if (['CASE_NUMBER', 'CASE_NO'].includes(String(values[idColumn] ?? '').trim().toUpperCase())) { yield { repeatedHeader: true }; continue; }
         const record = {};
-        headers.forEach((header, index) => {
-            // Keep missing cells explicit so a correction can clear an old value.
-            if (header && /^[A-Z][A-Z0-9_]*$/.test(header)) record[header] = values[index] ?? null;
-        });
-        if (!record.CASE_NUMBER || !String(record.CASE_NUMBER).trim()) continue;
-        normalizeRecord(record, type);
-        batch.push({ updateOne: {
-            filter: { CASE_NUMBER: record.CASE_NUMBER }, update: { $set: record }, upsert: true,
-        } });
+        layout.headers.forEach((header, index) => { if (header) record[header] = values[index] ?? null; });
+        const issues = [];
+        normalizeRecord(record, type, { layout, date1904: row.date1904, issues });
+        if (row.errors.length) {
+            record._DOL_CELL_ERRORS = Object.fromEntries(row.errors.map(error => [layout.headers[error.column - 1] || String(error.column), error.value]));
+            for (const error of row.errors) issues.push({ field: layout.headers[error.column - 1], reason: 'excel_error', value: error.value });
+        }
+        yield { record, key: rowKey(row), issues };
+    }
+}
+
+// Scan every row before the first database write. Keep only row fingerprints
+// and duplicate-selection metadata in memory, not entire large workbooks.
+async function auditWorkbook(filePath, { type, ensureActive = () => {}, onProgress = async () => {} }) {
+    const report = { version: VALIDATION_VERSION, type, layouts: [], rows: 0, validRows: 0,
+        blankRows: 0, repeatedHeaders: 0, rejectedRows: 0, duplicateRows: 0, identicalDuplicates: 0,
+        variantCases: 0, sameEventVariantCases: 0, uniqueCases: 0, missingValues: {}, issues: {}, examples: [] };
+    const entries = new Map();
+    for await (const item of records(filePath, { type, ensureActive })) {
+        if (item.layout) { report.layouts.push({ sheet: item.sheet, ...item.layout }); continue; }
+        if (item.blank) { report.blankRows++; continue; }
+        if (item.repeatedHeader) { report.repeatedHeaders++; continue; }
+        const { record, key, issues } = item;
+        report.rows++;
+        if (!record.CASE_NUMBER) {
+            report.rejectedRows++;
+            if (report.examples.length < 10) report.examples.push({ row: key, reason: 'missing_case_number' });
+            continue;
+        }
+        report.validRows++;
+        for (const field of Object.keys(ALIASES[type])) {
+            if (isMissing(record[field])) report.missingValues[field] = (report.missingValues[field] || 0) + 1;
+        }
+        for (const issue of issues) {
+            const code = `${issue.field}:${issue.reason}`;
+            report.issues[code] = (report.issues[code] || 0) + 1;
+            if (report.examples.length < 10) report.examples.push({ row: key, ...issue });
+        }
+        const hash = createHash('sha256').update(JSON.stringify(record)).digest('hex');
+        const time = eventTime(record, type);
+        const priority = ['REDETERMINATION_DATE', 'WITHDRAWAL_DATE', 'CENTER_DIRECTOR_REVIEW_DATE'].filter(field => record[field] instanceof Date).length;
+        const previous = entries.get(record.CASE_NUMBER);
+        if (!previous) entries.set(record.CASE_NUMBER, { key, hash, time, priority });
+        else {
+            report.duplicateRows++;
+            if (previous.hash === hash || previous.alternates?.some(other => other.hash === hash)) report.identicalDuplicates++;
+            else {
+                previous.alternates ||= [];
+                if (!previous.alternates.length) report.variantCases++;
+                if (time === previous.time && !previous.sameEvent) { report.sameEventVariantCases++; previous.sameEvent = true; }
+                if (time > previous.time || (time === previous.time && priority > previous.priority)) {
+                    previous.alternates.push({ key: previous.key, hash: previous.hash });
+                    Object.assign(previous, { key, hash, time, priority });
+                } else previous.alternates.push({ key, hash });
+            }
+        }
+        if (report.rows % 10000 === 0) await onProgress({ rows: report.rows });
+    }
+    report.uniqueCases = entries.size;
+    report.canImport = report.uniqueCases > 0 && report.rejectedRows === 0;
+    if (!report.layouts.length || !report.validRows) throw Object.assign(new Error(`No ${type.toUpperCase()} case rows found; check workbook headers`), { report });
+    return { report, entries };
+}
+
+async function importWorkbook(filePath, {
+    type, Model, source, historical = false, validation, batchSize = 1000,
+    onProgress = async () => {}, onValidated = async () => {}, ensureActive = () => {},
+}) {
+    const audit = validation || await auditWorkbook(filePath, { type, ensureActive });
+    await onValidated(audit.report);
+    if (!audit.report.canImport) throw Object.assign(new Error(`Workbook contains ${audit.report.rejectedRows} records without a case number; no cases imported`), { report: audit.report });
+    const stats = { processed: 0, inserted: 0, updated: 0 };
+    if (historical) Object.assign(stats, { protected: 0, supplemented: 0 });
+    let batch = [];
+    const duplicates = new Map();
+    const canonical = [...new Set([...Object.keys(ALIASES[type]), ...DATE_FIELDS, ...NUMBER_FIELDS])];
+    const lowerFields = type === 'pwd'
+        ? { EMPLOYER_LEGAL_BUSINESS_NAME: 'EMPLOYER_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMPLOYER_CITY: 'EMPLOYER_CITY_LOWER' }
+        : { EMP_BUSINESS_NAME: 'EMP_BUSINESS_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMP_CITY: 'EMP_CITY_LOWER' };
+    async function flush() {
+        if (!batch.length) return;
+        ensureActive();
+        let existing = new Map();
+        if (historical) {
+            const projection = Object.fromEntries([...canonical, ...Object.values(ALIASES[type]).flat(), ...Object.values(lowerFields), 'CASE_NUMBER', '_DOL_SOURCE'].map(field => [field, 1]));
+            const found = await Model.find({ CASE_NUMBER: { $in: batch.map(record => record.CASE_NUMBER) } }, projection).lean();
+            existing = new Map(found.map(record => [record.CASE_NUMBER, record]));
+        }
+        const operations = [];
+        for (const record of batch) {
+            const old = existing.get(record.CASE_NUMBER);
+            let update = record;
+            if (historical && old) {
+                if (old._DOL_SOURCE && old._DOL_SOURCE.rank > sourceRank(source)) { stats.protected++; continue; }
+                if (!old._DOL_SOURCE) {
+                    // Untracked existing records may be newer. Fill only absent
+                    // canonical fields, preserving every existing nonempty value.
+                    update = {};
+                    const own = { ...old };
+                    for (const [field, aliases] of Object.entries(ALIASES[type])) {
+                        if (isMissing(own[field])) {
+                            const alias = aliases.find(alias => !isMissing(old[alias]));
+                            if (alias) own[field] = old[alias];
+                        }
+                    }
+                    normalizeRecord(own, type);
+                    for (const field of canonical) {
+                        const value = !isMissing(own[field]) ? own[field] : record[field];
+                        if (isMissing(old[field]) && !isMissing(value)) update[field] = value;
+                    }
+                    for (const [field, lower] of Object.entries(lowerFields)) {
+                        const value = update[field] ?? old[field];
+                        if (isMissing(old[lower]) && !isMissing(value)) update[lower] = String(value).toLowerCase();
+                    }
+                    if (!Object.keys(update).length) { stats.protected++; continue; }
+                    update._DOL_SUPPLEMENT_SOURCE = { url: source.url, fiscalYear: source.fiscalYear, fields: Object.keys(update) };
+                    stats.supplemented++;
+                }
+            }
+            if (source && update === record) record._DOL_SOURCE = { ...source, rank: sourceRank(source), validationVersion: VALIDATION_VERSION };
+            operations.push({ updateOne: { filter: { CASE_NUMBER: record.CASE_NUMBER }, update: { $set: update }, upsert: true } });
+        }
+        if (operations.length) {
+            const result = await Model.bulkWrite(operations, { ordered: false, throwOnValidationError: true });
+            stats.inserted += result.upsertedCount || 0;
+            stats.updated += result.modifiedCount || 0;
+        }
+        batch = [];
+        await onProgress({ ...stats });
+    }
+    async function add(record) {
+        record._DOL_ALTERNATE_RECORDS ||= [];
+        record._DOL_DUPLICATE_RESOLUTION ||= null;
         stats.processed++;
+        batch.push(record);
         if (batch.length >= batchSize) await flush();
     }
+    for await (const item of records(filePath, { type, ensureActive })) {
+        if (!item.record?.CASE_NUMBER) continue;
+        const entry = audit.entries.get(item.record.CASE_NUMBER);
+        if (!entry) continue;
+        if (entry.alternates?.length) {
+            if (entry.key === item.key || entry.alternates.some(other => other.key === item.key)) {
+                const group = duplicates.get(item.record.CASE_NUMBER) || [];
+                group.push({ row: item.key, data: item.record });
+                duplicates.set(item.record.CASE_NUMBER, group);
+            }
+        } else if (entry.key === item.key) await add(item.record);
+    }
+    for (const [id, variants] of duplicates) {
+        const entry = audit.entries.get(id);
+        const primary = variants.find(variant => variant.row === entry.key).data;
+        primary._DOL_ALTERNATE_RECORDS = variants.filter(variant => variant.row !== entry.key);
+        primary._DOL_DUPLICATE_RESOLUTION = entry.sameEvent ? 'latest event, then explicit review dates, then first source row; same-event variants retained' : 'latest recorded decision event';
+        await add(primary);
+    }
     await flush();
-    if (!foundSheet || !stats.processed) throw new Error(`No ${type.toUpperCase()} case rows found; check the workbook headers`);
     return stats;
 }
 
-module.exports = { importWorkbook, normalizeRecord, excelDateToJSDate };
+module.exports = { VALIDATION_VERSION, sourceRank, auditWorkbook, importWorkbook, normalizeRecord, excelDateToJSDate };

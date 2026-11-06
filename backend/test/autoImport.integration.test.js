@@ -117,6 +117,56 @@ test('MongoDB import integration', { skip: !process.env.MONGO_TEST_URI }, async 
         assert.equal(await models.pwd.countDocuments(), 3);
     });
 
+    await t.test('historical records protect newer cases and safely supplement untracked records', async () => {
+        const source = { type: 'perm', fiscalYear: 2008, quarter: 4, filename: 'PERM_FY2008.xlsx', url: 'https://www.dol.gov/media/PERM_FY2008.xlsx' };
+        await models.perm.create({ CASE_NUMBER: 'untracked', EMP_BUSINESS_NAME: 'Current employer', JOB_TITLE: 'Current title', DECISION_DATE: new Date('2026-01-01') });
+        const book = new ExcelJS.Workbook();
+        const sheet = book.addWorksheet('Cases');
+        sheet.addRows([
+            ['CASE_NO', 'EMPLOYER_NAME', 'DECISION_DATE', 'PW_JOB_TITLE_9089', 'WAGE_OFFER_FROM_9089'],
+            ['perm-1', 'Outdated employer', 39800, 'Outdated title', 10],
+            ['untracked', 'Old employer', 39800, 'Old title', 15],
+            ['historic-new', 'Historical employer', 39800, 'Engineer', 20],
+        ]);
+        const file = path.join(dir, 'historical.xlsx');
+        await book.xlsx.writeFile(file);
+        const stats = await importWorkbook(file, { type: 'perm', Model: models.perm, source, historical: true });
+        assert.equal(stats.protected, 1);
+        assert.equal(stats.supplemented, 1);
+        assert.equal((await models.perm.findOne({ CASE_NUMBER: 'perm-1' })).EMP_BUSINESS_NAME, 'Initial employer');
+        const kept = await models.perm.findOne({ CASE_NUMBER: 'untracked' });
+        assert.equal(kept.EMP_BUSINESS_NAME, 'Current employer');
+        assert.equal(kept.JOB_TITLE, 'Current title');
+        assert.equal(kept.EMP_BUSINESS_NAME_LOWER, 'current employer');
+        assert.equal(kept.JOB_OPP_WAGE_FROM, 15);
+        assert.equal(kept.DECISION_DATE.getUTCFullYear(), 2026);
+        assert.equal(kept._DOL_SOURCE, undefined);
+        assert.equal((await models.perm.findOne({ CASE_NUMBER: 'historic-new' }))._DOL_SOURCE.fiscalYear, 2008);
+        // A later archive supersedes an older tracked archive; replaying the
+        // older archive afterwards must not regress it.
+        sheet.getCell('E4').value = 30;
+        await book.xlsx.writeFile(file);
+        await importWorkbook(file, { type: 'perm', Model: models.perm, source: { ...source, fiscalYear: 2009 }, historical: true });
+        sheet.getCell('E4').value = 20;
+        await book.xlsx.writeFile(file);
+        await importWorkbook(file, { type: 'perm', Model: models.perm, source, historical: true });
+        assert.equal((await models.perm.findOne({ CASE_NUMBER: 'historic-new' })).JOB_OPP_WAGE_FROM, 30);
+    });
+
+    await t.test('bounded backfill resumes pending files and a busy lease is a safe no-op', async () => {
+        const archive = [2008, 2009].map(year => ({ type: 'perm', fiscalYear: year, quarter: 4, filename: `PERM_FY${year}.xlsx`, url: `https://www.dol.gov/media/PERM_FY${year}.xlsx` }));
+        const config = { ...options, fromYear: 2008, maxFiles: 1, backfill: true, discover: async () => archive };
+        const first = await runAutoImport(db, config);
+        assert.equal(first.results.filter(result => result.outcome === 'imported').length, 1);
+        const second = await runAutoImport(db, config);
+        assert.equal(second.results[0].outcome, 'already-imported');
+        assert.equal(second.results[1].outcome, 'imported');
+        const lease = await acquireImportLock(db, 'manual');
+        const busy = await runAutoImport(db, config);
+        assert.equal(busy.busy, true);
+        await lease.release();
+    });
+
     await t.test('an older release cannot replace a newer successful release', async () => {
         await db.collection('import_sources').insertOne({ _id: 'future-release', type: 'pwd', fiscalYear: 2027, quarter: 1, completedAt: new Date() });
         await assert.rejects(runAutoImport(db, options), /superseded DOL release/);

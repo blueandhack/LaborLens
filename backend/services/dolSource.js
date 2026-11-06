@@ -16,27 +16,31 @@ function dolURL(value, base = PERFORMANCE_URL) {
     return url.href;
 }
 
-function discoverDatasets(html) {
+function discoverDatasets(html, { fromYear } = {}) {
     const datasets = new Map();
     for (const match of html.matchAll(/\bhref\s*=\s*["']([^"']+)["']/gi)) {
         let url;
         try { url = dolURL(match[1].replace(/&amp;/gi, '&')); } catch { continue; }
         const filename = decodeURIComponent(new URL(url).pathname.split('/').pop());
-        const name = filename.match(/^(PW|PERM)_Disclosure_Data(?:_New_Form)?_FY(\d{4})(?:_Q([1-4]))?((?:_(?:old|revised|new)_form)?)\.xlsx$/i);
+        const name = filename.match(/^(PW|PWD|PERM)_(?:(?:Disclosure_Data(?:_New_Form)?|Case_Data)_)?FY(\d{4}|\d{2})(?:_Q([1-4]))?(?:_(?:EOY|old_form|revised_form|new_form))?\.xlsx$/i);
         if (!name) continue;
-        const type = name[1].toUpperCase() === 'PW' ? 'pwd' : 'perm';
-        datasets.set(url, { url, filename, type, fiscalYear: Number(name[2]), quarter: Number(name[3] || 4) });
+        const type = name[1].toUpperCase() === 'PERM' ? 'perm' : 'pwd';
+        const year = Number(name[2]) + (name[2].length === 2 ? 2000 : 0);
+        datasets.set(url, { url, filename, type, fiscalYear: year, quarter: Number(name[3] || 4) });
     }
     const selected = [];
     for (const type of ['pwd', 'perm']) {
         const files = [...datasets.values()].filter(file => file.type === type);
         if (!files.length) throw new Error(`DOL page contains no supported ${type.toUpperCase()} disclosure files`);
-        const year = Math.max(...files.map(file => file.fiscalYear));
-        const quarter = Math.max(...files.filter(file => file.fiscalYear === year).map(file => file.quarter));
+        const years = fromYear === undefined ? [Math.max(...files.map(file => file.fiscalYear))]
+            : [...new Set(files.map(file => file.fiscalYear))].filter(year => year >= fromYear).sort((a, b) => b - a);
         // Quarterly files are cumulative. Keep all form variants in the latest
         // release, but exclude superseded quarters and worksite/appendix files.
-        selected.push(...files.filter(file => file.fiscalYear === year && file.quarter === quarter)
-            .sort((a, b) => a.filename.localeCompare(b.filename)));
+        for (const year of years) {
+            const quarter = Math.max(...files.filter(file => file.fiscalYear === year).map(file => file.quarter));
+            selected.push(...files.filter(file => file.fiscalYear === year && file.quarter === quarter)
+                .sort((a, b) => a.filename.localeCompare(b.filename)));
+        }
     }
     return selected;
 }
@@ -63,14 +67,14 @@ async function requestDOL(url, { headers = {}, signal } = {}) {
     throw new Error('Too many DOL redirects');
 }
 
-async function fetchDatasets({ signal = AbortSignal.timeout(60000) } = {}) {
+async function fetchDatasets({ signal = AbortSignal.timeout(60000), fromYear } = {}) {
     const response = await requestDOL(PERFORMANCE_URL, { signal });
     let html = '';
     for await (const chunk of response.body) {
         html += Buffer.from(chunk).toString('utf8');
         if (html.length > 5 * 1024 * 1024) throw new Error('DOL page exceeds the size limit');
     }
-    return discoverDatasets(html);
+    return discoverDatasets(html, { fromYear });
 }
 
 async function downloadDataset(dataset, destination, previous, { force = false, signal = AbortSignal.timeout(15 * 60 * 1000) } = {}) {

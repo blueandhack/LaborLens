@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FiSearch, FiMapPin } from 'react-icons/fi';
+import { formatWageRange } from '../utils/wage';
+import { formatDisclosureDate } from '../utils/disclosureDate';
 
 const getStatusClass = (status) => {
     if (!status) return 'other';
@@ -22,10 +24,7 @@ const formatStatus = (status) => {
 };
 
 const formatWage = (rate, unit) => {
-    if (!rate) return 'N/A';
-    const num = parseFloat(rate);
-    if (isNaN(num)) return 'N/A';
-    return `$${num.toLocaleString()} / ${unit || 'yr'}`;
+    return formatWageRange(rate, null, unit);
 };
 
 const SearchView = () => {
@@ -244,7 +243,7 @@ const SearchView = () => {
                                         <div className="info-row">
                                             <span className="info-label">Det. Date</span>
                                             <span className="info-value">
-                                                {c.DETERMINATION_DATE ? new Date(c.DETERMINATION_DATE).toLocaleDateString() : 'N/A'}
+                                                {formatDisclosureDate(c.DETERMINATION_DATE)}
                                             </span>
                                         </div>
                                     </div>

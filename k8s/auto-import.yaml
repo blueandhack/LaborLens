@@ -14,7 +14,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 1
-      activeDeadlineSeconds: 7200
+      activeDeadlineSeconds: 21600
       ttlSecondsAfterFinished: 604800
       template:
         metadata:
@@ -37,7 +37,69 @@ spec:
           - name: importer
             image: ghcr.io/blueandhack/laborlens-backend:3c73f48c1605d7003baf9cb74ccbd89e7dca83ee
             imagePullPolicy: Always
-            command: ["node", "scripts/auto-import.js"]
+            command: ["node", "scripts/auto-import.js", "--from-year=2008", "--max-files=4"]
+            env:
+            - name: MONGO_URI
+              value: "mongodb://laborlens-mongodb:27017/pwd_cases"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=512"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 768Mi
+                ephemeral-storage: 1Gi
+              limits:
+                cpu: "1"
+                memory: 1Gi
+                ephemeral-storage: 3Gi
+            volumeMounts:
+            - name: temp
+              mountPath: /tmp
+          volumes:
+          - name: temp
+            emptyDir:
+              sizeLimit: 2Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: laborlens-history-import
+  namespace: laborlens
+spec:
+  # Resume two archived files per hour, oldest first, until coverage is complete.
+  # Completed files are skipped without downloading them again.
+  schedule: "15 * * * *"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 21600
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app: laborlens-history-import
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          affinity:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app: laborlens-mongodb
+                  topologyKey: kubernetes.io/hostname
+          containers:
+          - name: importer
+            image: ghcr.io/blueandhack/laborlens-backend:3c73f48c1605d7003baf9cb74ccbd89e7dca83ee
+            imagePullPolicy: Always
+            command: ["node", "scripts/auto-import.js", "--from-year=2008", "--max-files=2", "--backfill"]
             env:
             - name: MONGO_URI
               value: "mongodb://laborlens-mongodb:27017/pwd_cases"

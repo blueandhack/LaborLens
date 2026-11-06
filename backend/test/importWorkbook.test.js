@@ -18,7 +18,7 @@ async function fixture(t, type = 'pwd') {
         ? [' CASE_NUMBER ', 'EMPLOYER_LEGAL_BUSINESS_NAME', 'JOB_TITLE', 'EMPLOYER_CITY', 'DETERMINATION_DATE', 'RECEIVED_DATE']
         : ['CASE_NUMBER', 'EMP_BUSINESS_NAME', 'JOB_TITLE', 'EMP_CITY', 'DECISION_DATE', 'RECEIVED_DATE']);
     sheet.addRow(['A-1', { richText: [{ text: 'Example ' }, { text: 'INC' }] }, 'Engineer', 'Austin', 46023, new Date('2025-01-02T00:00:00Z')]);
-    sheet.addRow([null, 'No case number']);
+    sheet.addRow([]);
     sheet.addRow(['A-2', 'Other LLC', 'Analyst', 'Boston', null, 'not a date']);
     workbook.addWorksheet('Notes').addRow(['Not case data']);
     await workbook.xlsx.writeFile(file);

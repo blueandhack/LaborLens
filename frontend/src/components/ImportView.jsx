@@ -121,6 +121,20 @@ const ImportView = () => {
         } catch (error) { setAutoStatusError(error.message); }
     }, []);
 
+    const downloadValidationReport = async (source) => {
+        try {
+            const res = await fetch(`/api/upload/auto/report/${source._id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } });
+            if (!res.ok) throw new Error('Unable to download validation report.');
+            const data = await res.json();
+            const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = source.filename.replace(/\.xlsx$/i, '-validation.json');
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (error) { setAutoStatusError(error.message); }
+    };
+
     const handleUnblock = async (ip) => {
         try {
             const token = localStorage.getItem('adminToken');
@@ -259,18 +273,30 @@ const ImportView = () => {
                     <button onClick={fetchAutoStatus} className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '12px' }}>Refresh</button>
                 </div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '8px 0' }}>PWD and PERM · Sundays at 3:00 AM Pacific</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: '8px 0' }}>Historical backfill resumes hourly. Every file is validated before import.</p>
+                {autoStatus?.coverage && <p style={{ fontSize: '13px' }}>
+                    {autoStatus.coverage.completedFiles} / {autoStatus.coverage.availableFiles} archive files imported and validated since FY{autoStatus.coverage.fromYear}.
+                    {autoStatus.coverage.unavailable?.length > 0 && <span> No DOL archive file: {autoStatus.coverage.unavailable.map(item => `${item.type.toUpperCase()} ${item.fiscalYear}`).join(', ')}.</span>}
+                </p>}
                 {autoStatusError && <p role="alert" style={{ color: 'var(--status-denied)', fontSize: '13px' }}>{autoStatusError}</p>}
                 {autoStatus?.active && <p role="status" style={{ fontSize: '13px' }}>{autoStatus.active.label} is running.</p>}
                 {autoStatus?.runs?.[0] && <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
                     Last check: {new Date(autoStatus.runs[0].startedAt).toLocaleString()} · {autoStatus.runs[0].status}
                 </p>}
                 {autoStatus?.sources?.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Waiting for the first scheduled import.</p>}
-                {autoStatus?.sources?.map(source => <div key={source._id} style={{ fontSize: '12px', padding: '8px 0', overflowWrap: 'anywhere' }}>
+                {autoStatus?.sources?.length > 0 && <details>
+                    <summary style={{ cursor: 'pointer', fontSize: '13px', marginTop: '12px' }}>File history ({autoStatus.sources.length})</summary>
+                    {autoStatus.sources.map(source => <div key={source._id} style={{ fontSize: '12px', padding: '8px 0', overflowWrap: 'anywhere' }}>
                     <a href={source.url} target="_blank" rel="noreferrer">{source.filename}</a>
                     <span> · {source.status === 'done' ? (source.outcome === 'unchanged' ? 'Up to date' : 'Imported') : source.status}</span>
                     {source.progress?.processed > 0 && <span> · {source.progress.processed.toLocaleString()} rows</span>}
+                    {source.status === 'validating' && <span> · {(source.validationProgress?.rows || 0).toLocaleString()} rows checked</span>}
+                    {source.validation?.duplicateRows > 0 && <span> · {source.validation.duplicateRows.toLocaleString()} duplicate rows resolved</span>}
+                    {Object.values(source.validation?.issues || {}).reduce((total, count) => total + count, 0) > 0 && <span> · Source data issues retained in the validation report</span>}
+                    {source.validation && <button className="btn btn-secondary" style={{ marginLeft: '8px', padding: '3px 8px', fontSize: '11px' }} onClick={() => downloadValidationReport(source)}>Validation report</button>}
                     {source.error && <div role="alert" style={{ color: 'var(--status-denied)' }}>{source.error}</div>}
                 </div>)}
+                </details>}
             </section>
 
             {/* Data type selector */}
