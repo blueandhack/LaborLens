@@ -17,6 +17,8 @@ const ImportView = () => {
     const [authError, setAuthError]                 = useState('');
     const [pwdMessage, setPwdMessage]               = useState({ type: '', text: '' });
     const [blockedIPs, setBlockedIPs]               = useState([]);
+    const [autoStatus, setAutoStatus]               = useState(null);
+    const [autoStatusError, setAutoStatusError]     = useState('');
 
     const fileInputRef = useRef(null);
     const logsEndRef   = useRef(null);
@@ -50,7 +52,7 @@ const ImportView = () => {
 
     const fetchStatus = async () => {
         try {
-            const res = await fetch('/api/upload/status');
+            const res = await fetch('/api/upload/status', { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } });
             if (!res.ok) return;
             const data = await res.json();
             if (data.status !== 'idle') {
@@ -73,7 +75,7 @@ const ImportView = () => {
         formData.append('file', file);
         formData.append('type', dataType);
         try {
-            const res = await fetch('/api/upload', { method: 'POST', body: formData });
+            const res = await fetch('/api/upload', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }, body: formData });
             if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Upload failed'); }
         } catch (error) {
             setLogs(prev => [...prev, `Error: ${error.message}`]);
@@ -99,6 +101,7 @@ const ImportView = () => {
         setIsAuthenticated(false); setLoginForm({ username: '', password: '' });
         setLogs([]); setProgress({ processed: 0, total: 0, percentage: 0, inserted: 0, updated: 0 });
         setBlockedIPs([]);
+        setAutoStatus(null);
     };
 
     const fetchBlockedIPs = useCallback(async () => {
@@ -107,6 +110,15 @@ const ImportView = () => {
             const res = await fetch('/api/admin/blocked-ips', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) setBlockedIPs(await res.json());
         } catch { /* ignore */ }
+    }, []);
+
+    const fetchAutoStatus = useCallback(async () => {
+        try {
+            const res = await fetch('/api/upload/auto/status', { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } });
+            if (!res.ok) throw new Error('Unable to load automatic import status.');
+            setAutoStatus(await res.json());
+            setAutoStatusError('');
+        } catch (error) { setAutoStatusError(error.message); }
     }, []);
 
     const handleUnblock = async (ip) => {
@@ -136,7 +148,7 @@ const ImportView = () => {
         setIsClearing(true);
         setLogs(prev => [...prev, `Clearing all ${dataType.toUpperCase()} data…`]);
         try {
-            const res  = await fetch(`/api/cases?type=${dataType}`, { method: 'DELETE' });
+            const res  = await fetch(`/api/cases?type=${dataType}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } });
             const data = await res.json();
             if (res.ok) setLogs(prev => [...prev, `✅ Cleared ${data.deletedCount} records.`]);
             else throw new Error(data.error || 'Failed to clear data');
@@ -159,6 +171,13 @@ const ImportView = () => {
         const iv = setInterval(fetchBlockedIPs, 30000);
         return () => clearInterval(iv);
     }, [isAuthenticated, fetchBlockedIPs]);
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        fetchAutoStatus();
+        const iv = setInterval(fetchAutoStatus, 15000);
+        return () => clearInterval(iv);
+    }, [isAuthenticated, fetchAutoStatus]);
 
     if (isCheckingAuth) {
         return <div className="loading-overlay"><div className="spinner-large" /><p>Checking authentication…</p></div>;
@@ -234,6 +253,26 @@ const ImportView = () => {
                 Upload a DOL disclosure <span className="mono">.xlsx</span> file. Records are streamed and deduplicated into MongoDB.
             </p>
 
+            <section aria-label="Automatic imports" style={{ textAlign: 'left', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', padding: '16px 0', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <h3 style={{ fontSize: '15px', margin: 0 }}>Automatic imports</h3>
+                    <button onClick={fetchAutoStatus} className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '12px' }}>Refresh</button>
+                </div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '8px 0' }}>PWD and PERM · Sundays at 3:00 AM Pacific</p>
+                {autoStatusError && <p role="alert" style={{ color: 'var(--status-denied)', fontSize: '13px' }}>{autoStatusError}</p>}
+                {autoStatus?.active && <p role="status" style={{ fontSize: '13px' }}>{autoStatus.active.label} is running.</p>}
+                {autoStatus?.runs?.[0] && <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                    Last check: {new Date(autoStatus.runs[0].startedAt).toLocaleString()} · {autoStatus.runs[0].status}
+                </p>}
+                {autoStatus?.sources?.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Waiting for the first scheduled import.</p>}
+                {autoStatus?.sources?.map(source => <div key={source._id} style={{ fontSize: '12px', padding: '8px 0', overflowWrap: 'anywhere' }}>
+                    <a href={source.url} target="_blank" rel="noreferrer">{source.filename}</a>
+                    <span> · {source.status === 'done' ? (source.outcome === 'unchanged' ? 'Up to date' : 'Imported') : source.status}</span>
+                    {source.progress?.processed > 0 && <span> · {source.progress.processed.toLocaleString()} rows</span>}
+                    {source.error && <div role="alert" style={{ color: 'var(--status-denied)' }}>{source.error}</div>}
+                </div>)}
+            </section>
+
             {/* Data type selector */}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '4px' }}>
                 {['pwd', 'perm'].map(type => (
@@ -274,31 +313,31 @@ const ImportView = () => {
 
             {/* Action buttons */}
             <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button className="btn btn-danger" onClick={onClearData} disabled={isUploading || isClearing}>
+                <button className="btn btn-danger" onClick={onClearData} disabled={isUploading || isClearing || Boolean(autoStatus?.active)}>
                     {isClearing ? 'Clearing…' : `Clear All ${dataType.toUpperCase()}`}
                 </button>
                 <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={isUploading || isClearing}>
                     Select File
                 </button>
-                <button className="btn" onClick={onUpload} disabled={!file || isUploading || isClearing}>
+                <button className="btn" onClick={onUpload} disabled={!file || isUploading || isClearing || Boolean(autoStatus?.active)}>
                     {isUploading ? 'Processing…' : 'Start Import'}
                 </button>
             </div>
 
             {/* Progress bar */}
-            {(isUploading || progress.percentage > 0) && progress.total > 0 && (
+            {(isUploading || progress.percentage > 0) && (
                 <div style={{ marginTop: '24px', background: 'var(--surface)', padding: '18px 20px', borderRadius: '10px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '13px' }}>
                         <span style={{ fontWeight: 600, color: progress.percentage === 100 ? 'var(--status-certified)' : 'var(--accent-primary)' }}>
                             {progress.percentage === 100 ? '✓ Import complete' : '⏳ Processing…'}
                         </span>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{progress.percentage}%</span>
+                        {progress.total > 0 && <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{progress.percentage}%</span>}
                     </div>
                     <div style={{ width: '100%', height: '6px', background: 'var(--progress-track)', borderRadius: '3px', overflow: 'hidden' }}>
                         <div style={{ width: `${progress.percentage}%`, height: '100%', background: progress.percentage === 100 ? 'var(--status-certified)' : 'var(--accent-primary)', borderRadius: '3px', transition: 'width 0.3s ease' }} />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <span>{progress.processed.toLocaleString()} / {progress.total.toLocaleString()} rows</span>
+                        <span>{progress.processed.toLocaleString()}{progress.total > 0 ? ` / ${progress.total.toLocaleString()}` : ''} rows</span>
                         <span>{progress.inserted.toLocaleString()} inserted</span>
                     </div>
                 </div>

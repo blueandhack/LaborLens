@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: laborlens-auto-import
+  namespace: laborlens
+spec:
+  # Sunday 03:00 Pacific, including daylight saving time changes.
+  schedule: "0 3 * * 0"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 86400
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app: laborlens-auto-import
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          # Prefer the node without MongoDB to leave memory for live searches.
+          affinity:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app: laborlens-mongodb
+                  topologyKey: kubernetes.io/hostname
+          containers:
+          - name: importer
+            image: ghcr.io/blueandhack/laborlens-backend:811ca62e8a031726d286556d5bdeb08aab0d710a
+            imagePullPolicy: Always
+            command: ["node", "scripts/auto-import.js"]
+            env:
+            - name: MONGO_URI
+              value: "mongodb://laborlens-mongodb:27017/pwd_cases"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=512"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 768Mi
+                ephemeral-storage: 1Gi
+              limits:
+                cpu: "1"
+                memory: 1Gi
+                ephemeral-storage: 3Gi
+            volumeMounts:
+            - name: temp
+              mountPath: /tmp
+          volumes:
+          - name: temp
+            emptyDir:
+              sizeLimit: 2Gi

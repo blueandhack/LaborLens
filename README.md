@@ -80,3 +80,53 @@ See `docs/secret.example.yaml` for the secret format.
 Import DOL disclosure data from:
 - [Foreign Labor Certification Data Center](https://flcdatacenter.com/) — PWD datasets
 - [DOL PERM Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance) — PERM datasets
+
+## Automatic DOL imports
+
+The `laborlens-auto-import` Kubernetes CronJob checks the official DOL performance
+page every **Sunday at 3:00 AM America/Los_Angeles**. It imports the newest fiscal
+year and latest cumulative release for **both PWD and PERM**, including multiple
+form variants when a release has them. Existing historical cases are retained;
+this job does not backfill every historical fiscal year. Worksite and appendix
+files are excluded because they are not case disclosure records.
+
+Files stream to temporary disk and records are upserted by `CASE_NUMBER`. HTTP
+validators and SHA-256 hashes skip successfully imported files that have not
+changed. Revised files at the same URL are reimported. A failed/partial import
+is retried safely, and Kubernetes retries a failed job once. The importer refuses
+to downgrade a program to an older release than one already imported.
+
+Automatic imports, manual uploads, and clearing data share an expiring MongoDB
+lease so they cannot write over each other. Failures are recorded instead of
+silently counting incomplete imports as successful. Import history survives pod
+restarts in `import_runs` and `import_sources`. The admin Import page shows the
+latest checks, file progress, and errors. Year dropdown caches refresh within
+10 minutes after a scheduled import.
+
+The CronJob uses the same backend image as the web API; CI updates both image
+tags together. Temporary files disappear when the job pod is removed. Job logs
+are retained for seven days; durable history remains in MongoDB.
+
+```bash
+# Discover current file URLs without changing the database
+cd backend
+npm run import:dol -- --discover
+
+# Import now using MONGO_URI from the environment or backend/.env
+npm run import:dol
+
+# Replay current files even when previously imported (for recovery)
+npm run import:dol -- --force
+```
+
+From a cluster administrator session:
+
+```bash
+kubectl -n laborlens get cronjob laborlens-auto-import
+kubectl -n laborlens create job --from=cronjob/laborlens-auto-import laborlens-import-manual-$(date +%s)
+kubectl -n laborlens logs job/<job-name> -f
+```
+
+Run importer tests with `cd backend && npm test`. To include database integration
+tests, provide `MONGO_TEST_URI` pointing to a disposable MongoDB instance. Tests
+create and drop only a uniquely named `laborlens_import_test_*` database.
