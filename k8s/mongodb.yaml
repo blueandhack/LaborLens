@@ -41,17 +41,23 @@ spec:
         startupProbe:
           tcpSocket:
             port: 27017
+          timeoutSeconds: 5
           periodSeconds: 5
           failureThreshold: 60
         readinessProbe:
           tcpSocket:
             port: 27017
+          timeoutSeconds: 5
           periodSeconds: 5
+          failureThreshold: 6
         livenessProbe:
           tcpSocket:
             port: 27017
+          # Large imports can briefly delay the TCP listener. Restart only
+          # after sustained failure, rather than interrupting a healthy write.
+          timeoutSeconds: 5
           periodSeconds: 10
-          failureThreshold: 3
+          failureThreshold: 18
         volumeMounts:
         - name: mongodb-data
           mountPath: /data/db
