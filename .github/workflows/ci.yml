@@ -15,12 +15,11 @@ env:
 
 jobs:
   build-backend:
-    # MongoDB's test image currently rejects Linux >= 6.19. The Ubuntu 22.04
-    # runner uses Linux 6.8; 24.04 and ubuntu-latest now use Linux 7.0.
+    # Keep the database integration environment stable across runner updates.
     runs-on: ubuntu-22.04
     services:
       mongo:
-        image: mongo:8
+        image: mongo:9.0.4
         ports:
           - 27017:27017
         options: >-
@@ -46,7 +45,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '24'
 
       - name: Test importer
         working-directory: backend
