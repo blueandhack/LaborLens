@@ -11,6 +11,8 @@ A web application for searching U.S. Department of Labor Prevailing Wage Determi
 
 ## Local Development
 
+MongoDB is pinned to 9.0.4 and the backend uses Node 24. See the [MongoDB migration and recovery notes](docs/mongodb-upgrade.md) before reusing an older database volume.
+
 ### Docker (recommended)
 
 ```bash

@@ -4,8 +4,7 @@ metadata:
   name: laborlens-auto-import
   namespace: laborlens
 spec:
-  # Temporary maintenance pause while MongoDB is migrated to 9.0.
-  suspend: true
+  suspend: false
   # Sunday 03:00 Pacific, including daylight saving time changes.
   schedule: "0 3 * * 0"
   timeZone: America/Los_Angeles
@@ -25,16 +24,9 @@ spec:
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false
-          # Prefer the node without MongoDB to leave memory for live searches.
-          affinity:
-            podAntiAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-              - weight: 100
-                podAffinityTerm:
-                  labelSelector:
-                    matchLabels:
-                      app: laborlens-mongodb
-                  topologyKey: kubernetes.io/hostname
+          # Keep import memory and CPU off the small control-plane node.
+          nodeSelector:
+            kubernetes.io/hostname: skycat
           containers:
           - name: importer
             image: ghcr.io/blueandhack/laborlens-backend:d26f0c0bc8758c7d27a15e9df801e356a539254f
@@ -68,8 +60,7 @@ metadata:
   name: laborlens-history-import
   namespace: laborlens
 spec:
-  # Temporary maintenance pause while MongoDB is migrated to 9.0.
-  suspend: true
+  suspend: false
   # Resume two archived files per hour, oldest first, until coverage is complete.
   # Completed files are skipped without downloading them again.
   schedule: "15 * * * *"
@@ -90,15 +81,9 @@ spec:
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false
-          affinity:
-            podAntiAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-              - weight: 100
-                podAffinityTerm:
-                  labelSelector:
-                    matchLabels:
-                      app: laborlens-mongodb
-                  topologyKey: kubernetes.io/hostname
+          # Keep import memory and CPU off the small control-plane node.
+          nodeSelector:
+            kubernetes.io/hostname: skycat
           containers:
           - name: importer
             image: ghcr.io/blueandhack/laborlens-backend:d26f0c0bc8758c7d27a15e9df801e356a539254f
