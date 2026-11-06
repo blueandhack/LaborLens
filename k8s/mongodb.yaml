@@ -16,6 +16,8 @@ metadata:
   name: laborlens-mongodb
   namespace: laborlens
 spec:
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: laborlens-mongodb
@@ -27,9 +29,29 @@ spec:
       containers:
       - name: mongodb
         image: mongo:8
+        # Start as mongodb directly to avoid a hang in the image's gosu wrapper.
+        # The existing data volume is already owned by UID/GID 999.
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+          runAsNonRoot: true
         args: ["--wiredTigerCacheSizeGB=0.5"]
         ports:
         - containerPort: 27017
+        startupProbe:
+          tcpSocket:
+            port: 27017
+          periodSeconds: 5
+          failureThreshold: 60
+        readinessProbe:
+          tcpSocket:
+            port: 27017
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: 27017
+          periodSeconds: 10
+          failureThreshold: 3
         volumeMounts:
         - name: mongodb-data
           mountPath: /data/db
