@@ -79,6 +79,9 @@ function App() {
             <FiGithub size={16} />
             <span>Open source on GitHub</span>
           </a>
+          <a href="/backups/" className="footer-github-link">LaborLens Backups</a>
+          <a href="/privacy/" className="footer-github-link">Privacy</a>
+          <a href="/terms/" className="footer-github-link">Terms</a>
         </footer>
       </div>
     </Router>

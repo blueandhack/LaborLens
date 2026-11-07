@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy policy — LaborLens and LaborLens Backups</title>
+  <meta name="description" content="How LaborLens handles public disclosure records, browser storage, and the operator’s encrypted Google Drive backups.">
+  <link rel="canonical" href="https://laborlens.fyi/privacy/">
+  <link rel="icon" href="/icon.png">
+  <link rel="stylesheet" href="/legal.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="page">
+    <header><a class="brand" href="/"><span class="seal" aria-hidden="true">LL</span><span class="brand-name">LaborLens</span></a></header>
+    <main id="main">
+      <p class="eyebrow">LaborLens &amp; LaborLens Backups</p>
+      <h1>Privacy policy</h1>
+      <p class="updated">Effective November 6, 2026</p>
+      <p>This policy describes the public LaborLens research website and <a href="/backups/">LaborLens Backups</a>, its operator-only Google Drive backup utility. Both are maintained by Yujia Lin. Searching the public website does not require a Google account or grant access to your Google Drive.</p>
+      <h2>Public disclosure records</h2>
+      <p>LaborLens imports public disclosure datasets published by the U.S. Department of Labor. Records may contain case numbers, employer and representative contact information, job details, wages, dates, and case outcomes. We use these records to provide search, case details, and related-case lookups. LaborLens is independent of the Department of Labor.</p>
+      <h2>Website requests and browser storage</h2>
+      <p>Search terms and filters are sent to the LaborLens service to retrieve results. Search state appears in the page URL and may remain in browser history or request logs. Hosting, network, and security services may process IP addresses, browser information, and request details to deliver and protect the website.</p>
+      <p>The website uses browser local storage for theme and results-layout preferences. Administrator sessions also store a login token and username in that administrator’s browser. Administrators can clear their session by signing out; browser settings can remove stored preferences. The site loads its application fonts from Google Fonts.</p>
+      <h2>Google Drive permissions and data</h2>
+      <p>LaborLens Backups connects only an account explicitly authorized by the operator. It requests <code>https://www.googleapis.com/auth/drive.file</code>, which allows it to create and manage its own files and files explicitly authorized for this app. It does not request general access to unrelated existing Drive files, Gmail, contacts, or Google Photos.</p>
+      <p>The utility accesses the names, identifiers, metadata, and contents of its authorized backup files to upload, verify, list, download, restore, and remove database recovery copies. It uses a dedicated <strong>LaborLens-Backups</strong> folder. Google enforces access to app-authorized files; this OAuth permission is not a strict folder-only boundary.</p>
+      <h2>Storage, use, and sharing</h2>
+      <p>Database archives are encrypted before transfer to Google Drive. The archives include the application’s disclosure records, import metadata, and administrator account records, including password hashes. Temporary server copies are used during backup and verification. Decryption credentials and Google authorization tokens are stored in private operator configuration; they are not included in public source code or public website responses.</p>
+      <p>Offline authorization lets the backup utility renew Google access without asking the operator to sign in for every scheduled upload. Google receives the encrypted files and the metadata necessary to store them. Google API data is used only to provide and maintain this backup and recovery functionality. We do not sell it, use it for advertising, or use it to train generalized artificial intelligence or machine-learning models.</p>
+      <p>LaborLens Backups’ use and transfer of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including its Limited Use requirements.</p>
+      <h2>Retention and deletion</h2>
+      <p>Public disclosure records are retained to provide current and historical research. The automated backup policy keeps the latest recovery copy on each of seven recent days and in each of four recent weeks, with overlapping copies stored once. Expired copies are moved to Google Drive Trash and may continue to occupy storage until removed. Failed or incomplete uploads may remain for operator inspection.</p>
+      <p>The authorized account holder can revoke access through <a href="https://myaccount.google.com/connections">Google Account connections</a>. Revocation prevents future Google API access but does not delete files already stored in Drive. The account holder can delete those files through Google Drive, and the operator can remove locally stored authorization credentials.</p>
+      <h2>Questions and updates</h2>
+      <p>For privacy questions, correction requests, or deletion requests, contact <a href="mailto:blueandhack@gmail.com">blueandhack@gmail.com</a>. Public source records are maintained by the Department of Labor; we can explain their source and review issues with LaborLens’s copy. Changes to these practices will be reflected on this page. Any new Google data use requiring additional consent will be disclosed before that use begins.</p>
+    </main>
+    <footer><a href="/">Search LaborLens</a><a href="/backups/">LaborLens Backups</a><a href="/terms/">Terms of use</a><a href="https://github.com/blueandhack/LaborLens">Source on GitHub</a></footer>
+  </div>
+</body>
+</html>

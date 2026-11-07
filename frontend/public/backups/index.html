@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LaborLens Backups — Private database recovery</title>
+  <meta name="description" content="LaborLens Backups stores encrypted database recovery copies in the operator’s Google Drive with limited, app-specific access.">
+  <link rel="canonical" href="https://laborlens.fyi/backups/">
+  <link rel="icon" href="/icon.png">
+  <link rel="stylesheet" href="/legal.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="page">
+    <header><a class="brand" href="/"><span class="seal" aria-hidden="true">LL</span><span class="brand-name">LaborLens</span></a></header>
+    <main id="main">
+      <p class="eyebrow">Private operator utility</p>
+      <h1>LaborLens Backups</h1>
+      <p class="intro">Encrypted recovery copies for LaborLens, stored in the operator’s Google Drive.</p>
+      <p><a href="/">LaborLens</a> makes public U.S. Department of Labor prevailing wage and permanent labor certification records searchable. LaborLens Backups is its separate, operator-only backup utility, maintained by Yujia Lin. Visitors do not need to connect a Google account to search LaborLens.</p>
+      <h2>What the connection does</h2>
+      <p>The operator authorizes their own Google account once. The utility can then upload encrypted database archives, verify recovery copies, download them for restoration, and remove expired backups. Backup files are placed in a private <strong>LaborLens-Backups</strong> folder.</p>
+      <h2>Limited Google Drive access</h2>
+      <p>The utility requests only the <code>drive.file</code> permission. It can manage files it creates or that the account holder explicitly authorizes for this app. It does not request access to unrelated existing Drive documents, Gmail, contacts, or Google Photos.</p>
+      <p>This is a Google permission for app-authorized files, not a folder-only permission. The utility is configured to use its dedicated backup folder.</p>
+      <h2>Encryption and recovery</h2>
+      <p>Archives are encrypted before upload. The operator keeps the decryption credentials separately and can use them to restore a downloaded backup. The automated retention policy keeps recent daily and weekly recovery copies.</p>
+      <h2>Your control</h2>
+      <p>The operator can revoke the connection through <a href="https://myaccount.google.com/connections">Google Account connections</a> and manage stored files in Google Drive. Revoking access prevents future API access; it does not automatically delete existing backup files.</p>
+      <p>Read the <a href="/privacy/">privacy policy</a> and <a href="/terms/">terms of use</a>, or contact <a href="mailto:blueandhack@gmail.com">blueandhack@gmail.com</a> with questions.</p>
+    </main>
+    <footer><a href="/">Search LaborLens</a><a href="/privacy/">Privacy policy</a><a href="/terms/">Terms of use</a><a href="https://github.com/blueandhack/LaborLens">Source on GitHub</a></footer>
+  </div>
+</body>
+</html>
