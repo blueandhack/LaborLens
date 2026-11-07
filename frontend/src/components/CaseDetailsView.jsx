@@ -251,6 +251,7 @@ export default function CaseDetailsView() {
           . Missing historical values have not been inferred.
         </p>
       )}
+      {Object.entries(item._DOL_DERIVED_FIELDS || {}).map(([field, derived]) => <p className="source-note" key={field}>{fieldLabel(field, program)}: {derived.reason} <a href={derived.reference} target="_blank" rel="noreferrer">DOL case-number specification</a></p>)}
       {issues.length > 0 && (
         <details className="source-records source-warning">
           <summary>

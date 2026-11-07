@@ -1,5 +1,6 @@
 // Aliases are based on the published FY2008–2026 workbooks and DOL layouts.
 // Preserve original columns; add canonical fields used by search and cards.
+const { canRecoverVisaClass, recoverVisaClass } = require('./h1bSourceRules');
 const COMMON = {
     CASE_NUMBER: ['CASE_NO'], CASE_STATUS: ['STATUS'],
     RECEIVED_DATE: ['CASE_RECEIVED_DATE', 'SUBMIT_DATE'],
@@ -81,15 +82,18 @@ const MISSING = /^(?:|n\/?a|n\.a\.|null|none|not applicable|not available|not re
 const isMissing = value => value == null || (typeof value === 'string' && MISSING.test(value.trim()));
 const normalizeHeader = value => String(value ?? '').normalize('NFKC').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
-function buildLayout(values, type) {
+function buildLayout(values, type, { source } = {}) {
     if (!ALIASES[type]) throw new Error('Import type must be pwd, perm or h1b');
     const original = values.map(normalizeHeader);
     const id = ['CASE_NUMBER', ...ALIASES[type].CASE_NUMBER].some(field => original.includes(field));
     const employer = type === 'h1b' ? 'EMPLOYER_NAME' : type === 'pwd' ? 'EMPLOYER_LEGAL_BUSINESS_NAME' : 'EMP_BUSINESS_NAME';
     if (!id || ![employer, ...ALIASES[type][employer]].some(field => original.includes(field))) return null;
+    const derived = {};
     if (type === 'h1b') {
         const missingRequired = ['VISA_CLASS', 'WAGE_RATE_OF_PAY_FROM', 'DECISION_DATE'].filter(field => ![field, ...ALIASES.h1b[field]].some(alias => original.includes(alias)));
-        if (missingRequired.length) throw Object.assign(new Error(`H-1B source is missing required columns: ${missingRequired.join(', ')}. No cases imported; source review is required.`), {
+        if (missingRequired.length === 1 && missingRequired[0] === 'VISA_CLASS' && canRecoverVisaClass(source)) {
+            derived.VISA_CLASS = { sourceField: 'CASE_NUMBER', rule: 'DOL iCERT visa program ID' };
+        } else if (missingRequired.length) throw Object.assign(new Error(`H-1B source is missing required columns: ${missingRequired.join(', ')}. No cases imported; source review is required.`), {
             code: 'SOURCE_REVIEW_REQUIRED', fields: missingRequired, headers: original,
         });
     }
@@ -109,7 +113,7 @@ function buildLayout(values, type) {
         if (source) mapped[canonical] = source;
         else missing.push(canonical);
     }
-    return { headers, mapped, missing, duplicates };
+    return { headers, mapped, missing, duplicates, ...(Object.keys(derived).length ? { derived } : {}) };
 }
 
 function excelDateToJSDate(value, { date1904 = false } = {}) {
@@ -148,6 +152,11 @@ function normalizeRecord(record, type, { layout, date1904 = false, issues = [] }
         for (const field of layout.missing) record[field] = null;
     }
     if (type === 'h1b') {
+        if (layout?.derived?.VISA_CLASS) {
+            const recovered = recoverVisaClass(record.CASE_NUMBER);
+            record.VISA_CLASS = recovered.value;
+            record._DOL_DERIVED_FIELDS = { ...record._DOL_DERIVED_FIELDS, VISA_CLASS: recovered };
+        }
         if (['PROGRAM', 'PROGRAM_DESIGNATION'].includes(layout?.mapped.VISA_CLASS) || /^[RACS]$/i.test(String(record.VISA_CLASS ?? '').trim())) {
             const code = String(record.VISA_CLASS ?? '').trim().toUpperCase();
             const visa = { R: 'H-1B', A: 'E-3 Australian', C: 'H-1B1 Chile', S: 'H-1B1 Singapore' }[code];

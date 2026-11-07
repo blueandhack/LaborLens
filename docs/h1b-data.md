@@ -59,9 +59,21 @@ original columns and are not mislabeled as SOC codes.
 
 The currently published `H-1B_FY2010.xlsx` lacks `VISA_CLASS`, offered-wage
 period, and full-time columns present in DOL's corresponding record layout.
-This source requires review and is blocked before any writes because the visa
-class cannot be verified from a reported field. Its full source report and
-missing-column explanation remain visible in Administration. A blocked file is
-not repeatedly downloaded during hourly backfill; `--force` explicitly retries
-it after an intact source or a verified correction becomes available.
-Program-specific discovery preserves the other programs in archive coverage.
+For that exact official file (SHA-256
+`01c905de6fdb49489cca5a93942e04bd453ef671147696e19bfc564fc5c1d43b`),
+the importer decodes visa classification from the reported iCERT case number.
+[DOL's iCERT specification](https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/PW_FY17_Record_Layout.pdf)
+defines `I` as a Labor Condition Application and visa IDs 200 = H-1B,
+201 = H-1B1 Chile, 202 = H-1B1 Singapore, 203 = E-3 Australian. This recovery
+requires the official URL, fiscal year, matching file hash, and a complete
+`I-20x-xxxxx-xxxxxx` identifier. Unrecognized identifiers block the entire
+file before case writes. Missing offered-wage periods remain null; prevailing
+wage periods are never substituted for offered-wage periods.
+
+`_DOL_DERIVED_FIELDS.VISA_CLASS` records the decoded value, original case number,
+rule explanation, and DOL reference. Validation reports count recovered H-1B
+rows and case details identify decoded classifications. Arbitrary uploads or
+changed source files with missing visa columns still require source review.
+Blocked sources are not repeatedly downloaded during hourly backfill; an updated
+recovery rule or an explicit `--force` retries them. Program-specific discovery
+preserves the other programs in archive coverage.

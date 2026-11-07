@@ -142,3 +142,22 @@ test('FY2019 first-worksite fields map while all additional worksite data is ret
     assert.equal(record.WAGE_RATE_OF_PAY_FROM,40);assert.equal(record.WAGE_UNIT_OF_PAY,'Hour');
     assert.equal(record.WORKSITE_CITY,'Boston');assert.equal(record.WORKSITE_CITY_2,'Austin');assert.equal(record.WAGE_RATE_OF_PAY_FROM_2,55);
 });
+
+test('only the fingerprinted official FY2010 source recovers known iCERT program IDs with recorded provenance', async t => {
+    const { FY2010_SHA256 } = require('../services/h1bSourceRules');
+    const source={type:'h1b',fiscalYear:2010,quarter:4,url:'https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/H-1B_FY2010.xlsx',sha256:FY2010_SHA256};
+    const headers=['LCA_CASE_NUMBER','STATUS','LCA_CASE_EMPLOYER_NAME','DECISION_DATE','LCA_CASE_WAGE_RATE_FROM'];
+    const file=await legacyFixture(t,headers,[['I-200-09198-587210','CERTIFIED','Employer',40014,51022],['I-203-09198-587211','CERTIFIED','Employer',40014,51022]]);
+    await assert.rejects(auditWorkbook(file,{type:'h1b'}),/missing required columns: VISA_CLASS/);
+    await assert.rejects(auditWorkbook(file,{type:'h1b',source:{...source,sha256:'changed'}}),/missing required columns: VISA_CLASS/);
+    await assert.rejects(auditWorkbook(file,{type:'h1b',source:{...source,url:'https://example.com/unverified.xlsx'}}),/missing required columns: VISA_CLASS/);
+    const audit=await auditWorkbook(file,{type:'h1b',source});
+    assert.equal(audit.report.uniqueCases,1);assert.equal(audit.report.excludedRows,1);
+    assert.equal(audit.report.derivedFields.VISA_CLASS,1);
+    const writes=[];await importWorkbook(file,{type:'h1b',source,validation:audit,Model:{bulkWrite:async batch=>{writes.push(...batch);return {}}}});
+    const record=writes[0].updateOne.update.$set;
+    assert.equal(record.VISA_CLASS,'H-1B');assert.equal(record.WAGE_UNIT_OF_PAY,null);
+    assert.equal(record._DOL_DERIVED_FIELDS.VISA_CLASS.sourceValue,'I-200-09198-587210');
+    const unknown=await legacyFixture(t,headers,[['I-999-09198-587210','CERTIFIED','Employer',40014,51022]]);
+    await assert.rejects(importWorkbook(unknown,{type:'h1b',source,Model:{bulkWrite:()=>assert.fail('unknown case numbers must never write')}}),/unrecognized iCERT case number/);
+});

@@ -5,6 +5,7 @@ const { createHash, randomUUID } = require('crypto');
 const { fetchDatasets, downloadDataset } = require('./dolSource');
 const { importWorkbook, auditWorkbook, VALIDATION_VERSION, sourceRank } = require('./importWorkbook');
 const { acquireImportLock } = require('./importLock');
+const SOURCE_REVIEW_VERSION = 3;
 const { noteInsightsChange } = require('./searchInsights');
 
 async function runAutoImport(db, {
@@ -47,7 +48,7 @@ async function runAutoImport(db, {
             ensureActive();
             const sourceId = createHash('sha256').update(dataset.url).digest('hex');
             const previous = await sources.findOne({ _id: sourceId });
-            if (backfill && !force && previous?.status === 'blocked' && previous.reviewVersion === VALIDATION_VERSION) {
+            if (backfill && !force && previous?.status === 'blocked' && previous.reviewVersion === SOURCE_REVIEW_VERSION) {
                 results.push({ ...dataset, outcome: 'source-review-required', error: previous.error });
                 continue;
             }
@@ -88,7 +89,7 @@ async function runAutoImport(db, {
                     checkedFiles++;
                     await sources.updateOne({ _id: sourceId }, { $set: { status: 'validating', attemptedSha256: downloaded.sha256, progress: { processed: 0 } } });
                     const validation = await auditFile(destination, {
-                        type: dataset.type, ensureActive,
+                        type: dataset.type, source: { ...dataset, sha256: downloaded.sha256 }, ensureActive,
                         onProgress: async progress => {
                             ensureActive();
                             await sources.updateOne({ _id: sourceId }, { $set: { validationProgress: progress } });
@@ -116,7 +117,7 @@ async function runAutoImport(db, {
                     log({ event: 'imported', filename: dataset.filename, ...stats });
                 }
             } catch (error) {
-                await sources.updateOne({ _id: sourceId }, { $set: { status: error.code === 'SOURCE_REVIEW_REQUIRED' ? 'blocked' : 'error', error: error.message, checkedAt: new Date(), ...(error.code === 'SOURCE_REVIEW_REQUIRED' ? { reviewVersion: VALIDATION_VERSION } : {}), ...(error.report ? { validation: error.report } : {}) } });
+                await sources.updateOne({ _id: sourceId }, { $set: { status: error.code === 'SOURCE_REVIEW_REQUIRED' ? 'blocked' : 'error', error: error.message, checkedAt: new Date(), ...(error.code === 'SOURCE_REVIEW_REQUIRED' ? { reviewVersion: SOURCE_REVIEW_VERSION } : {}), ...(error.report ? { validation: error.report } : {}) } });
                 results.push({ ...dataset, outcome: 'error', error: error.message });
                 errors.push(`${dataset.filename}: ${error.message}`);
                 log({ event: 'file-failed', filename: dataset.filename, error: error.message });

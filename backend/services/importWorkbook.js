@@ -8,7 +8,7 @@ const rowKey = row => `${row.sheet}:${row.number}`;
 const sourceRank = source => source.fiscalYear * 100 + source.quarter * 10
     + (/new_form|revised_form/i.test(source.filename || '') ? 2 : /old_form/i.test(source.filename || '') ? 1 : 0);
 
-async function* records(filePath, { type, ensureActive = () => {} }) {
+async function* records(filePath, { type, source, ensureActive = () => {} }) {
     let sheet;
     let layout;
     for await (const row of readWorkbookRows(filePath)) {
@@ -16,7 +16,7 @@ async function* records(filePath, { type, ensureActive = () => {} }) {
         if (sheet !== row.sheet) { sheet = row.sheet; layout = null; }
         const values = row.values.slice(1);
         if (!layout) {
-            layout = buildLayout(values, type);
+            layout = buildLayout(values, type, { source });
             if (layout) yield { layout, sheet };
             else if (values.length >= 3 && values.map(normalizeHeader).some(field => ['CASE_NUMBER', 'CASE_NO', 'LCA_CASE_NUMBER'].includes(field))) {
                 throw new Error(`No ${type.toUpperCase()} case rows: unsupported program/employer headers in ${sheet}`);
@@ -51,13 +51,13 @@ async function* records(filePath, { type, ensureActive = () => {} }) {
 
 // Scan every row before the first database write. Keep only row fingerprints
 // and duplicate-selection metadata in memory, not entire large workbooks.
-async function auditWorkbook(filePath, { type, ensureActive = () => {}, onProgress = async () => {} }) {
+async function auditWorkbook(filePath, { type, source, ensureActive = () => {}, onProgress = async () => {} }) {
     const report = { version: VALIDATION_VERSION, type, layouts: [], rows: 0, validRows: 0,
         blankRows: 0, repeatedHeaders: 0, rejectedRows: 0, duplicateRows: 0, identicalDuplicates: 0,
-        variantCases: 0, sameEventVariantCases: 0, uniqueCases: 0, missingValues: {}, issues: {}, resolvedIssues: {}, examples: [] };
+        variantCases: 0, sameEventVariantCases: 0, uniqueCases: 0, missingValues: {}, issues: {}, resolvedIssues: {}, derivedFields: {}, examples: [] };
     const entries = new Map();
     try {
-        for await (const item of records(filePath, { type, ensureActive })) {
+        for await (const item of records(filePath, { type, source, ensureActive })) {
             if (item.layout) { report.layouts.push({ sheet: item.sheet, ...item.layout }); continue; }
             if (item.blank) { report.blankRows++; continue; }
             if (item.repeatedHeader) { report.repeatedHeaders++; continue; }
@@ -76,6 +76,7 @@ async function auditWorkbook(filePath, { type, ensureActive = () => {}, onProgre
                 continue;
             }
             report.validRows++;
+            for (const field of Object.keys(record._DOL_DERIVED_FIELDS || {})) report.derivedFields[field] = (report.derivedFields[field] || 0) + 1;
             for (const field of Object.keys(ALIASES[type])) {
                 if (isMissing(record[field])) report.missingValues[field] = (report.missingValues[field] || 0) + 1;
             }
@@ -120,7 +121,7 @@ async function importWorkbook(filePath, {
     type, Model, source, historical = false, validation, batchSize = 1000,
     onProgress = async () => {}, onValidated = async () => {}, ensureActive = () => {},
 }) {
-    const audit = validation || await auditWorkbook(filePath, { type, ensureActive });
+    const audit = validation || await auditWorkbook(filePath, { type, source, ensureActive });
     await onValidated(audit.report);
     if (!audit.report.canImport) throw Object.assign(new Error(`Workbook contains ${audit.report.rejectedRows} records without a case number; no cases imported`), { report: audit.report });
     const stats = { processed: 0, inserted: 0, updated: 0 };
@@ -198,7 +199,7 @@ async function importWorkbook(filePath, {
         batch.push(record);
         if (batch.length >= batchSize) await flush();
     }
-    for await (const item of records(filePath, { type, ensureActive })) {
+    for await (const item of records(filePath, { type, source, ensureActive })) {
         if (!item.record?.CASE_NUMBER) continue;
         const entry = audit.entries.get(item.record.CASE_NUMBER);
         if (!entry) continue;
