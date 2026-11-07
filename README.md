@@ -134,11 +134,14 @@ fiscal year, quarter, file hash, and mapping version.
 Automatic imports, manual uploads, and clearing data share an expiring MongoDB
 lease so they cannot write over each other. Failures are recorded instead of
 silently counting incomplete imports as successful. Import history survives pod
-restarts in `import_runs` and `import_sources`. The admin Import page shows the
-latest checks, coverage gaps, file progress, source-data issues, and downloadable
-validation reports. Case details expose invalid original values and alternate
-records. Year dropdown caches refresh within
-10 minutes after a scheduled import.
+restarts in `import_runs` and `import_sources`. **Administration** in the footer
+opens `/admin/data` (the old `/import` URL redirects there). Automatic imports
+show the latest checks, coverage gaps, file progress, and searchable file history.
+Validation reports open inline with issue counts, example rows, missing values,
+and field mappings; JSON export remains available. Manual uploads and access
+controls have separate sections, with dataset deletion tucked under manual
+upload. Case details expose invalid original values and alternate records.
+Year dropdown caches refresh within 10 minutes after a scheduled import.
 
 The CronJob uses the same backend image as the web API; CI updates both image
 tags together. Temporary files disappear when the job pod is removed. Job logs

@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { FiSun, FiMoon, FiGithub } from 'react-icons/fi';
 import SearchView from './components/SearchView';
 import PermSearchView from './components/PermSearchView';
@@ -26,7 +26,6 @@ class PageBoundary extends Component {
 
 const Navigation = () => {
   const location = useLocation();
-  const isImport = location.pathname === '/import';
   const isPerm = location.pathname === '/perm';
   const isPwd = location.pathname === '/';
   const isH1b = location.pathname === '/h1b';
@@ -41,9 +40,6 @@ const Navigation = () => {
       </Link>
       <Link to="/h1b" className={`tab ${isH1b ? 'active' : ''}`} aria-current={isH1b ? 'page' : undefined}>
         H-1B Search
-      </Link>
-      <Link to="/import" className={`tab ${isImport ? 'active' : ''}`} aria-current={isImport ? 'page' : undefined}>
-        Import Data
       </Link>
     </nav>
   );
@@ -88,7 +84,8 @@ function App() {
             <Route path="/" element={<SearchView />} />
             <Route path="/perm" element={<PermSearchView />} />
             <Route path="/h1b" element={<H1bSearchView />} />
-            <Route path="/import" element={<ImportView />} />
+            <Route path="/admin/data" element={<ImportView />} />
+            <Route path="/import" element={<Navigate to="/admin/data" replace />} />
             <Route path="/cases/:id" element={<CaseDetailsView />} />
           </Routes>
           </Suspense>
@@ -105,6 +102,7 @@ function App() {
             <FiGithub size={16} />
             <span>Open source on GitHub</span>
           </a>
+          <Link to="/admin/data" className="footer-github-link">Administration</Link>
           <a href="/backups/" className="footer-github-link">LaborLens Backups</a>
           <a href="/privacy/" className="footer-github-link">Privacy</a>
           <a href="/terms/" className="footer-github-link">Terms</a>
