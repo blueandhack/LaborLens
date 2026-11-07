@@ -4,7 +4,7 @@ The `/h1b` tab searches H-1B Labor Condition Applications (LCAs) in a separate `
 
 ## Source and meaning
 
-The source is the [DOL OFLC performance disclosure page](https://www.dol.gov/agencies/eta/foreign-labor/performance) and its main LCA workbook. The initial release is **FY2026 Q3**, covering decisions from October 1, 2025 through June 30, 2026. The [official record layout](https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/FY26Q3/LCA_Record_Layout_FY2026_Q3.pdf) defines the fields. The current main workbook has 437,496 rows: full-file validation identified **426,952 distinct H-1B applications** and excluded 10,544 H-1B1/E-3 rows, with no missing case identifiers or duplicate H-1B applications.
+The source is the [DOL OFLC performance disclosure page](https://www.dol.gov/agencies/eta/foreign-labor/performance) and its main LCA workbook. The initial release is **FY2026 Q3**, covering decisions from October 1, 2025 through June 30, 2026. The [official record layout](https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/FY26Q3/LCA_Record_Layout_FY2026_Q3.pdf) defines the fields. The current main workbook has 437,496 nonblank data rows (formatted empty rows are ignored): full-file validation identified **426,952 distinct H-1B applications** and excluded 10,544 H-1B1/E-3 rows, with no missing case identifiers or duplicate H-1B applications.
 
 - Only visa class H-1B (also accepting the spelling H1B) is imported. H-1B1 and E-3 records do not enter this collection. Missing visa classes fail preflight before case writes.
 - These are DOL LCA application decisions, not USCIS petition or visa approvals. An application can request multiple workers. Search/Insights counts are applications, not worker counts.

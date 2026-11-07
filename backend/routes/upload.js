@@ -64,7 +64,7 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
     const type = req.body.type || 'pwd';
     let lease;
     try {
-        if (!Object.hasOwn(models, type)) throw Object.assign(new Error('Import type must be pwd, perm or h1b'), { status: 400 });
+        if (typeof type !== 'string' || !Object.hasOwn(models, type)) throw Object.assign(new Error('Import type must be pwd, perm or h1b'), { status: 400 });
         lease = await acquireImportLock(mongoose.connection.db, `Manual ${type.toUpperCase()} import`);
     } catch (error) {
         await fs.rm(filePath, { force: true });

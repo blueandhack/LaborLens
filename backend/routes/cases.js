@@ -26,7 +26,7 @@ router.delete('/', authMiddleware, async (req, res) => {
     let lease;
     try {
         const type = req.query.type || 'pwd';
-        if (!Object.hasOwn(models, type)) return res.status(400).json({ error: 'Invalid case type' });
+        if (typeof type !== 'string' || !Object.hasOwn(models, type)) return res.status(400).json({ error: 'Invalid case type' });
         lease = await acquireImportLock(mongoose.connection.db, 'Clear case data');
         const Model = models[type];
         // A future automatic run must restore files even when their bytes have
