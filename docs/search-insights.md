@@ -44,3 +44,14 @@ Build new index versions before deploying the code that hints them. Once all new
 ## Validation
 
 MongoDB 9 integration tests compare all supported filter combinations to case-search matches, including overlapping city/state prefixes, mixed-case states and case numbers, missing dates, qualified outcomes, more than one page, empty results, shared requests and refresh/clear races. Database profiler assertions require zero full-document reads on normal analytics paths. Frontend tests verify calendar gaps/count conservation and fractional tick shares, including tiny categories and empty data.
+
+The deployed release passed 46 backend and seven frontend checks, frontend lint, production builds, and live HTTPS checks for totals, missing-date conservation, empty results, invalid years, cache headers and lazy assets. Samples against 2,718,134 PWD and 1,762,972 PERM cases:
+
+| Request | HTTPS time |
+| --- | ---: |
+| Saved whole-program overview | 0.28–0.36 s |
+| Employer `google`, PWD/PERM insights | 0.50–0.61 s |
+| PWD title `software`, 285,487 matches | 2.54 s initially; 0.15 s cached |
+| PWD employer search while title insights computed | 0.54 s |
+
+These are samples, not guarantees. Very broad PWD location `CA` exceeded the five-second budget and returned the recoverable narrow-search error, with normal results still available. PERM `CA` completed in approximately four to five seconds in direct backend trials. Combined employer/year filters can reduce this workload. The interactive browser check was interrupted by activity in Chrome, so final visual verification of the deployed charts remains outstanding.
