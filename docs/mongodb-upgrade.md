@@ -10,13 +10,13 @@ The migration uses a frozen, consistent application database backup, followed by
 
 Scheduled imports are suspended during migration. The source is locked against writes with `fsyncLock`; reads remain available. Database Tools 100.20.0 is used for both dump and restore. On the VPS, use the official Ubuntu 22.04 x86_64 tools: the tools bundled in the MongoDB 9 image require a newer CPU ISA than this host provides. The server binary itself runs successfully.
 
-The upgraded database uses `mongodb-data-v9-skycat-pvc` on SkyCat. The original `mongodb-data-pvc` on SkyLion is retained unchanged as the pre-upgrade recovery copy. Production uses `Recreate` to ensure only one database process mounts its data volume. Memory requests protect MongoDB from being treated as a BestEffort pod during host memory pressure; its WiredTiger cache is bounded at 0.5 GiB.
+The upgraded database uses `mongodb-data-v9-skycat-pvc` on SkyCat. Production uses `Recreate` to ensure only one database process mounts its data volume. Memory requests protect MongoDB from being treated as a BestEffort pod during host memory pressure; its WiredTiger cache is bounded at 0.5 GiB.
 
-Private source and upgraded archives, checksums, and the count/index manifest are stored on SkyLion under `/var/backups/laborlens/mongodb-20261106/`. These files contain application data and administrator password hashes; keep the directory private and do not commit archives to Git.
+The original `mongodb-data-pvc` and private migration archive directory on SkyLion were retired after a newer encrypted backup was downloaded from Google Drive and fully restored locally. Recovery now uses a completed encrypted backup, restored into an isolated MongoDB 9 database before any production cutover. Backup archives contain application data and administrator password hashes; keep them private and do not commit them to Git.
 
 Before enabling writes, verify all application collection counts and index definitions, run full collection validation, test the backend against the migrated database, and check public current and historical searches. Resume both import CronJobs only after verification.
 
-To recover the pre-upgrade database, suspend imports and stop application writes first. Commit a change to `k8s/mongodb.yaml` pointing the Deployment at `mongodb-data-pvc` with the exact original `mongo:8.2.5` image, then let ArgoCD sync and Kubernetes schedule it on SkyLion. Keep both PVC resources; ArgoCD self-healing will revert an uncommitted manual Deployment patch. Never mount the MongoDB 9 volume in an older binary. Restart the backend if needed and verify search before resuming imports. This recovery copy predates post-upgrade writes; reconcile any such writes before using it as production.
+For a production recovery, suspend imports and stop application writes first. Restore and verify the selected backup in a new MongoDB 9 volume, then commit the intended volume change to `k8s/mongodb.yaml` and let ArgoCD sync. ArgoCD self-healing will revert an uncommitted manual Deployment patch. Never mount the MongoDB 9 volume in an older binary. Restart the backend if needed and verify search before resuming imports. Reconcile writes made after the selected backup before using it as production.
 
 ## Verification on November 6, 2026
 
