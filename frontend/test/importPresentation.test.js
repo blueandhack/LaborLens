@@ -12,8 +12,8 @@ test('validation distinguishes blocked files, tolerated issues, and missing outc
 
 test('issue summaries preserve source fields and sort full-file counts', () => {
     assert.deepEqual(reportIssues({ issues: { 'WAGE:invalid_number': 3, 'DECISION_DATE:invalid_date': 7, 'OTHER:excel_error': 0 } }), [
-        { code: 'DECISION_DATE:invalid_date', field: 'DECISION_DATE', reason: 'Invalid date', count: 7 },
-        { code: 'WAGE:invalid_number', field: 'WAGE', reason: 'Invalid number', count: 3 },
+        { resolved: 0, code: 'DECISION_DATE:invalid_date', field: 'DECISION_DATE', reason: 'Invalid date', count: 7 },
+        { resolved: 0, code: 'WAGE:invalid_number', field: 'WAGE', reason: 'Invalid number', count: 3 },
     ]);
 });
 
@@ -24,4 +24,11 @@ test('import results distinguish unchanged files and interrupted work', () => {
     assert.equal(needsAttention({ status: 'validating' }), false);
     assert.equal(isProcessing({ status: 'validating' }), true);
     assert.equal(isProcessing({ status: 'done' }), false);
+});
+
+test('resolved source errors stay visible without being counted as unresolved warnings', () => {
+    const report = { canImport: true, issues: { 'EMPLOYER_PROVINCE:excel_error': 1 }, resolvedIssues: { 'EMPLOYER_PROVINCE:excel_error': 1 } };
+    assert.equal(validationOutcome(report).tone, 'success');
+    assert.equal(reportIssues(report)[0].resolved, 1);
+    assert.equal(reportIssues(report)[0].count, 1);
 });

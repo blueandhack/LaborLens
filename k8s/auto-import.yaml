@@ -129,7 +129,7 @@ spec:
           - name: importer
             image: ghcr.io/blueandhack/laborlens-backend:2872fe4ac2a48fe1465d92129081a1f420c89ce1
             imagePullPolicy: Always
-            command: ["node", "scripts/auto-import.js", "--from-year=2008", "--max-files=2", "--backfill", "--programs=pwd,perm"]
+            command: ["node", "scripts/auto-import.js", "--from-year=2008", "--max-files=2", "--backfill", "--programs=pwd,perm,h1b"]
             env:
             - name: MONGO_URI
               value: "mongodb://laborlens-mongodb:27017/pwd_cases"

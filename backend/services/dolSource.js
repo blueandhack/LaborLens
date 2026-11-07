@@ -23,9 +23,9 @@ function discoverDatasets(html, { fromYear, programs = ['pwd', 'perm'] } = {}) {
         let url;
         try { url = dolURL(match[1].replace(/&amp;/gi, '&')); } catch { continue; }
         const filename = decodeURIComponent(new URL(url).pathname.split('/').pop());
-        const name = filename.match(/^(PW|PWD|PERM|LCA)_(?:(?:Disl?closure_Data(?:_New_Form)?|Case_Data)_)?FY(\d{4}|\d{2})(?:_Q([1-4]))?(?:_(?:EOY|old_form|revised_form|new_form))?\.xlsx$/i);
+        const name = filename.replace(/[\s_]+/g, '_').match(/^(PW|PWD|PERM|LCA|H-?1B|ICERT_LCA)_(?:(?:Disl?closure_Data(?:_New_Form)?|Case_Data|iCert_LCA)_)?FY(\d{4}|\d{2})(?:_Q([1-4]))?(?:_(?:EOY|old_form|revised_form|new_form))?\.xlsx$/i);
         if (!name) continue;
-        const type = name[1].toUpperCase() === 'LCA' ? 'h1b' : name[1].toUpperCase() === 'PERM' ? 'perm' : 'pwd';
+        const type = /^(?:LCA|H-?1B|ICERT_LCA)$/i.test(name[1]) ? 'h1b' : name[1].toUpperCase() === 'PERM' ? 'perm' : 'pwd';
         const year = Number(name[2]) + (name[2].length === 2 ? 2000 : 0);
         datasets.set(url, { url, filename, type, fiscalYear: year, quarter: Number(name[3] || 4) });
     }

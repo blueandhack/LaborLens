@@ -93,8 +93,8 @@ Import DOL disclosure data from:
 ## Automatic DOL imports
 
 The `laborlens-auto-import` Kubernetes CronJob checks the official DOL performance
-page every **Sunday at 3:00 AM America/Los_Angeles**. It checks **PWD and PERM
-archives from FY2008 onward**, prioritizing the newest cumulative releases and
+page every **Sunday at 3:00 AM America/Los_Angeles**. It checks the latest **PWD, PERM and H-1B** releases. Historical backfill covers
+**all three programs from FY2008 onward**, prioritizing the newest cumulative releases and
 retaining all form variants. Up to four changed files are handled per weekly run.
 The `laborlens-history-import` CronJob resumes two pending files each hour at
 minute 15, oldest first, until the archive is complete. It skips completed files
@@ -103,6 +103,8 @@ Worksite and appendix files are excluded because they are not case disclosures.
 
 DOL publishes PERM files back to **2008** and national PWD files starting in
 **2010**. Missing PWD 2008–2009 files are reported as a coverage gap, not invented.
+H-1B legacy layouts and the FY2010 source-data gap are documented in
+[H-1B data coverage and import notes](docs/h1b-data.md).
 See [the complete historical audit](docs/historical-import-audit.md) and its
 [per-file JSON results](docs/historical-import-audit.json).
 

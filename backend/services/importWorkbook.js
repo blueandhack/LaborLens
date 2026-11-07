@@ -1,4 +1,5 @@
 const { createHash } = require('crypto');
+const { resolveSourceCells } = require('./sourceCellResolutions');
 const { readWorkbookRows } = require('./xlsxRows');
 const { ALIASES, DATE_FIELDS, NUMBER_FIELDS, buildLayout, normalizeHeader, normalizeRecord, excelDateToJSDate, isMissing, eventTime } = require('./dolLayout');
 
@@ -17,7 +18,7 @@ async function* records(filePath, { type, ensureActive = () => {} }) {
         if (!layout) {
             layout = buildLayout(values, type);
             if (layout) yield { layout, sheet };
-            else if (values.length >= 3 && values.map(normalizeHeader).some(field => ['CASE_NUMBER', 'CASE_NO'].includes(field))) {
+            else if (values.length >= 3 && values.map(normalizeHeader).some(field => ['CASE_NUMBER', 'CASE_NO', 'LCA_CASE_NUMBER'].includes(field))) {
                 throw new Error(`No ${type.toUpperCase()} case rows: unsupported program/employer headers in ${sheet}`);
             }
             continue;
@@ -25,7 +26,7 @@ async function* records(filePath, { type, ensureActive = () => {} }) {
         if (values.every(isMissing)) { yield { blank: true }; continue; }
         // Some releases repeat the column headings between sections.
         const idColumn = layout.headers.indexOf(layout.mapped.CASE_NUMBER);
-        if (['CASE_NUMBER', 'CASE_NO'].includes(String(values[idColumn] ?? '').trim().toUpperCase())) { yield { repeatedHeader: true }; continue; }
+        if (['CASE_NUMBER', 'CASE_NO', 'LCA_CASE_NUMBER'].includes(String(values[idColumn] ?? '').trim().toUpperCase())) { yield { repeatedHeader: true }; continue; }
         const record = {};
         layout.headers.forEach((header, index) => { if (header) record[header] = values[index] ?? null; });
         const issues = [];
@@ -40,6 +41,10 @@ async function* records(filePath, { type, ensureActive = () => {} }) {
             record._DOL_CELL_ERRORS = Object.fromEntries(row.errors.map(error => [layout.headers[error.column - 1] || String(error.column), error.value]));
             for (const error of row.errors) issues.push({ field: layout.headers[error.column - 1], reason: 'excel_error', value: error.value });
         }
+        const resolutions = resolveSourceCells(record, type);
+        for (const issue of issues) {
+            if (issue.reason === 'excel_error' && resolutions[issue.field]) issue.resolution = resolutions[issue.field];
+        }
         yield { record, key: rowKey(row), issues };
     }
 }
@@ -49,54 +54,61 @@ async function* records(filePath, { type, ensureActive = () => {} }) {
 async function auditWorkbook(filePath, { type, ensureActive = () => {}, onProgress = async () => {} }) {
     const report = { version: VALIDATION_VERSION, type, layouts: [], rows: 0, validRows: 0,
         blankRows: 0, repeatedHeaders: 0, rejectedRows: 0, duplicateRows: 0, identicalDuplicates: 0,
-        variantCases: 0, sameEventVariantCases: 0, uniqueCases: 0, missingValues: {}, issues: {}, examples: [] };
+        variantCases: 0, sameEventVariantCases: 0, uniqueCases: 0, missingValues: {}, issues: {}, resolvedIssues: {}, examples: [] };
     const entries = new Map();
-    for await (const item of records(filePath, { type, ensureActive })) {
-        if (item.layout) { report.layouts.push({ sheet: item.sheet, ...item.layout }); continue; }
-        if (item.blank) { report.blankRows++; continue; }
-        if (item.repeatedHeader) { report.repeatedHeaders++; continue; }
-        if (item.excluded) {
-            report.rows++;
-            report.excludedRows = (report.excludedRows || 0) + 1;
-            report.excludedVisaClasses ||= Object.create(null);
-            report.excludedVisaClasses[item.visaClass] = (report.excludedVisaClasses[item.visaClass] || 0) + 1;
-            continue;
-        }
-        const { record, key, issues } = item;
-        report.rows++;
-        if (!record.CASE_NUMBER) {
-            report.rejectedRows++;
-            if (report.examples.length < 10) report.examples.push({ row: key, reason: 'missing_case_number' });
-            continue;
-        }
-        report.validRows++;
-        for (const field of Object.keys(ALIASES[type])) {
-            if (isMissing(record[field])) report.missingValues[field] = (report.missingValues[field] || 0) + 1;
-        }
-        for (const issue of issues) {
-            const code = `${issue.field}:${issue.reason}`;
-            report.issues[code] = (report.issues[code] || 0) + 1;
-            if (report.examples.length < 10) report.examples.push({ row: key, ...issue });
-        }
-        const hash = createHash('sha256').update(JSON.stringify(record)).digest('hex');
-        const time = eventTime(record, type);
-        const priority = ['REDETERMINATION_DATE', 'WITHDRAWAL_DATE', 'CENTER_DIRECTOR_REVIEW_DATE'].filter(field => record[field] instanceof Date).length;
-        const previous = entries.get(record.CASE_NUMBER);
-        if (!previous) entries.set(record.CASE_NUMBER, { key, hash, time, priority });
-        else {
-            report.duplicateRows++;
-            if (previous.hash === hash || previous.alternates?.some(other => other.hash === hash)) report.identicalDuplicates++;
-            else {
-                previous.alternates ||= [];
-                if (!previous.alternates.length) report.variantCases++;
-                if (time === previous.time && !previous.sameEvent) { report.sameEventVariantCases++; previous.sameEvent = true; }
-                if (time > previous.time || (time === previous.time && priority > previous.priority)) {
-                    previous.alternates.push({ key: previous.key, hash: previous.hash });
-                    Object.assign(previous, { key, hash, time, priority });
-                } else previous.alternates.push({ key, hash });
+    try {
+        for await (const item of records(filePath, { type, ensureActive })) {
+            if (item.layout) { report.layouts.push({ sheet: item.sheet, ...item.layout }); continue; }
+            if (item.blank) { report.blankRows++; continue; }
+            if (item.repeatedHeader) { report.repeatedHeaders++; continue; }
+            if (item.excluded) {
+                report.rows++;
+                report.excludedRows = (report.excludedRows || 0) + 1;
+                report.excludedVisaClasses ||= Object.create(null);
+                report.excludedVisaClasses[item.visaClass] = (report.excludedVisaClasses[item.visaClass] || 0) + 1;
+                continue;
             }
+            const { record, key, issues } = item;
+            report.rows++;
+            if (!record.CASE_NUMBER) {
+                report.rejectedRows++;
+                if (report.examples.length < 10) report.examples.push({ row: key, reason: 'missing_case_number' });
+                continue;
+            }
+            report.validRows++;
+            for (const field of Object.keys(ALIASES[type])) {
+                if (isMissing(record[field])) report.missingValues[field] = (report.missingValues[field] || 0) + 1;
+            }
+            for (const issue of issues) {
+                const code = `${issue.field}:${issue.reason}`;
+                report.issues[code] = (report.issues[code] || 0) + 1;
+                if (issue.resolution) report.resolvedIssues[code] = (report.resolvedIssues[code] || 0) + 1;
+                if (report.examples.length < 10) report.examples.push({ row: key, ...issue });
+            }
+            const hash = createHash('sha256').update(JSON.stringify(record)).digest('hex');
+            const time = eventTime(record, type);
+            const priority = ['REDETERMINATION_DATE', 'WITHDRAWAL_DATE', 'CENTER_DIRECTOR_REVIEW_DATE'].filter(field => record[field] instanceof Date).length;
+            const previous = entries.get(record.CASE_NUMBER);
+            if (!previous) entries.set(record.CASE_NUMBER, { key, hash, time, priority });
+            else {
+                report.duplicateRows++;
+                if (previous.hash === hash || previous.alternates?.some(other => other.hash === hash)) report.identicalDuplicates++;
+                else {
+                    previous.alternates ||= [];
+                    if (!previous.alternates.length) report.variantCases++;
+                    if (time === previous.time && !previous.sameEvent) { report.sameEventVariantCases++; previous.sameEvent = true; }
+                    if (time > previous.time || (time === previous.time && priority > previous.priority)) {
+                        previous.alternates.push({ key: previous.key, hash: previous.hash });
+                        Object.assign(previous, { key, hash, time, priority });
+                    } else previous.alternates.push({ key, hash });
+                }
+            }
+            if (report.rows % 10000 === 0) await onProgress({ rows: report.rows });
         }
-        if (report.rows % 10000 === 0) await onProgress({ rows: report.rows });
+    } catch (error) {
+        if (error.code === 'SOURCE_REVIEW_REQUIRED') error.report = { ...report, canImport: false,
+            blockingReason: error.message, missingRequiredFields: error.fields, unsupportedHeaders: error.headers };
+        throw error;
     }
     report.uniqueCases = entries.size;
     report.canImport = report.uniqueCases > 0 && report.rejectedRows === 0;

@@ -167,6 +167,31 @@ test('MongoDB import integration', { skip: !process.env.MONGO_TEST_URI }, async 
         await lease.release();
     });
 
+    await t.test('program-specific discovery preserves the other programs in archive coverage', async () => {
+        const before = await db.collection('import_catalog').findOne({ _id: 'dol' });
+        assert.ok(before.datasets.some(file => file.type === 'perm'));
+        await runAutoImport(db, { ...options, programs: ['pwd'], fromYear: 2008, backfill: true, discover: async () => [datasets[0]] });
+        const after = await db.collection('import_catalog').findOne({ _id: 'dol' });
+        assert.ok(after.datasets.some(file => file.type === 'perm'));
+        assert.ok(after.datasets.some(file => file.type === 'pwd'));
+    });
+
+    await t.test('sources requiring review retain the blocking report and do not download on every backfill retry', async () => {
+        const dataset = { ...datasets[0], filename: 'review.xlsx', url: 'https://www.dol.gov/media/review.xlsx', fiscalYear: 2010 };
+        const config = { ...options, programs: ['pwd'], fromYear: 2008, backfill: true, discover: async () => [dataset],
+            auditFile: async () => { throw Object.assign(new Error('Missing required VISA_CLASS'), { code: 'SOURCE_REVIEW_REQUIRED', report: { version: 2, canImport: false, missingRequiredFields: ['VISA_CLASS'] } }); },
+            importFile: () => assert.fail('blocked files must never write cases'),
+        };
+        await assert.rejects(runAutoImport(db, config), /Missing required VISA_CLASS/);
+        const source = await db.collection('import_sources').findOne({ url: dataset.url });
+        assert.equal(source.status, 'blocked');
+        assert.equal(source.validation.canImport, false);
+        const calls = downloadCalls.length;
+        const second = await runAutoImport(db, config);
+        assert.equal(second.results[0].outcome, 'source-review-required');
+        assert.equal(downloadCalls.length, calls);
+    });
+
     await t.test('an older release cannot replace a newer successful release', async () => {
         await db.collection('import_sources').insertOne({ _id: 'future-release', type: 'pwd', fiscalYear: 2027, quarter: 1, completedAt: new Date() });
         await assert.rejects(runAutoImport(db, options), /superseded DOL release/);

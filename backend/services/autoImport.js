@@ -34,8 +34,12 @@ async function runAutoImport(db, {
                 const years = new Set(datasets.filter(file => file.type === type).map(file => file.fiscalYear));
                 for (let year = fromYear; year <= Math.max(...years); year++) if (!years.has(year)) unavailable.push({ type, fiscalYear: year });
             }
+            const previousCatalog = await db.collection('import_catalog').findOne({ _id: 'dol' });
+            const retainedDatasets = (previousCatalog?.datasets || []).filter(file => !programs.includes(file.type));
+            const retainedUnavailable = (previousCatalog?.unavailable || []).filter(file => !programs.includes(file.type));
             await db.collection('import_catalog').updateOne({ _id: 'dol' }, { $set: {
-                datasets, unavailable, fromYear, checkedAt: new Date(),
+                datasets: [...retainedDatasets, ...datasets], unavailable: [...retainedUnavailable, ...unavailable],
+                fromYear: Math.min(fromYear, previousCatalog?.fromYear ?? fromYear), checkedAt: new Date(),
             } }, { upsert: true });
         }
         log({ event: 'discovered', datasets });
@@ -43,6 +47,10 @@ async function runAutoImport(db, {
             ensureActive();
             const sourceId = createHash('sha256').update(dataset.url).digest('hex');
             const previous = await sources.findOne({ _id: sourceId });
+            if (backfill && !force && previous?.status === 'blocked' && previous.reviewVersion === VALIDATION_VERSION) {
+                results.push({ ...dataset, outcome: 'source-review-required', error: previous.error });
+                continue;
+            }
             if (backfill && !force && previous?.status === 'done' && previous.validation?.version === VALIDATION_VERSION) {
                 results.push({ ...dataset, outcome: 'already-imported' });
                 continue;
@@ -108,7 +116,7 @@ async function runAutoImport(db, {
                     log({ event: 'imported', filename: dataset.filename, ...stats });
                 }
             } catch (error) {
-                await sources.updateOne({ _id: sourceId }, { $set: { status: 'error', error: error.message, checkedAt: new Date(), ...(error.report ? { validation: error.report } : {}) } });
+                await sources.updateOne({ _id: sourceId }, { $set: { status: error.code === 'SOURCE_REVIEW_REQUIRED' ? 'blocked' : 'error', error: error.message, checkedAt: new Date(), ...(error.code === 'SOURCE_REVIEW_REQUIRED' ? { reviewVersion: VALIDATION_VERSION } : {}), ...(error.report ? { validation: error.report } : {}) } });
                 results.push({ ...dataset, outcome: 'error', error: error.message });
                 errors.push(`${dataset.filename}: ${error.message}`);
                 log({ event: 'file-failed', filename: dataset.filename, error: error.message });

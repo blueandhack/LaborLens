@@ -7,12 +7,23 @@ const COMMON = {
 const ALIASES = {
     h1b: {
         ...COMMON,
-        EMPLOYER_NAME: [], EMPLOYER_CITY: [], EMPLOYER_STATE: [],
-        VISA_CLASS: [], JOB_TITLE: [], DECISION_DATE: [],
-        PWD_SOC_CODE: ['SOC_CODE'], PWD_SOC_TITLE: ['SOC_TITLE'],
-        WAGE_RATE_OF_PAY_FROM: [], WAGE_RATE_OF_PAY_TO: [], WAGE_UNIT_OF_PAY: [],
-        WORKSITE_CITY: [], WORKSITE_STATE: [], TOTAL_WORKER_POSITIONS: [],
-        BEGIN_DATE: [], END_DATE: [],
+        CASE_NUMBER: ['CASE_NO', 'LCA_CASE_NUMBER'],
+        CASE_STATUS: ['STATUS', 'APPROVAL_STATUS'],
+        RECEIVED_DATE: ['CASE_RECEIVED_DATE', 'SUBMIT_DATE', 'SUBMITTED_DATE', 'LCA_CASE_SUBMIT', 'CASE_SUBMITTED'],
+        EMPLOYER_NAME: ['LCA_CASE_EMPLOYER_NAME', 'NAME'],
+        EMPLOYER_CITY: ['LCA_CASE_EMPLOYER_CITY', 'CITY'], EMPLOYER_STATE: ['LCA_CASE_EMPLOYER_STATE', 'STATE'],
+        EMPLOYER_POSTAL_CODE: ['LCA_CASE_EMPLOYER_POSTAL_CODE', 'POSTAL_CODE'],
+        VISA_CLASS: ['PROGRAM', 'PROGRAM_DESIGNATION'], JOB_TITLE: ['LCA_CASE_JOB_TITLE'],
+        DECISION_DATE: ['DOL_DECISION_DATE'],
+        PWD_SOC_CODE: ['SOC_CODE', 'LCA_CASE_SOC_CODE'], PWD_SOC_TITLE: ['SOC_TITLE', 'SOC_NAME', 'LCA_CASE_SOC_NAME'],
+        WAGE_RATE_OF_PAY_FROM: ['LCA_CASE_WAGE_RATE_FROM', 'WAGE_RATE_1', 'WAGE_RATE_OF_PAY', 'WAGE_RATE_OF_PAY_FROM_1'],
+        WAGE_RATE_OF_PAY_TO: ['LCA_CASE_WAGE_RATE_TO', 'MAX_RATE_1', 'WAGE_RATE_OF_PAY_TO_1'],
+        WAGE_UNIT_OF_PAY: ['LCA_CASE_WAGE_RATE_UNIT', 'RATE_PER_1', 'WAGE_UNIT_OF_PAY_1'],
+        WORKSITE_CITY: ['LCA_CASE_WORKLOC1_CITY', 'CITY_1', 'WORK_LOCATION_CITY1', 'WORKSITE_CITY_1'], WORKSITE_STATE: ['LCA_CASE_WORKLOC1_STATE', 'STATE_1', 'WORK_LOCATION_STATE1', 'WORKSITE_STATE_1'],
+        PREVAILING_WAGE: ['PW_1', 'PREVAILING_WAGE_1'], PW_UNIT_OF_PAY: ['PW_UNIT_1', 'PW_UNIT_OF_PAY_1'],
+        TOTAL_WORKER_POSITIONS: ['TOTAL_WORKERS', 'NBR_IMMIGRANTS'],
+        BEGIN_DATE: ['LCA_CASE_EMPLOYMENT_START_DATE', 'EMPLOYMENT_START_DATE', 'PERIOD_OF_EMPLOYMENT_START_DATE'],
+        END_DATE: ['LCA_CASE_EMPLOYMENT_END_DATE', 'EMPLOYMENT_END_DATE', 'PERIOD_OF_EMPLOYMENT_END_DATE'],
     },
     pwd: {
         ...COMMON,
@@ -73,10 +84,15 @@ const normalizeHeader = value => String(value ?? '').normalize('NFKC').trim().to
 function buildLayout(values, type) {
     if (!ALIASES[type]) throw new Error('Import type must be pwd, perm or h1b');
     const original = values.map(normalizeHeader);
-    const id = original.includes('CASE_NUMBER') || original.includes('CASE_NO');
+    const id = ['CASE_NUMBER', ...ALIASES[type].CASE_NUMBER].some(field => original.includes(field));
     const employer = type === 'h1b' ? 'EMPLOYER_NAME' : type === 'pwd' ? 'EMPLOYER_LEGAL_BUSINESS_NAME' : 'EMP_BUSINESS_NAME';
     if (!id || ![employer, ...ALIASES[type][employer]].some(field => original.includes(field))) return null;
-    if (type === 'h1b' && !['VISA_CLASS', 'WAGE_RATE_OF_PAY_FROM', 'DECISION_DATE'].every(field => original.includes(field))) return null;
+    if (type === 'h1b') {
+        const missingRequired = ['VISA_CLASS', 'WAGE_RATE_OF_PAY_FROM', 'DECISION_DATE'].filter(field => ![field, ...ALIASES.h1b[field]].some(alias => original.includes(alias)));
+        if (missingRequired.length) throw Object.assign(new Error(`H-1B source is missing required columns: ${missingRequired.join(', ')}. No cases imported; source review is required.`), {
+            code: 'SOURCE_REVIEW_REQUIRED', fields: missingRequired, headers: original,
+        });
+    }
     const seen = new Map();
     const duplicates = [];
     const headers = original.map(header => {
@@ -130,6 +146,23 @@ function normalizeRecord(record, type, { layout, date1904 = false, issues = [] }
     if (layout) {
         for (const [canonical, source] of Object.entries(layout.mapped)) record[canonical] = record[source];
         for (const field of layout.missing) record[field] = null;
+    }
+    if (type === 'h1b') {
+        if (['PROGRAM', 'PROGRAM_DESIGNATION'].includes(layout?.mapped.VISA_CLASS) || /^[RACS]$/i.test(String(record.VISA_CLASS ?? '').trim())) {
+            const code = String(record.VISA_CLASS ?? '').trim().toUpperCase();
+            const visa = { R: 'H-1B', A: 'E-3 Australian', C: 'H-1B1 Chile', S: 'H-1B1 Singapore' }[code];
+            if (!visa) throw new Error(`Unknown legacy LCA program code: ${code || '(missing)'}`);
+            record.VISA_CLASS = visa;
+        }
+        if (layout?.mapped.WAGE_RATE_OF_PAY_FROM === 'WAGE_RATE_OF_PAY' && typeof record.WAGE_RATE_OF_PAY === 'string') {
+            // FY2014/15 stores one offered-wage range as text. Keep that source
+            // column and extract only an explicit, unambiguous numeric range.
+            const range = record.WAGE_RATE_OF_PAY.trim().match(/^(\$?\s*[\d,]+(?:\.\d+)?|\.\d+)?\s*-\s*(\$?\s*[\d,]+(?:\.\d+)?|\.\d+)?$/);
+            if (range && (range[1] || range[2])) {
+                record.WAGE_RATE_OF_PAY_FROM = range[1] || null;
+                record.WAGE_RATE_OF_PAY_TO = range[2] || null;
+            }
+        }
     }
     record.CASE_NUMBER = isMissing(record.CASE_NUMBER) ? null : String(record.CASE_NUMBER).trim();
     const raw = {};

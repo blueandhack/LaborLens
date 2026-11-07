@@ -24,7 +24,7 @@ router.get('/auto/status', authMiddleware, async (req, res) => {
                 url: 1, filename: 1, type: 1, fiscalYear: 1, status: 1, outcome: 1, error: 1,
                 startedAt: 1, checkedAt: 1, completedAt: 1, runId: 1, progress: 1, validationProgress: 1,
                 'validation.version': 1, 'validation.rows': 1, 'validation.uniqueCases': 1,
-                'validation.duplicateRows': 1, 'validation.rejectedRows': 1, 'validation.issues': 1,
+                'validation.resolvedIssues': 1, 'validation.duplicateRows': 1, 'validation.rejectedRows': 1, 'validation.issues': 1,
             } }).sort({ fiscalYear: -1, type: 1 }).limit(200).toArray(),
             db.collection('import_locks').findOne({ _id: 'case-import', expiresAt: { $gt: new Date() } }, { projection: { owner: 0 } }),
             db.collection('import_catalog').findOne({ _id: 'dol' }),

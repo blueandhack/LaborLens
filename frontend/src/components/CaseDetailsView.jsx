@@ -254,12 +254,13 @@ export default function CaseDetailsView() {
       {issues.length > 0 && (
         <details className="source-records source-warning">
           <summary>
-            Unavailable or invalid source values ({issues.length})
+            Source value issues ({issues.length})
           </summary>
           <p>
             These values could not be interpreted reliably. Their original
             contents are preserved below.
           </p>
+          {Object.entries(item._DOL_CELL_RESOLUTIONS || {}).map(([field, resolution]) => <p key={field}>Resolved {fieldLabel(field, program)}: {resolution.reason} The original Excel error is retained below.</p>)}
           <dl className="details-grid">
             {issues.map((entry) => (
               <Field raw program={program} key={entry[0]} entry={entry} />
