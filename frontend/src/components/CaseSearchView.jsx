@@ -13,6 +13,7 @@ import {
   FiBarChart2,
 } from "react-icons/fi";
 import CaseResults from "./CaseResults";
+import { programs } from "../utils/programs";
 import {
   PAGE_SIZES,
   readSearchState,
@@ -38,15 +39,16 @@ function SearchFilters({
   loading,
 }) {
   const [draft, setDraft] = useState(initialValues);
-  const perm = program === "perm";
-  const yearKey = perm ? "decisionYear" : "determinationYear";
+  const perm = program !== "pwd";
+  const config = programs[program];
+  const yearKey = config.yearKey;
   const edit = (key) => (event) =>
     setDraft((values) => ({ ...values, [key]: event.target.value }));
   return (
     <form
       className="case-search-form"
       role="search"
-      aria-label={`Search ${program.toUpperCase()} cases`}
+      aria-label={`Search ${config.label} cases`}
       onSubmit={(event) => {
         event.preventDefault();
         onSearch(draft);
@@ -110,7 +112,7 @@ function SearchFilters({
                 id="search-case"
                 name="caseNumber"
                 className="search-input case-search-input"
-                placeholder={perm ? "e.g. A-24123-45678" : "e.g. P-100-26092"}
+                placeholder={program === "h1b" ? "e.g. I-200-26001" : perm ? "e.g. A-24123-45678" : "e.g. P-100-26092"}
                 value={draft.caseNumber}
                 onChange={edit("caseNumber")}
                 autoComplete="off"
@@ -216,8 +218,9 @@ export default function CaseSearchView({ program }) {
     () => window.matchMedia("(min-width: 960px)").matches,
   );
   const resultsHeading = useRef(null);
-  const perm = program === "perm";
-  const endpoint = perm ? "/api/search/perm" : "/api/search";
+  const perm = program !== "pwd";
+  const config = programs[program];
+  const endpoint = config.endpoint;
   const apiParams = writeSearchState(filters, page, limit);
   apiParams.set("page", String(page));
   apiParams.set("limit", String(limit));
@@ -247,8 +250,8 @@ export default function CaseSearchView({ program }) {
   };
 
   useEffect(() => {
-    document.title = `${perm ? "PERM case research" : "Prevailing wage research"} | LaborLens`;
-  }, [perm]);
+    document.title = `${config.title} | LaborLens`;
+  }, [config.title]);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 960px)");
@@ -342,24 +345,20 @@ export default function CaseSearchView({ program }) {
   return (
     <section
       className="case-search-page"
-      aria-label={`${program.toUpperCase()} case research`}
+      aria-label={`${config.label} case research`}
     >
       <div className="search-page-heading">
         <div>
-          <h2>{perm ? "PERM case search" : "Prevailing wage search"}</h2>
+          <h2>{config.title}</h2>
           <p>
-            {perm
-              ? "Compare employers, offered wages, and labor certification decisions."
-              : "Find the wage determined for a job, employer, and location."}
+            {config.subtitle}
           </p>
         </div>
         <details className="data-guide">
           <summary>About this data</summary>
           <div>
             <p>
-              {perm
-                ? "Offered wages come from PERM labor certification filings. They are different from prevailing wage determinations."
-                : "Prevailing wages are the rates determined by the Department of Labor, rather than reported salaries."}
+              {config.description}
             </p>
             <p>
               Year filters use the actual receipt or{" "}
@@ -377,6 +376,7 @@ export default function CaseSearchView({ program }) {
           </div>
         </details>
       </div>
+      {program === "h1b" && <p className="inline-notice">DOL labor condition applications · case counts are applications, not workers or visa approvals.</p>}
       <details
         className={`search-controls${activeFilters.length ? " has-filters" : ""}`}
         key={`${program}-${filtersKey}`}
@@ -440,7 +440,7 @@ export default function CaseSearchView({ program }) {
               ? "Searching cases…"
               : error
                 ? "Results unavailable"
-                : `${count.toLocaleString()} ${program.toUpperCase()} cases`}
+                : `${count.toLocaleString()} ${config.label} cases`}
           </h3>
           {data && (
             <p>
@@ -518,7 +518,7 @@ export default function CaseSearchView({ program }) {
         {loading ? (
           <div className={`results-skeleton skeleton-${view}`} role="status">
             <span className="sr-only">
-              Loading {program.toUpperCase()} cases
+              Loading {config.label} cases
             </span>
             {Array.from({ length: view === "table" ? 8 : 6 }, (_, index) => (
               <div className="skeleton-row" key={index}>

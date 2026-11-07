@@ -7,6 +7,7 @@ import {
   FiMapPin,
   FiRefreshCw,
 } from "react-icons/fi";
+import { programs } from "../utils/programs";
 import { StatusBadge } from "./CaseResults";
 import { presentCase, formatCaseDate } from "../utils/casePresentation";
 
@@ -39,7 +40,7 @@ const fieldLabel = (key) =>
 const visibleEntries = (record) =>
   Object.entries(record).filter(
     ([key, value]) =>
-      !["_id", "__v", "score", "createdAt", "updatedAt"].includes(key) &&
+      !["_id", "__v", "score", "createdAt", "updatedAt", "_PROGRAM"].includes(key) &&
       !key.startsWith("_DOL_") &&
       !key.endsWith("_LOWER") &&
       value != null &&
@@ -110,16 +111,12 @@ export default function CaseDetailsView() {
       : "Case details | LaborLens";
     if (item) heading.current?.focus({ preventScroll: true });
   }, [item]);
-  const perm =
-    item?._DOL_SOURCE?.type === "perm" ||
-    Boolean(item?.EMP_BUSINESS_NAME && !item?.EMPLOYER_LEGAL_BUSINESS_NAME);
+  const program = item?._PROGRAM || item?._DOL_SOURCE?.type ||
+    (item?.EMPLOYER_NAME ? "h1b" : item?.EMP_BUSINESS_NAME ? "perm" : "pwd");
+  const perm = program !== "pwd";
   const from = location.state?.from;
-  const back =
-    typeof from === "string" && /^\/(?:\?.*|perm(?:\?.*)?)?$/.test(from)
-      ? from
-      : perm
-        ? "/perm"
-        : "/";
+  const back = typeof from === "string" && /^\/(?:\?.*|(?:perm|h1b)(?:\?.*)?)?$/.test(from)
+    ? from : program === "pwd" ? "/" : `/${program}`;
   if (response.key !== requestKey)
     return (
       <div className="loading-overlay" role="status">
@@ -155,7 +152,6 @@ export default function CaseDetailsView() {
         </Link>
       </div>
     );
-  const program = perm ? "perm" : "pwd";
   const data = presentCase(item, program);
   const entries = visibleEntries(item);
   const grouped = [
@@ -204,7 +200,7 @@ export default function CaseDetailsView() {
       <header className="case-details-header">
         <div className="case-detail-meta">
           <span className="section-kicker">
-            {program.toUpperCase()} disclosure
+            {programs[program].label} disclosure
           </span>
           <span className="mono">{item.CASE_NUMBER}</span>
           <StatusBadge status={data.status} statusClass={data.statusClass} />
@@ -219,9 +215,10 @@ export default function CaseDetailsView() {
           {item.VISA_CLASS && <span>{item.VISA_CLASS}</span>}
         </p>
       </header>
+      {program === "h1b" && <p className="source-note">{programs.h1b.description}</p>}
       <dl className="case-overview">
         <div>
-          <dt>{perm ? "Offered wage" : "Prevailing wage"}</dt>
+          <dt>{programs[program].wageLabel}</dt>
           <dd>{data.wage === "N/A" ? "Not reported" : data.wage}</dd>
           {item.PWD_OES_WAGE_LEVEL && <span>{item.PWD_OES_WAGE_LEVEL}</span>}
         </div>
@@ -268,7 +265,7 @@ export default function CaseDetailsView() {
           </dl>
         </details>
       )}
-      {perm && item.JOB_OPP_PWD_NUMBER && (
+      {program === "perm" && item.JOB_OPP_PWD_NUMBER && (
         <p className="source-note">
           <Link
             className="related-pwd-link"

@@ -5,6 +5,15 @@ const COMMON = {
     RECEIVED_DATE: ['CASE_RECEIVED_DATE', 'SUBMIT_DATE'],
 };
 const ALIASES = {
+    h1b: {
+        ...COMMON,
+        EMPLOYER_NAME: [], EMPLOYER_CITY: [], EMPLOYER_STATE: [],
+        VISA_CLASS: [], JOB_TITLE: [], DECISION_DATE: [],
+        PWD_SOC_CODE: ['SOC_CODE'], PWD_SOC_TITLE: ['SOC_TITLE'],
+        WAGE_RATE_OF_PAY_FROM: [], WAGE_RATE_OF_PAY_TO: [], WAGE_UNIT_OF_PAY: [],
+        WORKSITE_CITY: [], WORKSITE_STATE: [], TOTAL_WORKER_POSITIONS: [],
+        BEGIN_DATE: [], END_DATE: [],
+    },
     pwd: {
         ...COMMON,
         EMPLOYER_LEGAL_BUSINESS_NAME: ['EMPLYER_LEGAL_BUSINESS_NAME', 'BUSINESS_NAME'],
@@ -49,22 +58,25 @@ const DATE_FIELDS = [
     'RECEIVED_DATE', 'DETERMINATION_DATE', 'PREVAIL_WAGE_DETERM_DATE', 'PWD_WAGE_EXPIRATION_DATE',
     'REDETERMINATION_DATE', 'CENTER_DIRECTOR_REVIEW_DATE', 'WITHDRAWAL_DATE', 'SURVEY_PUBLICATION_DATE',
     'DECISION_DATE', 'RECR_INFO_JOB_START_DATE', 'RECR_INFO_JOB_END_DATE', 'RECR_INFO_AD_DATE1', 'RECR_INFO_AD_DATE2',
+    'BEGIN_DATE', 'END_DATE', 'ORIGINAL_CERT_DATE',
 ];
 const NUMBER_FIELDS = [
     'PWD_WAGE_RATE', 'ALT_PWD_WAGE_RATE', 'H2B_HIGHEST_PWD', 'REQUIRED_TRAINING_MONTHS',
     'REQUIRED_EXPERIENCE_MONTHS', 'ALT_TRAINING_MONTHS', 'ALT_EXPERIENCE_MONTHS',
     'JOB_OPP_WAGE_FROM', 'JOB_OPP_WAGE_TO',
+    'WAGE_RATE_OF_PAY_FROM', 'WAGE_RATE_OF_PAY_TO', 'PREVAILING_WAGE', 'TOTAL_WORKER_POSITIONS',
 ];
 const MISSING = /^(?:|n\/?a|n\.a\.|null|none|not applicable|not available|not reported|unknown|[-*]+)$/i;
 const isMissing = value => value == null || (typeof value === 'string' && MISSING.test(value.trim()));
 const normalizeHeader = value => String(value ?? '').normalize('NFKC').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
 function buildLayout(values, type) {
-    if (!ALIASES[type]) throw new Error('Import type must be pwd or perm');
+    if (!ALIASES[type]) throw new Error('Import type must be pwd, perm or h1b');
     const original = values.map(normalizeHeader);
     const id = original.includes('CASE_NUMBER') || original.includes('CASE_NO');
-    const employer = type === 'pwd' ? 'EMPLOYER_LEGAL_BUSINESS_NAME' : 'EMP_BUSINESS_NAME';
+    const employer = type === 'h1b' ? 'EMPLOYER_NAME' : type === 'pwd' ? 'EMPLOYER_LEGAL_BUSINESS_NAME' : 'EMP_BUSINESS_NAME';
     if (!id || ![employer, ...ALIASES[type][employer]].some(field => original.includes(field))) return null;
+    if (type === 'h1b' && !['VISA_CLASS', 'WAGE_RATE_OF_PAY_FROM', 'DECISION_DATE'].every(field => original.includes(field))) return null;
     const seen = new Map();
     const duplicates = [];
     const headers = original.map(header => {
@@ -142,7 +154,7 @@ function normalizeRecord(record, type, { layout, date1904 = false, issues = [] }
     const units = { hr: 'Hour', hourly: 'Hour', hour: 'Hour', yr: 'Year', yearly: 'Year', year: 'Year',
         wk: 'Week', weekly: 'Week', week: 'Week', bi: 'Bi-Weekly', 'bi-weekly': 'Bi-Weekly',
         mth: 'Month', monthly: 'Month', month: 'Month' };
-    for (const field of ['PWD_UNIT_OF_PAY', 'JOB_OPP_WAGE_PER']) {
+    for (const field of ['PWD_UNIT_OF_PAY', 'JOB_OPP_WAGE_PER', 'WAGE_UNIT_OF_PAY', 'PW_UNIT_OF_PAY']) {
         if (record[field] !== undefined) record[field] = isMissing(record[field]) ? null
             : units[String(record[field]).trim().toLowerCase()] || String(record[field]).trim();
     }
@@ -150,7 +162,9 @@ function normalizeRecord(record, type, { layout, date1904 = false, issues = [] }
         if (NUMBER_FIELDS.includes(field) || DATE_FIELDS.includes(field) || record[field] == null) continue;
         record[field] = isMissing(record[field]) ? null : String(record[field]).trim();
     }
-    const fields = type === 'pwd'
+    const fields = type === 'h1b'
+        ? { EMPLOYER_NAME: 'EMPLOYER_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMPLOYER_CITY: 'EMPLOYER_CITY_LOWER' }
+        : type === 'pwd'
         ? { EMPLOYER_LEGAL_BUSINESS_NAME: 'EMPLOYER_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMPLOYER_CITY: 'EMPLOYER_CITY_LOWER' }
         : { EMP_BUSINESS_NAME: 'EMP_BUSINESS_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMP_CITY: 'EMP_CITY_LOWER' };
     for (const [source, target] of Object.entries(fields)) record[target] = isMissing(record[source]) ? '' : String(record[source]).toLowerCase();
@@ -159,7 +173,7 @@ function normalizeRecord(record, type, { layout, date1904 = false, issues = [] }
 }
 
 function eventTime(record, type) {
-    const fields = type === 'perm' ? ['DECISION_DATE'] : ['DETERMINATION_DATE', 'REDETERMINATION_DATE', 'WITHDRAWAL_DATE', 'CENTER_DIRECTOR_REVIEW_DATE'];
+    const fields = type !== 'pwd' ? ['DECISION_DATE'] : ['DETERMINATION_DATE', 'REDETERMINATION_DATE', 'WITHDRAWAL_DATE', 'CENTER_DIRECTOR_REVIEW_DATE'];
     return Math.max(0, ...fields.map(field => record[field] instanceof Date ? record[field].getTime() : 0));
 }
 

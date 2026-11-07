@@ -2,8 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const fs = require('fs/promises');
 const mongoose = require('mongoose');
-const Case = require('../models/Case');
-const PermCase = require('../models/PermCase');
+const models = require('../models/programModels');
 const { authMiddleware } = require('./admin');
 const { importWorkbook, VALIDATION_VERSION } = require('../services/importWorkbook');
 const { acquireImportLock } = require('../services/importLock');
@@ -65,7 +64,7 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
     const type = req.body.type || 'pwd';
     let lease;
     try {
-        if (!['pwd', 'perm'].includes(type)) throw Object.assign(new Error('Import type must be pwd or perm'), { status: 400 });
+        if (!Object.hasOwn(models, type)) throw Object.assign(new Error('Import type must be pwd, perm or h1b'), { status: 400 });
         lease = await acquireImportLock(mongoose.connection.db, `Manual ${type.toUpperCase()} import`);
     } catch (error) {
         await fs.rm(filePath, { force: true });
@@ -77,7 +76,7 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
     (async () => {
         try {
             const stats = await importWorkbook(filePath, {
-                type, Model: type === 'perm' ? PermCase : Case, ensureActive: lease.ensureActive,
+                type, Model: models[type], ensureActive: lease.ensureActive,
                 onValidated: async report => {
                     currentJob.total = report.uniqueCases;
                     currentJob.logs.push(`Validated ${report.rows} rows, ${report.uniqueCases} unique cases, ${report.duplicateRows} duplicate rows.`);
@@ -98,7 +97,7 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
             invalidateCache();
             try { await fs.rm(filePath, { force: true }); }
             finally { await lease.release(); }
-            refreshGlobalInsights(type === 'perm' ? PermCase : Case, type)
+            refreshGlobalInsights(models[type], type)
                 .catch(error => console.error('Insights refresh failed:', error.message));
         }
     })().catch(error => console.error('Import cleanup failed:', error));

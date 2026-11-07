@@ -18,6 +18,8 @@ MongoDB is pinned to 9.0.4 and the backend uses Node 24. See the [MongoDB migrat
 
 Optional encrypted Google Drive backup and isolated restore utilities are documented in the [backup setup and recovery guide](docs/google-drive-backup.md).
 
+The **H-1B Search** tab at `/h1b` covers H-1B Labor Condition Applications from DOL disclosure data. It supports the same search, details, and Insights views as PWD/PERM. See [H-1B data coverage and import notes](docs/h1b-data.md).
+
 ### Docker (recommended)
 
 ```bash

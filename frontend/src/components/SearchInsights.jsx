@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { programs } from "../utils/programs";
 import { getJSON } from "../utils/api";
 import { calendarSeries, outcomeTicks, statusLabel } from "../utils/insights";
 import "./SearchInsights.css";
@@ -101,11 +102,11 @@ export default function SearchInsights({ program, filters, onSelectYear, onOverv
   const [response, setResponse] = useState({ key: null });
   const [retry, setRetry] = useState(0);
   const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString();
-  const endpoint = program === "perm" ? "/api/search/perm/insights" : "/api/search/insights";
+  const endpoint = programs[program].endpoint + "/insights";
   const key = `${endpoint}?${query}&retry=${retry}`;
   const loading = response.key !== key;
   const data = !loading && response.data;
-  const perm = program === "perm";
+  const perm = program !== "pwd";
   useEffect(() => {
     const controller = new AbortController();
     getJSON(`${endpoint}?${query}${query ? "&" : ""}retry=${retry}`, { signal: controller.signal })
@@ -117,15 +118,16 @@ export default function SearchInsights({ program, filters, onSelectYear, onOverv
     <section className="search-insights" aria-label="Search insights" aria-busy={loading}>
       <div className="insights-heading">
         <div>
-          <span className="insight-eyebrow">{query ? "Current search" : `All imported ${program.toUpperCase()} data`}</span>
+          <span className="insight-eyebrow">{query ? "Current search" : `All imported ${programs[program].label} data`}</span>
           <h3>{data ? `${number(data.totalCount)} cases, in context` : "Search insights"}</h3>
         </div>
-        {query && <button type="button" className="text-button" onClick={onOverview}>Explore all {program.toUpperCase()} data</button>}
+        {query && <button type="button" className="text-button" onClick={onOverview}>Explore all {programs[program].label} data</button>}
       </div>
       {loading ? <p className="insights-message" role="status">Analyzing all matching cases…</p>
         : response.error ? <div className="insights-message" role="alert"><p>{response.error}</p><button type="button" className="text-button" onClick={() => setRetry((value) => value + 1)}>Retry insights</button></div>
         : data && <>
           <p className="insights-coverage">{query ? "All matching cases, across every page. " : "All imported cases for this program. "}Historical coverage is expanding. These counts are not annual application totals. A gap means no matching imported records.</p>
+          {program === "h1b" && <p className="insights-coverage">LCA decisions describe DOL application status. An application may request multiple workers; certification is not a visa approval.</p>}
           <p className="insights-asof">{data.source === "snapshot" ? "Dataset overview as of " : "Search analyzed "}<time dateTime={data.generatedAt}>{new Date(data.generatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>{data.stale ? " · New data is awaiting the next overview refresh." : ""}</p>
           <div className="insights-charts">
             <DecisionTrend data={data} perm={perm} onSelectYear={onSelectYear} />

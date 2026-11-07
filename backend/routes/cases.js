@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const Case = require('../models/Case');
-const PermCase = require('../models/PermCase');
+const models = require('../models/programModels');
 const { authMiddleware } = require('./admin');
 const mongoose = require('mongoose');
 const { acquireImportLock } = require('../services/importLock');
@@ -11,16 +10,11 @@ const { noteInsightsChange } = require('../services/searchInsights');
 router.get('/:id', async (req, res) => {
     try {
         if (!mongoose.isObjectIdOrHexString(req.params.id)) return res.status(404).json({ error: 'Case not found' });
-        let caseItem = await Case.findById(req.params.id).lean().maxTimeMS(5000);
-
-        if (!caseItem) {
-            caseItem = await PermCase.findById(req.params.id).lean().maxTimeMS(5000);
+        for (const [program, Model] of Object.entries(models)) {
+            const item = await Model.findById(req.params.id).lean().maxTimeMS(5000);
+            if (item) return res.set('Cache-Control', 'public, max-age=60').json({ ...item, _PROGRAM: program });
         }
-
-        if (!caseItem) {
-            return res.status(404).json({ error: 'Case not found' });
-        }
-        res.set('Cache-Control', 'public, max-age=60').json(caseItem);
+        res.status(404).json({ error: 'Case not found' });
     } catch (error) {
         console.error('Case fetch error:', error);
         res.status(500).json({ error: 'Failed to fetch case details' });
@@ -32,9 +26,9 @@ router.delete('/', authMiddleware, async (req, res) => {
     let lease;
     try {
         const type = req.query.type || 'pwd';
-        if (!['pwd', 'perm'].includes(type)) return res.status(400).json({ error: 'Invalid case type' });
+        if (!Object.hasOwn(models, type)) return res.status(400).json({ error: 'Invalid case type' });
         lease = await acquireImportLock(mongoose.connection.db, 'Clear case data');
-        const Model = type === 'perm' ? PermCase : Case;
+        const Model = models[type];
         // A future automatic run must restore files even when their bytes have
         // not changed, since the administrator deliberately cleared this data.
         await mongoose.connection.db.collection('import_sources').updateMany({ type }, { $set: { status: 'cleared' } });

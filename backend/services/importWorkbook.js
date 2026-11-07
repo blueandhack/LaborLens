@@ -30,6 +30,12 @@ async function* records(filePath, { type, ensureActive = () => {} }) {
         layout.headers.forEach((header, index) => { if (header) record[header] = values[index] ?? null; });
         const issues = [];
         normalizeRecord(record, type, { layout, date1904: row.date1904, issues });
+        if (type === 'h1b' && record.VISA_CLASS && !/^H-?1B$/i.test(record.VISA_CLASS)) {
+            yield { excluded: true, visaClass: record.VISA_CLASS };
+            continue;
+        }
+        // Unknown visa classes must not silently disappear from an H-1B import.
+        if (type === 'h1b' && !record.VISA_CLASS) throw new Error('H-1B workbook contains a row without VISA_CLASS; no cases imported');
         if (row.errors.length) {
             record._DOL_CELL_ERRORS = Object.fromEntries(row.errors.map(error => [layout.headers[error.column - 1] || String(error.column), error.value]));
             for (const error of row.errors) issues.push({ field: layout.headers[error.column - 1], reason: 'excel_error', value: error.value });
@@ -49,6 +55,13 @@ async function auditWorkbook(filePath, { type, ensureActive = () => {}, onProgre
         if (item.layout) { report.layouts.push({ sheet: item.sheet, ...item.layout }); continue; }
         if (item.blank) { report.blankRows++; continue; }
         if (item.repeatedHeader) { report.repeatedHeaders++; continue; }
+        if (item.excluded) {
+            report.rows++;
+            report.excludedRows = (report.excludedRows || 0) + 1;
+            report.excludedVisaClasses ||= Object.create(null);
+            report.excludedVisaClasses[item.visaClass] = (report.excludedVisaClasses[item.visaClass] || 0) + 1;
+            continue;
+        }
         const { record, key, issues } = item;
         report.rows++;
         if (!record.CASE_NUMBER) {
@@ -103,7 +116,9 @@ async function importWorkbook(filePath, {
     let batch = [];
     const duplicates = new Map();
     const canonical = [...new Set([...Object.keys(ALIASES[type]), ...DATE_FIELDS, ...NUMBER_FIELDS])];
-    const lowerFields = type === 'pwd'
+    const lowerFields = type === 'h1b'
+        ? { EMPLOYER_NAME: 'EMPLOYER_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMPLOYER_CITY: 'EMPLOYER_CITY_LOWER' }
+        : type === 'pwd'
         ? { EMPLOYER_LEGAL_BUSINESS_NAME: 'EMPLOYER_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMPLOYER_CITY: 'EMPLOYER_CITY_LOWER' }
         : { EMP_BUSINESS_NAME: 'EMP_BUSINESS_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMP_CITY: 'EMP_CITY_LOWER' };
     async function flush() {

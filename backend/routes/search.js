@@ -1,14 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const Case = require('../models/Case');
-const PermCase = require('../models/PermCase');
+const models = require('../models/programModels');
 const { getAvailableYears } = require('../services/searchYears');
 const { searchCases, invalidateCounts } = require('../services/caseSearch');
 const { programs } = require('../services/searchConfig');
 const { BoundedCache } = require('../services/boundedCache');
 const { getSearchInsights, invalidateInsights } = require('../services/searchInsights');
 
-const years = new BoundedCache({ capacity: 2, ttlMs: 10 * 60 * 1000 });
+const years = new BoundedCache({ capacity: 3, ttlMs: 10 * 60 * 1000 });
 const invalidateCache = () => { years.clear(); invalidateCounts(); invalidateInsights(); };
 
 function insightsHandler(Model, program) {
@@ -62,10 +61,10 @@ function yearsHandler(Model, program) {
     };
 }
 
-router.get('/', searchHandler(Case, 'pwd'));
-router.get('/years', yearsHandler(Case, 'pwd'));
-router.get('/insights', insightsHandler(Case, 'pwd'));
-router.get('/perm', searchHandler(PermCase, 'perm'));
-router.get('/perm/years', yearsHandler(PermCase, 'perm'));
-router.get('/perm/insights', insightsHandler(PermCase, 'perm'));
+for (const [program, Model] of Object.entries(models)) {
+    const prefix = program === 'pwd' ? '' : '/' + program;
+    router.get(prefix || '/', searchHandler(Model, program));
+    router.get(prefix + '/years', yearsHandler(Model, program));
+    router.get(prefix + '/insights', insightsHandler(Model, program));
+}
 module.exports = { router, invalidateCache };

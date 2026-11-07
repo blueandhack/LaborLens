@@ -1,3 +1,5 @@
+import { programs } from "./programs.js";
+
 export const PAGE_SIZES = [12, 24, 48, 96];
 export const DEFAULT_LIMIT = 24;
 export const filterKeys = (program) => [
@@ -5,7 +7,7 @@ export const filterKeys = (program) => [
   "location",
   "caseNumber",
   "jobTitle",
-  program === "perm" ? "decisionYear" : "determinationYear",
+  programs[program].yearKey,
   "receivedYear",
 ];
 

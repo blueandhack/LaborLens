@@ -11,7 +11,11 @@ async function main() {
         for (const [program, config] of Object.entries(programs)) {
             const collection = mongoose.connection.db.collection(config.collection);
             const desired = searchIndexes(program);
-            const before = await collection.indexes();
+            const before = await collection.indexes().catch(error => {
+                // A newly added program has no collection until its first index.
+                if (error.code === 26 && !args.includes('--check')) return [];
+                throw error;
+            });
             const unique = before.find(index => index.name === 'CASE_NUMBER_1');
             if (!unique || !unique.unique || JSON.stringify(unique.key) !== JSON.stringify({ CASE_NUMBER: 1 })) {
                 if (args.includes('--check')) throw new Error(`Missing unique ${config.collection}.CASE_NUMBER_1`);

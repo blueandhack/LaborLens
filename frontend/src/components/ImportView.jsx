@@ -272,8 +272,8 @@ const ImportView = () => {
                     <h3 style={{ fontSize: '15px', margin: 0 }}>Automatic imports</h3>
                     <button onClick={fetchAutoStatus} className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '12px' }}>Refresh</button>
                 </div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '8px 0' }}>PWD and PERM · Sundays at 3:00 AM Pacific</p>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: '8px 0' }}>Historical backfill resumes hourly. Every file is validated before import.</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '8px 0' }}>PWD, PERM and H-1B · Sundays at 3:00 AM Pacific</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: '8px 0' }}>PWD/PERM historical backfill resumes hourly. H-1B starts with the latest release. Every file is validated before import.</p>
                 {autoStatus?.coverage && <p style={{ fontSize: '13px' }}>
                     {autoStatus.coverage.completedFiles} / {autoStatus.coverage.availableFiles} archive files imported and validated since FY{autoStatus.coverage.fromYear}.
                     {autoStatus.coverage.unavailable?.length > 0 && <span> No DOL archive file: {autoStatus.coverage.unavailable.map(item => `${item.type.toUpperCase()} ${item.fiscalYear}`).join(', ')}.</span>}
@@ -300,8 +300,8 @@ const ImportView = () => {
             </section>
 
             {/* Data type selector */}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '4px' }}>
-                {['pwd', 'perm'].map(type => (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center', marginBottom: '4px' }}>
+                {['pwd', 'perm', 'h1b'].map(type => (
                     <label key={type} style={{
                         display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
                         padding: '8px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 500,
@@ -312,7 +312,7 @@ const ImportView = () => {
                     }}>
                         <input type="radio" name="dataType" value={type} checked={dataType === type}
                             onChange={e => setDataType(e.target.value)} style={{ display: 'none' }} />
-                        {type.toUpperCase()} Data
+                        {type === 'h1b' ? 'H-1B' : type.toUpperCase()} Data
                     </label>
                 ))}
             </div>

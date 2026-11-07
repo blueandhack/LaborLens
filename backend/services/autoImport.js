@@ -8,7 +8,7 @@ const { acquireImportLock } = require('./importLock');
 const { noteInsightsChange } = require('./searchInsights');
 
 async function runAutoImport(db, {
-    models, force = false, signal, fromYear, maxFiles = Infinity, backfill = false,
+    models, programs = Object.keys(models), force = false, signal, fromYear, maxFiles = Infinity, backfill = false,
     discover = fetchDatasets, download = downloadDataset, importFile = importWorkbook, auditFile = auditWorkbook,
     log = message => console.log(JSON.stringify({ time: new Date().toISOString(), ...message })),
 } = {}) {
@@ -25,12 +25,12 @@ async function runAutoImport(db, {
     try {
         lease = await acquireImportLock(db, backfill ? 'DOL historical backfill' : 'DOL automatic import', { runId });
         tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'laborlens-dol-'));
-        const datasets = await discover({ fromYear, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : undefined });
-        const latest = Object.fromEntries(['pwd', 'perm'].map(type => [type, Math.max(...datasets.filter(file => file.type === type).map(sourceRank))]));
+        const datasets = await discover({ fromYear, programs, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : undefined });
+        const latest = Object.fromEntries(programs.map(type => [type, Math.max(...datasets.filter(file => file.type === type).map(sourceRank))]));
         if (fromYear !== undefined) datasets.sort((a, b) => (backfill ? 1 : -1) * (sourceRank(a) - sourceRank(b)) || a.type.localeCompare(b.type));
         const unavailable = [];
         if (fromYear !== undefined) {
-            for (const type of ['pwd', 'perm']) {
+            for (const type of programs) {
                 const years = new Set(datasets.filter(file => file.type === type).map(file => file.fiscalYear));
                 for (let year = fromYear; year <= Math.max(...years); year++) if (!years.has(year)) unavailable.push({ type, fiscalYear: year });
             }

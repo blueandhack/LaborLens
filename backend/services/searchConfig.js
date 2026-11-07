@@ -1,4 +1,12 @@
 const programs = {
+    h1b: {
+        collection: 'h1bcases', company: 'EMPLOYER_NAME_LOWER', employer: 'EMPLOYER_NAME',
+        city: 'EMPLOYER_CITY_LOWER', state: 'EMPLOYER_STATE', date: 'DECISION_DATE', year: 'decisionYear',
+        fields: ['CASE_NUMBER', 'CASE_STATUS', 'VISA_CLASS', 'EMPLOYER_NAME', 'EMPLOYER_CITY', 'EMPLOYER_STATE',
+            'JOB_TITLE', 'PWD_SOC_CODE', 'PWD_SOC_TITLE', 'WAGE_RATE_OF_PAY_FROM', 'WAGE_RATE_OF_PAY_TO',
+            'WAGE_UNIT_OF_PAY', 'WORKSITE_CITY', 'WORKSITE_STATE', 'TOTAL_WORKER_POSITIONS',
+            'DECISION_DATE', 'RECEIVED_DATE', 'BEGIN_DATE', 'END_DATE'],
+    },
     pwd: {
         collection: 'cases', company: 'EMPLOYER_NAME_LOWER', employer: 'EMPLOYER_LEGAL_BUSINESS_NAME',
         city: 'EMPLOYER_CITY_LOWER', state: 'EMPLOYER_STATE', date: 'DETERMINATION_DATE', year: 'determinationYear',

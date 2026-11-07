@@ -94,6 +94,19 @@
 .insights-toggle[aria-expanded="true"] { background: var(--surface-elevated); }
 .insights-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 
+@media (max-width: 480px) {
+  .header-right { align-items: flex-start; }
+  .header-right .nav-tabs { flex-wrap: wrap; }
+  .nav-tabs .tab {
+    flex: 1 1 calc(50% - 2px);
+    white-space: nowrap;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
 *,
 *::before,
 *::after {

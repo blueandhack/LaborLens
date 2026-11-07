@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import { FiSun, FiMoon, FiGithub } from 'react-icons/fi';
 import SearchView from './components/SearchView';
 import PermSearchView from './components/PermSearchView';
+import H1bSearchView from './components/H1bSearchView';
 import './index.css';
 
 const ImportView = lazy(() => import('./components/ImportView'));
@@ -28,6 +29,7 @@ const Navigation = () => {
   const isImport = location.pathname === '/import';
   const isPerm = location.pathname === '/perm';
   const isPwd = location.pathname === '/';
+  const isH1b = location.pathname === '/h1b';
 
   return (
     <nav className="nav-tabs" aria-label="Main navigation">
@@ -36,6 +38,9 @@ const Navigation = () => {
       </Link>
       <Link to="/perm" className={`tab ${isPerm ? 'active' : ''}`} aria-current={isPerm ? 'page' : undefined}>
         PERM Search
+      </Link>
+      <Link to="/h1b" className={`tab ${isH1b ? 'active' : ''}`} aria-current={isH1b ? 'page' : undefined}>
+        H-1B Search
       </Link>
       <Link to="/import" className={`tab ${isImport ? 'active' : ''}`} aria-current={isImport ? 'page' : undefined}>
         Import Data
@@ -82,6 +87,7 @@ function App() {
           <Routes>
             <Route path="/" element={<SearchView />} />
             <Route path="/perm" element={<PermSearchView />} />
+            <Route path="/h1b" element={<H1bSearchView />} />
             <Route path="/import" element={<ImportView />} />
             <Route path="/cases/:id" element={<CaseDetailsView />} />
           </Routes>

@@ -12,7 +12,7 @@ async function main() {
     process.once('SIGINT', stop);
     try {
         await mongoose.connect(process.env.MONGO_URI, { autoIndex: false, maxPoolSize: 2 });
-        for (const [program, Model] of [['pwd', require('../models/Case')], ['perm', require('../models/PermCase')]]) {
+        for (const [program, Model] of Object.entries(require('../models/programModels'))) {
             console.log(JSON.stringify(await refreshGlobalInsights(Model, program, { force: args.includes('--force'), signal: controller.signal })));
         }
     } finally {

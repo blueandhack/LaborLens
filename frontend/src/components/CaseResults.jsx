@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { FiArrowUpRight, FiMapPin } from "react-icons/fi";
+import { programs } from "../utils/programs";
 import { presentCase, formatCaseDate } from "../utils/casePresentation";
 
 export function StatusBadge({ status, statusClass }) {
@@ -11,9 +12,9 @@ export function StatusBadge({ status, statusClass }) {
 export default function CaseResults({ records, program, view }) {
   const location = useLocation();
   const from = location.pathname + location.search;
-  const perm = program === "perm";
+  const perm = program !== "pwd";
   const dateLabel = perm ? "Decision date" : "Determination date";
-  const wageLabel = perm ? "Offered wage" : "Prevailing wage";
+  const wageLabel = programs[program].wageLabel;
   if (view === "table")
     return (
       <div className="table-result-frame">
@@ -24,12 +25,12 @@ export default function CaseResults({ records, program, view }) {
         <div
           className="table-scroll"
           role="region"
-          aria-label={`${program.toUpperCase()} results, scrollable table`}
+          aria-label={`${programs[program].label} results, scrollable table`}
           tabIndex={0}
         >
           <table className="case-table">
             <caption className="sr-only">
-              {program.toUpperCase()} cases, newest{" "}
+              {programs[program].label} cases, newest{" "}
               {perm ? "decisions" : "determinations"} first. Open a case for its
               complete disclosure.
             </caption>
@@ -63,7 +64,7 @@ export default function CaseResults({ records, program, view }) {
                         className="result-case-link"
                         to={`/cases/${record._id}`}
                         state={{ from }}
-                        aria-label={`View ${program.toUpperCase()} case ${record.CASE_NUMBER}: ${data.employer}, ${data.title}, ${data.status}`}
+                        aria-label={`View ${programs[program].label} case ${record.CASE_NUMBER}: ${data.employer}, ${data.title}, ${data.status}`}
                       >
                         <span className="result-employer">{data.employer}</span>
                         <span className="result-case-number mono">
@@ -86,6 +87,7 @@ export default function CaseResults({ records, program, view }) {
                     </td>
                     <td>
                       <span>{data.location}</span>
+                      {program === "h1b" && (record.WORKSITE_CITY || record.WORKSITE_STATE) && <span className="cell-secondary">Worksite: {[record.WORKSITE_CITY, record.WORKSITE_STATE].filter(Boolean).join(", ")}</span>}
                       {record.VISA_CLASS && (
                         <span className="cell-secondary">
                           {record.VISA_CLASS}
@@ -101,7 +103,7 @@ export default function CaseResults({ records, program, view }) {
                           {record.PWD_OES_WAGE_LEVEL}
                         </span>
                       )}
-                      {perm && record.JOB_OPP_PWD_NUMBER && (
+                      {program === "perm" && record.JOB_OPP_PWD_NUMBER && (
                         <Link
                           className="cell-secondary related-pwd-link"
                           to={`/?caseNumber=${encodeURIComponent(record.JOB_OPP_PWD_NUMBER)}`}
@@ -145,7 +147,7 @@ export default function CaseResults({ records, program, view }) {
             key={record._id}
             to={`/cases/${record._id}`}
             state={{ from }}
-            aria-label={`View ${program.toUpperCase()} case ${record.CASE_NUMBER}: ${data.employer}, ${data.title}, ${data.status}`}
+            aria-label={`View ${programs[program].label} case ${record.CASE_NUMBER}: ${data.employer}, ${data.title}, ${data.status}`}
           >
             <article className={`case-card status-${data.statusClass}`}>
               <div className="card-status-row">

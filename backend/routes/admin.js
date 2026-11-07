@@ -20,7 +20,7 @@ setInterval(() => {
     for (const [ip, state] of loginAttempts) {
         if (state.lockedUntil && now > state.lockedUntil) loginAttempts.delete(ip);
     }
-}, 30 * 60 * 1000);
+}, 30 * 60 * 1000).unref();
 
 function getClientIP(req) {
     return req.socket.remoteAddress || '';
