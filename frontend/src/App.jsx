@@ -45,7 +45,7 @@ const Navigation = () => {
 };
 
 function App() {
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem('theme') || 'dark'; } catch { return 'dark'; } });
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);

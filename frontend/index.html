@@ -5,6 +5,18 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Apply the saved theme before stylesheets or React can paint the page. -->
+  <script>
+    (() => {
+      let theme = 'dark';
+      try { if (localStorage.getItem('theme') === 'light') theme = 'light'; } catch { /* Storage can be unavailable. */ }
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <style>
+    :root { color-scheme: dark; background-color: var(--bg-primary, #14181a); }
+    :root[data-theme="light"] { color-scheme: light; background-color: var(--bg-primary, #e7e2d0); }
+  </style>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&amp;family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" />
