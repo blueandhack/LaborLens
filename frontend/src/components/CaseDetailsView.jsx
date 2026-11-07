@@ -14,6 +14,7 @@ import { presentCase, formatCaseDate } from "../utils/casePresentation";
 const FIELD_LABELS = {
   CASE_NUMBER: "Case number",
   CASE_STATUS: "Case status",
+  ORIGINAL_CERT_DATE: "Original certification date",
   EMP_BUSINESS_NAME: "Employer name",
   EMPLOYER_LEGAL_BUSINESS_NAME: "Employer legal name",
   EMP_CITY: "Employer city",
@@ -27,8 +28,9 @@ const FIELD_LABELS = {
   PWD_SOC_CODE: "Occupation code (SOC)",
   PWD_SOC_TITLE: "Occupation title (SOC)",
 };
-const fieldLabel = (key) =>
-  FIELD_LABELS[key] ||
+const fieldLabel = (key, program) =>
+  (program === "h1b" && key === "DECISION_DATE" ? "Last recorded action date"
+    : program === "h1b" && key === "RECEIVED_DATE" ? "DOL received date" : FIELD_LABELS[key]) ||
   key
     .split("_")
     .map((word) =>
@@ -46,7 +48,7 @@ const visibleEntries = (record) =>
       value != null &&
       value !== "",
   );
-function Field({ entry: [key, value], raw = false }) {
+function Field({ entry: [key, value], raw = false, program }) {
   const display =
     !raw &&
     key.includes("DATE") &&
@@ -59,7 +61,7 @@ function Field({ entry: [key, value], raw = false }) {
   return (
     <div className="detail-item">
       <dt className="detail-key" title={key}>
-        {fieldLabel(key)}
+        {fieldLabel(key, program)}
       </dt>
       <dd
         className={`detail-value${/CODE|NUMBER|NAICS/.test(key) ? " mono" : ""}`}
@@ -156,7 +158,7 @@ export default function CaseDetailsView() {
   const entries = visibleEntries(item);
   const grouped = [
     {
-      name: "Case and processing",
+      name: program === "h1b" ? "Case history and dates" : "Case and processing",
       matches: (key) =>
         /^(CASE_|VISA_|RECEIVED_|DECISION_|DETERMINATION_|REDETERMINATION_|WITHDRAWAL_|CENTER_|ORIGINAL_)/.test(
           key,
@@ -223,22 +225,22 @@ export default function CaseDetailsView() {
           {item.PWD_OES_WAGE_LEVEL && <span>{item.PWD_OES_WAGE_LEVEL}</span>}
         </div>
         <div>
-          <dt>Received</dt>
+          <dt>{programs[program].receivedLabel}</dt>
           <dd>{formatCaseDate(item.RECEIVED_DATE)}</dd>
         </div>
         <div>
-          <dt>{perm ? "Decision date" : "Determination date"}</dt>
+          <dt>{programs[program].dateLabel}</dt>
           <dd>{formatCaseDate(data.eventDate)}</dd>
         </div>
-        <div>
+        {program === "h1b" ? <div>
+          <dt>Original certification</dt>
+          <dd>{data.originalCertificationDate ? formatCaseDate(data.originalCertificationDate) : "Not separately reported"}</dd>
+        </div> : <div>
           <dt>Receipt to {perm ? "decision" : "determination"}</dt>
-          <dd>
-            {data.elapsed === null
-              ? "Not reported"
-              : `${data.elapsed.toLocaleString()} calendar days`}
-          </dd>
-        </div>
+          <dd>{data.elapsed === null ? "Not reported" : `${data.elapsed.toLocaleString()} calendar days`}</dd>
+        </div>}
       </dl>
+      {program === "h1b" && <p className="source-note">{programs.h1b.dateExplanation}</p>}
       {source?.url && (
         <p className="source-note">
           Source:{" "}
@@ -260,7 +262,7 @@ export default function CaseDetailsView() {
           </p>
           <dl className="details-grid">
             {issues.map((entry) => (
-              <Field raw key={entry[0]} entry={entry} />
+              <Field raw program={program} key={entry[0]} entry={entry} />
             ))}
           </dl>
         </details>
@@ -294,7 +296,7 @@ export default function CaseDetailsView() {
           <h3>{group.name}</h3>
           <dl className="details-grid">
             {group.entries.map((entry) => (
-              <Field key={entry[0]} entry={entry} />
+              <Field program={program} key={entry[0]} entry={entry} />
             ))}
           </dl>
         </section>
@@ -311,7 +313,7 @@ export default function CaseDetailsView() {
           {variants.map((variant) => (
             <dl className="details-grid alternate-record" key={variant.row}>
               {visibleEntries(variant.data).map((entry) => (
-                <Field key={entry[0]} entry={entry} />
+                <Field program={program} key={entry[0]} entry={entry} />
               ))}
             </dl>
           ))}

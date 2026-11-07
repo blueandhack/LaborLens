@@ -13,7 +13,7 @@ export default function CaseResults({ records, program, view }) {
   const location = useLocation();
   const from = location.pathname + location.search;
   const perm = program !== "pwd";
-  const dateLabel = perm ? "Decision date" : "Determination date";
+  const dateLabel = programs[program].dateLabel;
   const wageLabel = programs[program].wageLabel;
   if (view === "table")
     return (
@@ -31,7 +31,7 @@ export default function CaseResults({ records, program, view }) {
           <table className="case-table">
             <caption className="sr-only">
               {programs[program].label} cases, newest{" "}
-              {perm ? "decisions" : "determinations"} first. Open a case for its
+              {programs[program].events} first. Open a case for its
               complete disclosure.
             </caption>
             <colgroup>
@@ -50,7 +50,7 @@ export default function CaseResults({ records, program, view }) {
                 <th scope="col">Employer location</th>
                 <th scope="col">{wageLabel}</th>
                 <th scope="col">Case status</th>
-                <th scope="col">Received</th>
+                <th scope="col">{programs[program].receivedLabel}</th>
                 <th scope="col">{dateLabel}</th>
               </tr>
             </thead>
@@ -123,6 +123,7 @@ export default function CaseResults({ records, program, view }) {
                     </td>
                     <td className="date-cell">
                       {formatCaseDate(data.eventDate)}
+                      {data.originalCertificationDate && <span className="cell-secondary">Originally certified {formatCaseDate(data.originalCertificationDate)}</span>}
                       {data.elapsed !== null && (
                         <span className="cell-secondary">
                           {data.elapsed.toLocaleString()} days after receipt
@@ -178,13 +179,14 @@ export default function CaseResults({ records, program, view }) {
               </div>
               <dl className="card-facts">
                 <div>
-                  <dt>Received</dt>
+                  <dt>{programs[program].receivedLabel}</dt>
                   <dd>{formatCaseDate(record.RECEIVED_DATE)}</dd>
                 </div>
                 <div>
                   <dt>{dateLabel}</dt>
                   <dd>{formatCaseDate(data.eventDate)}</dd>
                 </div>
+                {data.originalCertificationDate && <div><dt>Original certification</dt><dd>{formatCaseDate(data.originalCertificationDate)}</dd></div>}
                 {data.elapsed !== null && (
                   <div>
                     <dt>Receipt to {perm ? "decision" : "determination"}</dt>

@@ -29,6 +29,7 @@ test('H-1B HTTP search, year options, insights and details agree on application 
         EMPLOYER_NAME: 'Example LLC', EMPLOYER_NAME_LOWER: 'example llc', EMPLOYER_CITY_LOWER: 'austin', EMPLOYER_STATE: 'TX',
         JOB_TITLE: 'Engineer', JOB_TITLE_LOWER: 'engineer', DECISION_DATE: new Date('2026-01-07'), RECEIVED_DATE: new Date('2025-12-31'),
         CASE_STATUS: i ? 'Certified-Withdrawn' : 'Certified', TOTAL_WORKER_POSITIONS: 5, WAGE_RATE_OF_PAY_FROM: 60,
+        ORIGINAL_CERT_DATE: i ? new Date('2026-01-05') : null,
         WAGE_UNIT_OF_PAY: 'Hour', _DOL_ALTERNATE_RECORDS: [{ data: { WORKSITE_CITY: 'Houston' } }] }));
     const inserted = await models.h1b.collection.insertMany(rows);
     async function get(path) {
@@ -38,6 +39,9 @@ test('H-1B HTTP search, year options, insights and details agree on application 
     const results = await get('search/h1b?company=EXAMPLE&decisionYear=2026&limit=1');
     assert.equal(results.totalCount, 2); assert.equal(results.cases.length, 1);
     assert.equal(results.cases[0].WAGE_RATE_OF_PAY_FROM, 60); assert.equal(results.cases[0].WAGE_UNIT_OF_PAY, 'Hour');
+    assert.ok(Object.hasOwn(results.cases[0], 'ORIGINAL_CERT_DATE'));
+    const withdrawn = await get('search/h1b?caseNumber=I-200-26001-000001');
+    assert.equal(withdrawn.cases[0].ORIGINAL_CERT_DATE, '2026-01-05T00:00:00.000Z');
     assert.equal(results.cases[0]._DOL_ALTERNATE_RECORDS, undefined);
     assert.deepEqual(await get('search/h1b/years'), [2026, 2025]);
     const insights = await get('search/h1b/insights?company=example&page=200');

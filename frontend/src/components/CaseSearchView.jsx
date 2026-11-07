@@ -120,7 +120,7 @@ function SearchFilters({
               />
             </label>
             <label htmlFor="search-event-year">
-              {perm ? "Decision year" : "Determination year"}
+              {config.yearLabel}
               <select
                 id="search-event-year"
                 name={yearKey}
@@ -144,7 +144,7 @@ function SearchFilters({
               </select>
             </label>
             <label htmlFor="search-received-year">
-              Received year
+              {config.receivedLabel} year
               <select
                 id="search-received-year"
                 name="receivedYear"
@@ -218,7 +218,6 @@ export default function CaseSearchView({ program }) {
     () => window.matchMedia("(min-width: 960px)").matches,
   );
   const resultsHeading = useRef(null);
-  const perm = program !== "pwd";
   const config = programs[program];
   const endpoint = config.endpoint;
   const apiParams = writeSearchState(filters, page, limit);
@@ -245,8 +244,8 @@ export default function CaseSearchView({ program }) {
     caseNumber: "Case",
     jobTitle: "Job",
     determinationYear: "Determined",
-    decisionYear: "Decided",
-    receivedYear: "Received",
+    decisionYear: program === "h1b" ? "Last action" : "Decided",
+    receivedYear: config.receivedLabel,
   };
 
   useEffect(() => {
@@ -360,9 +359,10 @@ export default function CaseSearchView({ program }) {
             <p>
               {config.description}
             </p>
+            {config.dateExplanation && <p>{config.dateExplanation}</p>}
             <p>
               Year filters use the actual receipt or{" "}
-              {perm ? "decision" : "determination"} date, not the disclosure’s
+              {config.event} date, not the disclosure’s
               fiscal year. Historical coverage is expanding; missing dates and
               pay periods are shown as not reported.
             </p>
@@ -450,7 +450,7 @@ export default function CaseSearchView({ program }) {
                   ? "Page outside available results"
                   : "No matching records"}
               <span aria-hidden="true"> · </span>Newest{" "}
-              {perm ? "decisions" : "determinations"} first
+              {config.events} first
             </p>
           )}
         </div>
@@ -508,7 +508,7 @@ export default function CaseSearchView({ program }) {
             <SearchInsights
               program={program}
               filters={filters}
-              onSelectYear={(year) => update({ ...filters, [perm ? "decisionYear" : "determinationYear"]: String(year) }, 1)}
+              onSelectYear={(year) => update({ ...filters, [config.yearKey]: String(year) }, 1)}
               onOverview={reset}
             />
           </Suspense>

@@ -9,7 +9,8 @@ const compact = (value) => Intl.NumberFormat(undefined, { notation: "compact", m
 const percentage = (count, total) => total ? `${(count / total * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}%` : "0%";
 
 // Lieflat Basics F2: calendar floor, hairline path, dots and separated peak labels.
-function DecisionTrend({ data, perm, onSelectYear }) {
+function DecisionTrend({ data, program, onSelectYear }) {
+  const config = programs[program];
   const titleId = useId();
   const descriptionId = useId();
   const series = calendarSeries(data.timeline);
@@ -22,12 +23,12 @@ function DecisionTrend({ data, perm, onSelectYear }) {
     if (peaks.length === 2) break;
   }
   const labelEvery = Math.max(1, Math.ceil(series.length / 6));
-  const event = perm ? "decisions" : "determinations";
+  const event = config.events;
   return (
     <figure className="insight-figure">
       <figcaption>
-        <h4>{perm ? "Decisions" : "Determinations"} over time</h4>
-        <p>Cases by calendar year · actual {perm ? "decision" : "determination"} date</p>
+        <h4>{program === "h1b" ? "Latest recorded actions" : program === "perm" ? "Decisions" : "Determinations"} over time</h4>
+        <p>Cases by calendar year · {config.dateLabel.toLowerCase()}</p>
       </figcaption>
       {series.length ? (
         <div className="insight-plot-scroll">
@@ -57,7 +58,7 @@ function DecisionTrend({ data, perm, onSelectYear }) {
             ))}
           </svg>
         </div>
-      ) : <p className="insight-empty">No usable {perm ? "decision" : "determination"} dates in these cases.</p>}
+      ) : <p className="insight-empty">No usable {config.event} dates in these cases.</p>}
       <p className="insight-chart-note">Select a year to filter. {number(data.missingDateCount)} cases without a usable date are excluded from this chart.</p>
       <p className="insight-source">Source: U.S. Department of Labor disclosures</p>
     </figure>
@@ -106,7 +107,6 @@ export default function SearchInsights({ program, filters, onSelectYear, onOverv
   const key = `${endpoint}?${query}&retry=${retry}`;
   const loading = response.key !== key;
   const data = !loading && response.data;
-  const perm = program !== "pwd";
   useEffect(() => {
     const controller = new AbortController();
     getJSON(`${endpoint}?${query}${query ? "&" : ""}retry=${retry}`, { signal: controller.signal })
@@ -127,16 +127,16 @@ export default function SearchInsights({ program, filters, onSelectYear, onOverv
         : response.error ? <div className="insights-message" role="alert"><p>{response.error}</p><button type="button" className="text-button" onClick={() => setRetry((value) => value + 1)}>Retry insights</button></div>
         : data && <>
           <p className="insights-coverage">{query ? "All matching cases, across every page. " : "All imported cases for this program. "}Historical coverage is expanding. These counts are not annual application totals. A gap means no matching imported records.</p>
-          {program === "h1b" && <p className="insights-coverage">LCA decisions describe DOL application status. An application may request multiple workers; certification is not a visa approval.</p>}
+          {program === "h1b" && <p className="insights-coverage">Each application is counted once at its last recorded action, including withdrawals. This timeline describes case events rather than certification processing time. An application may request multiple workers.</p>}
           <p className="insights-asof">{data.source === "snapshot" ? "Dataset overview as of " : "Search analyzed "}<time dateTime={data.generatedAt}>{new Date(data.generatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>{data.stale ? " · New data is awaiting the next overview refresh." : ""}</p>
           <div className="insights-charts">
-            <DecisionTrend data={data} perm={perm} onSelectYear={onSelectYear} />
+            <DecisionTrend data={data} program={program} onSelectYear={onSelectYear} />
             <CaseOutcomes data={data} />
           </div>
           <details className="insight-data">
             <summary>View chart data</summary>
             <div className="insight-data-tables">
-              <table><caption>{perm ? "Decision" : "Determination"} years</caption><thead><tr><th scope="col">Year</th><th scope="col">Cases</th></tr></thead><tbody>
+              <table><caption>{programs[program].yearLabel}s</caption><thead><tr><th scope="col">Year</th><th scope="col">Cases</th></tr></thead><tbody>
                 {calendarSeries(data.timeline).map((row) => <tr key={row.year}><th scope="row"><button className="text-button" type="button" onClick={() => onSelectYear(row.year)}>{row.year}</button></th><td>{number(row.count)}</td></tr>)}
                 <tr><th scope="row">Date not reported / unusable</th><td>{number(data.missingDateCount)}</td></tr>
               </tbody></table>

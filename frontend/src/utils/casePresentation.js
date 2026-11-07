@@ -58,7 +58,10 @@ export function presentCase(record, program) {
         )
       : formatWageRange(record.PWD_WAGE_RATE, null, record.PWD_UNIT_OF_PAY),
     eventDate: program !== "pwd" ? record.DECISION_DATE : record.DETERMINATION_DATE,
-    elapsed: elapsedDays(
+    originalCertificationDate: program === "h1b" ? record.ORIGINAL_CERT_DATE || null : null,
+    // LCA DECISION_DATE may be a much later withdrawal. Do not present the
+    // receipt-to-last-event interval as certification processing time.
+    elapsed: program === "h1b" ? null : elapsedDays(
       record.RECEIVED_DATE,
       program !== "pwd" ? record.DECISION_DATE : record.DETERMINATION_DATE,
     ),
