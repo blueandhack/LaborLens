@@ -7,6 +7,7 @@ export const formatImportDate = value => {
 export const needsAttention = source => ['error', 'interrupted', 'blocked'].includes(source.status);
 export const isProcessing = source => ['downloading', 'validating', 'importing'].includes(source.status);
 export const sourceStatus = source => ({
+    pending: 'Queued', revalidation: 'Needs revalidation',
     done: source.outcome === 'unchanged' ? 'Up to date' : 'Imported',
     blocked: 'Source review needed', error: 'Failed', interrupted: 'Interrupted', downloading: 'Downloading', validating: 'Validating', importing: 'Importing',
 }[source.status] || source.status || 'Pending');

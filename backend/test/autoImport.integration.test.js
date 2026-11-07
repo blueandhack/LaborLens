@@ -192,6 +192,20 @@ test('MongoDB import integration', { skip: !process.env.MONGO_TEST_URI }, async 
         assert.equal(downloadCalls.length, calls);
     });
 
+    await t.test('quarterly coverage inventory persists even when completed import targets are skipped', async () => {
+        const quarter = { ...datasets[0], quarter: 2, url: 'https://www.dol.gov/media/pwd-q2.xlsx' };
+        await runAutoImport(db, { ...options, programs: ['pwd'], fromYear: 2008, backfill: true,
+            discover: async () => ({ datasets: [datasets[0]], releases: [quarter, datasets[0]] }),
+        });
+        const catalog = await db.collection('import_catalog').findOne({ _id: 'dol' });
+        assert.equal(catalog.releases.filter(file => file.type === 'pwd').length, 2);
+        assert.ok(catalog.releasesCheckedAt instanceof Date);
+        await runAutoImport(db, { ...options, programs: ['perm'], fromYear: 2008, backfill: true,
+            discover: async () => ({ datasets: [datasets[1]], releases: [datasets[1]] }),
+        });
+        assert.equal((await db.collection('import_catalog').findOne({ _id: 'dol' })).releases.length, 3);
+    });
+
     await t.test('an older release cannot replace a newer successful release', async () => {
         await db.collection('import_sources').insertOne({ _id: 'future-release', type: 'pwd', fiscalYear: 2027, quarter: 1, completedAt: new Date() });
         await assert.rejects(runAutoImport(db, options), /superseded DOL release/);

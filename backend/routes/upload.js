@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const models = require('../models/programModels');
 const { authMiddleware } = require('./admin');
 const { importWorkbook, VALIDATION_VERSION } = require('../services/importWorkbook');
+const { buildImportCoverage, normalizedSources } = require('../services/importCoverage');
 const { acquireImportLock } = require('../services/importLock');
 const { invalidateCache } = require('./search');
 const { noteInsightsChange, refreshGlobalInsights } = require('../services/searchInsights');
@@ -18,14 +19,14 @@ router.get('/status', authMiddleware, (req, res) => res.json(currentJob));
 router.get('/auto/status', authMiddleware, async (req, res) => {
     try {
         const db = mongoose.connection.db;
-        const [runs, sources, active, catalog] = await Promise.all([
+        const [runs, rawSources, active, catalog] = await Promise.all([
             db.collection('import_runs').find({}).sort({ startedAt: -1 }).limit(5).toArray(),
             db.collection('import_sources').find({}, { projection: {
-                url: 1, filename: 1, type: 1, fiscalYear: 1, status: 1, outcome: 1, error: 1,
+                url: 1, filename: 1, type: 1, fiscalYear: 1, quarter: 1, status: 1, outcome: 1, error: 1,
                 startedAt: 1, checkedAt: 1, completedAt: 1, runId: 1, progress: 1, validationProgress: 1,
-                'validation.version': 1, 'validation.rows': 1, 'validation.uniqueCases': 1,
+                'validation.canImport': 1, 'validation.version': 1, 'validation.rows': 1, 'validation.uniqueCases': 1,
                 'validation.resolvedIssues': 1, 'validation.duplicateRows': 1, 'validation.rejectedRows': 1, 'validation.issues': 1,
-            } }).sort({ fiscalYear: -1, type: 1 }).limit(200).toArray(),
+            } }).sort({ fiscalYear: -1, type: 1, quarter: -1 }).toArray(),
             db.collection('import_locks').findOne({ _id: 'case-import', expiresAt: { $gt: new Date() } }, { projection: { owner: 0 } }),
             db.collection('import_catalog').findOne({ _id: 'dol' }),
         ]);
@@ -34,14 +35,14 @@ router.get('/auto/status', authMiddleware, async (req, res) => {
         for (const run of runs) {
             if (run.status === 'running' && run._id !== active?.runId) run.status = 'interrupted';
         }
-        for (const source of sources) {
-            if (['downloading', 'validating', 'importing'].includes(source.status) && source.runId !== active?.runId) source.status = 'interrupted';
-        }
-        const urls = new Set(catalog?.datasets.map(dataset => dataset.url));
-        const complete = sources.filter(source => urls.has(source.url) && source.status === 'done' && source.validation?.version === VALIDATION_VERSION);
-        res.json({ runs, sources, active, coverage: catalog ? {
-            availableFiles: catalog.datasets.length, completedFiles: complete.length,
-            fromYear: catalog.fromYear, unavailable: catalog.unavailable,
+        const sources = normalizedSources(rawSources, active);
+        const currentRun = active?.runId ? runs.find(run => run._id === active.runId) || await db.collection('import_runs').findOne({ _id: active.runId }, { projection: { results: 0 } }) : null;
+        const progress = buildImportCoverage({ catalog, sources, active, validationVersion: VALIDATION_VERSION });
+        const known = progress.programs.filter(program => program.inventoryKnown);
+        res.json({ runs, currentRun, sources, active, progress, coverage: catalog ? {
+            availableFiles: known.reduce((sum, program) => sum + program.totalFiles, 0),
+            completedFiles: known.reduce((sum, program) => sum + program.completedFiles, 0),
+            fromYear: progress.fromYear, unavailable: catalog.unavailable,
         } : null });
     } catch (error) {
         res.status(500).json({ error: 'Unable to read automatic import status' });

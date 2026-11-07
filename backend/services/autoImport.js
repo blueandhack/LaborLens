@@ -2,7 +2,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { createHash, randomUUID } = require('crypto');
-const { fetchDatasets, downloadDataset } = require('./dolSource');
+const { fetchDatasetInventory, downloadDataset } = require('./dolSource');
 const { importWorkbook, auditWorkbook, VALIDATION_VERSION, sourceRank } = require('./importWorkbook');
 const { acquireImportLock } = require('./importLock');
 const SOURCE_REVIEW_VERSION = 3;
@@ -10,7 +10,7 @@ const { noteInsightsChange } = require('./searchInsights');
 
 async function runAutoImport(db, {
     models, programs = Object.keys(models), force = false, signal, fromYear, maxFiles = Infinity, backfill = false,
-    discover = fetchDatasets, download = downloadDataset, importFile = importWorkbook, auditFile = auditWorkbook,
+    discover = fetchDatasetInventory, download = downloadDataset, importFile = importWorkbook, auditFile = auditWorkbook,
     log = message => console.log(JSON.stringify({ time: new Date().toISOString(), ...message })),
 } = {}) {
     const runs = db.collection('import_runs');
@@ -26,7 +26,9 @@ async function runAutoImport(db, {
     try {
         lease = await acquireImportLock(db, backfill ? 'DOL historical backfill' : 'DOL automatic import', { runId });
         tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'laborlens-dol-'));
-        const datasets = await discover({ fromYear, programs, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : undefined });
+        const discovered = await discover({ fromYear, programs, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : undefined });
+        const datasets = Array.isArray(discovered) ? discovered : discovered.datasets;
+        const releases = Array.isArray(discovered) ? null : discovered.releases;
         const latest = Object.fromEntries(programs.map(type => [type, Math.max(...datasets.filter(file => file.type === type).map(sourceRank))]));
         if (fromYear !== undefined) datasets.sort((a, b) => (backfill ? 1 : -1) * (sourceRank(a) - sourceRank(b)) || a.type.localeCompare(b.type));
         const unavailable = [];
@@ -41,6 +43,13 @@ async function runAutoImport(db, {
             await db.collection('import_catalog').updateOne({ _id: 'dol' }, { $set: {
                 datasets: [...retainedDatasets, ...datasets], unavailable: [...retainedUnavailable, ...unavailable],
                 fromYear: Math.min(fromYear, previousCatalog?.fromYear ?? fromYear), checkedAt: new Date(),
+            } }, { upsert: true });
+        }
+        if (releases) {
+            const previous = await db.collection('import_catalog').findOne({ _id: 'dol' });
+            await db.collection('import_catalog').updateOne({ _id: 'dol' }, { $set: {
+                releases: [...(previous?.releases || []).filter(file => !programs.includes(file.type)), ...releases],
+                releasesCheckedAt: new Date(),
             } }, { upsert: true });
         }
         log({ event: 'discovered', datasets });
@@ -87,7 +96,7 @@ async function runAutoImport(db, {
                     log({ event: 'unchanged', filename: dataset.filename });
                 } else {
                     checkedFiles++;
-                    await sources.updateOne({ _id: sourceId }, { $set: { status: 'validating', attemptedSha256: downloaded.sha256, progress: { processed: 0 } } });
+                    await sources.updateOne({ _id: sourceId }, { $set: { status: 'validating', attemptedSha256: downloaded.sha256, progress: { processed: 0 }, validationProgress: { rows: 0 } } });
                     const validation = await auditFile(destination, {
                         type: dataset.type, source: { ...dataset, sha256: downloaded.sha256 }, ensureActive,
                         onProgress: async progress => {

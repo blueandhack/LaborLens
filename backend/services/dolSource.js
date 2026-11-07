@@ -16,7 +16,7 @@ function dolURL(value, base = PERFORMANCE_URL) {
     return url.href;
 }
 
-function discoverDatasets(html, { fromYear, programs = ['pwd', 'perm'] } = {}) {
+function discoverDatasets(html, { fromYear, programs = ['pwd', 'perm'], allReleases = false } = {}) {
     if (!programs.length || programs.some(type => !['pwd', 'perm', 'h1b'].includes(type))) throw new Error('Invalid disclosure programs');
     const datasets = new Map();
     for (const match of html.matchAll(/\bhref\s*=\s*["']([^"']+)["']/gi)) {
@@ -29,6 +29,8 @@ function discoverDatasets(html, { fromYear, programs = ['pwd', 'perm'] } = {}) {
         const year = Number(name[2]) + (name[2].length === 2 ? 2000 : 0);
         datasets.set(url, { url, filename, type, fiscalYear: year, quarter: Number(name[3] || 4) });
     }
+    if (allReleases) return [...datasets.values()].filter(file => programs.includes(file.type) && (fromYear === undefined || file.fiscalYear >= fromYear))
+        .sort((a, b) => b.fiscalYear - a.fiscalYear || b.quarter - a.quarter || a.filename.localeCompare(b.filename));
     const selected = [];
     for (const type of programs) {
         const files = [...datasets.values()].filter(file => file.type === type);
@@ -68,14 +70,23 @@ async function requestDOL(url, { headers = {}, signal } = {}) {
     throw new Error('Too many DOL redirects');
 }
 
-async function fetchDatasets({ signal = AbortSignal.timeout(60000), fromYear, programs } = {}) {
+async function readPerformancePage(signal = AbortSignal.timeout(60000)) {
     const response = await requestDOL(PERFORMANCE_URL, { signal });
     let html = '';
     for await (const chunk of response.body) {
         html += Buffer.from(chunk).toString('utf8');
         if (html.length > 5 * 1024 * 1024) throw new Error('DOL page exceeds the size limit');
     }
-    return discoverDatasets(html, { fromYear, programs });
+    return html;
+}
+
+async function fetchDatasets({ signal, ...options } = {}) {
+    return discoverDatasets(await readPerformancePage(signal), options);
+}
+
+async function fetchDatasetInventory({ signal, ...options } = {}) {
+    const html = await readPerformancePage(signal);
+    return { datasets: discoverDatasets(html, options), releases: discoverDatasets(html, { ...options, allReleases: true }) };
 }
 
 async function downloadDataset(dataset, destination, previous, { force = false, signal = AbortSignal.timeout(15 * 60 * 1000) } = {}) {
@@ -114,4 +125,4 @@ async function downloadDataset(dataset, destination, previous, { force = false, 
     };
 }
 
-module.exports = { PERFORMANCE_URL, dolURL, discoverDatasets, requestDOL, fetchDatasets, downloadDataset };
+module.exports = { PERFORMANCE_URL, dolURL, discoverDatasets, requestDOL, fetchDatasets, fetchDatasetInventory, downloadDataset };

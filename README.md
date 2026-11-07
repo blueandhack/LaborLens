@@ -139,6 +139,11 @@ silently counting incomplete imports as successful. Import history survives pod
 restarts in `import_runs` and `import_sources`. **Administration** in the footer
 opens `/admin/data` (the old `/import` URL redirects there). Automatic imports
 show the latest checks, coverage gaps, file progress, and searchable file history.
+The live dashboard shows separate H-1B, PWD, and PERM release-file progress,
+active-file case counters, and a clickable fiscal-year / quarter coverage grid.
+It refreshes every 15 seconds. **Imported** means that quarterly release was
+imported directly; **Covered** means a later cumulative or annual file includes
+the quarter. Select a cell to inspect its source files and validation details.
 Validation reports open inline with issue counts, example rows, missing values,
 and field mappings; JSON export remains available. Manual uploads and access
 controls have separate sections, with dataset deletion tucked under manual

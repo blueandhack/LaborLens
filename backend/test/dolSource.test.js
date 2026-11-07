@@ -83,3 +83,12 @@ test('HTML errors and oversized responses are rejected as workbooks', async t =>
     global.fetch = async () => new Response('x', { headers: { 'content-length': String(1024 ** 3) } });
     await assert.rejects(downloadDataset(dataset, path.join(dir, 'huge')), /size limit/);
 });
+
+test('coverage inventory includes superseded quarterly snapshots without changing the import selection', () => {
+    const selected = discoverDatasets(html);
+    const inventory = discoverDatasets(html, { allReleases: true });
+    assert.equal(selected.filter(file => file.type === 'pwd').length, 1);
+    assert.equal(inventory.filter(file => file.type === 'pwd').length, 2);
+    assert.equal(inventory.filter(file => file.type === 'perm').length, 2, 'both form variants remain part of the release');
+    assert.ok(inventory.every(file => !/Worksites|Record_Layout/.test(file.filename)));
+});
