@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { programs } from "../utils/programs";
 import { getJSON } from "../utils/api";
 import { calendarSeries, outcomeTicks, statusLabel } from "../utils/insights";
@@ -13,16 +13,24 @@ function DecisionTrend({ data, program, onSelectYear }) {
   const config = programs[program];
   const titleId = useId();
   const descriptionId = useId();
+  const yearSelectId = useId();
+  const plot = useRef(null);
+  const [width, setWidth] = useState(568);
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.max(220, Math.round(entry.contentRect.width))));
+    if (plot.current) observer.observe(plot.current);
+    return () => observer.disconnect();
+  }, [data.timeline.length]);
   const series = calendarSeries(data.timeline);
   const max = Math.max(1, ...series.map((row) => row.count));
-  const x = (i) => series.length === 1 ? 300 : 64 + i / (series.length - 1) * 468;
+  const x = (i) => series.length === 1 ? width / 2 : 56 + i / (series.length - 1) * (width - 80);
   const y = (count) => 208 - count / max * 154;
   const peaks = [];
   for (const i of series.map((_, i) => i).sort((a, b) => series[b].count - series[a].count)) {
     if (series[i].count > 0 && peaks.every((other) => Math.abs(x(other) - x(i)) > 100)) peaks.push(i);
     if (peaks.length === 2) break;
   }
-  const labelEvery = Math.max(1, Math.ceil(series.length / 6));
+  const labelEvery = Math.max(1, Math.ceil(series.length / Math.max(2, Math.floor((width - 80) / 70))));
   const event = config.events;
   return (
     <figure className="insight-figure">
@@ -31,21 +39,21 @@ function DecisionTrend({ data, program, onSelectYear }) {
         <p>Cases by calendar year · {config.dateLabel.toLowerCase()}</p>
       </figcaption>
       {series.length ? (
-        <div className="insight-plot-scroll">
-          <svg className="insight-trend" viewBox="0 0 568 260" role="group" aria-labelledby={`${titleId} ${descriptionId}`}>
+        <div className="insight-plot-scroll" ref={plot}>
+          <svg className="insight-trend" viewBox={`0 0 ${width} 260`} role="group" aria-labelledby={`${titleId} ${descriptionId}`}>
             <title id={titleId}>Imported {event} by year</title>
             <desc id={descriptionId}>Zero-based count axis. Select a year to filter cases. The data table below includes every value.</desc>
             {[0, 0.5, 1].map((fraction) => (
               <g key={fraction} className="insight-axis">
-                <line x1="60" x2="540" y1={y(max * fraction)} y2={y(max * fraction)} />
-                <text x="52" y={y(max * fraction) + 4} textAnchor="end">{compact(max * fraction)}</text>
+                <line x1="56" x2={width - 16} y1={y(max * fraction)} y2={y(max * fraction)} />
+                <text x="46" y={y(max * fraction) + 4} textAnchor="end">{compact(max * fraction)}</text>
               </g>
             ))}
             <path className="insight-line" d={series.map((row, i) => `${i ? "L" : "M"}${x(i)},${y(row.count)}`).join(" ")} />
             {series.map((row, i) => (
               <g key={row.year}>
                 <line className="insight-calendar-tick" x1={x(i)} x2={x(i)} y1="208" y2="201" />
-                {(i % labelEvery === 0 || i === series.length - 1) &&
+                {((i % labelEvery === 0 && series.length - 1 - i >= labelEvery / 2) || i === series.length - 1) &&
                   <text className="insight-year-label" x={x(i)} y="235" textAnchor="middle">{row.year}</text>}
                 {peaks.includes(i) && <text className="insight-peak" x={x(i)} y={y(row.count) - 14} textAnchor="middle">{compact(row.count)}</text>}
                 <a href={`#year-${row.year}`} onClick={(event) => { event.preventDefault(); onSelectYear(row.year); }}
@@ -59,6 +67,12 @@ function DecisionTrend({ data, program, onSelectYear }) {
           </svg>
         </div>
       ) : <p className="insight-empty">No usable {config.event} dates in these cases.</p>}
+      {series.length > 0 && <label className="insight-year-filter" htmlFor={yearSelectId}>Filter by {config.yearLabel.toLowerCase()}
+        <select id={yearSelectId} aria-label={`Filter by ${config.yearLabel.toLowerCase()}`} className="search-input" value="" onChange={event => { if (event.target.value) onSelectYear(Number(event.target.value)); }}>
+          <option value="">Choose a year…</option>
+          {series.map(row => <option value={row.year} key={row.year}>{row.year} · {number(row.count)} cases</option>)}
+        </select>
+      </label>}
       <p className="insight-chart-note">Select a year to filter. {number(data.missingDateCount)} cases without a usable date are excluded from this chart.</p>
       <p className="insight-source">Source: U.S. Department of Labor disclosures</p>
     </figure>
@@ -80,7 +94,7 @@ function CaseOutcomes({ data }) {
               <span>{statusLabel(row.status)}</span>
               <span><strong>{number(row.count)}</strong> <small>{percentage(row.count, data.totalCount)}</small></span>
             </div>
-            <svg viewBox="0 0 300 24" className="insight-ticks" aria-hidden="true">
+            <svg viewBox="0 0 300 24" preserveAspectRatio="none" className="insight-ticks" aria-hidden="true">
               <line className="insight-guide" x1="0" x2="300" y1="17" y2="17" />
               {outcomeTicks(row.count, data.totalCount).map((fraction, i) => (
                 <g key={i}>
@@ -136,13 +150,13 @@ export default function SearchInsights({ program, filters, onSelectYear, onOverv
           <details className="insight-data">
             <summary>View chart data</summary>
             <div className="insight-data-tables">
-              <table><caption>{programs[program].yearLabel}s</caption><thead><tr><th scope="col">Year</th><th scope="col">Cases</th></tr></thead><tbody>
+              <div className="insight-data-scroll" tabIndex={0} role="region" aria-label="Annual case counts"><table><caption>{programs[program].yearLabel}s</caption><thead><tr><th scope="col">Year</th><th scope="col">Cases</th></tr></thead><tbody>
                 {calendarSeries(data.timeline).map((row) => <tr key={row.year}><th scope="row"><button className="text-button" type="button" onClick={() => onSelectYear(row.year)}>{row.year}</button></th><td>{number(row.count)}</td></tr>)}
                 <tr><th scope="row">Date not reported / unusable</th><td>{number(data.missingDateCount)}</td></tr>
-              </tbody></table>
-              <table><caption>Case outcomes</caption><thead><tr><th scope="col">Status</th><th scope="col">Cases</th><th scope="col">Share</th></tr></thead><tbody>
+              </tbody></table></div>
+              <div className="insight-data-scroll" tabIndex={0} role="region" aria-label="Case outcome counts"><table><caption>Case outcomes</caption><thead><tr><th scope="col">Status</th><th scope="col">Cases</th><th scope="col">Share</th></tr></thead><tbody>
                 {data.outcomes.map((row) => <tr key={`${row.other}-${row.status}`}><th scope="row">{statusLabel(row.status)}</th><td>{number(row.count)}</td><td>{percentage(row.count, data.totalCount)}</td></tr>)}
-              </tbody></table>
+              </tbody></table></div>
             </div>
           </details>
         </>}

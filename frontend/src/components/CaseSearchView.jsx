@@ -13,6 +13,7 @@ import {
   FiBarChart2,
 } from "react-icons/fi";
 import CaseResults from "./CaseResults";
+import "./CaseSearchView.css";
 import { programs } from "../utils/programs";
 import {
   PAGE_SIZES,
@@ -124,6 +125,7 @@ function SearchFilters({
               <select
                 id="search-event-year"
                 name={yearKey}
+                aria-label={config.yearLabel}
                 className="search-input"
                 value={draft[yearKey]}
                 onChange={edit(yearKey)}
@@ -148,6 +150,7 @@ function SearchFilters({
               <select
                 id="search-received-year"
                 name="receivedYear"
+                aria-label={`${config.receivedLabel} year`}
                 className="search-input"
                 value={draft.receivedYear}
                 onChange={edit("receivedYear")}
@@ -215,9 +218,10 @@ export default function CaseSearchView({ program }) {
   });
   const [preference, setPreference] = useState(savedView);
   const [wide, setWide] = useState(
-    () => window.matchMedia("(min-width: 960px)").matches,
+    () => window.matchMedia("(min-width: 1280px)").matches,
   );
   const resultsHeading = useRef(null);
+  const filtersPanel = useRef(null);
   const config = programs[program];
   const endpoint = config.endpoint;
   const apiParams = writeSearchState(filters, page, limit);
@@ -253,11 +257,17 @@ export default function CaseSearchView({ program }) {
   }, [config.title]);
 
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 960px)");
+    const media = window.matchMedia("(min-width: 1280px)");
     const listener = (event) => setWide(event.matches);
     media.addEventListener("change", listener);
     return () => media.removeEventListener("change", listener);
   }, []);
+
+  useEffect(() => {
+    // A native details toggle can outlive its unchanged React open prop.
+    // Reopen the desktop form when its compact toggle becomes hidden.
+    if (wide && filtersPanel.current) filtersPanel.current.open = true;
+  }, [wide]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -376,15 +386,20 @@ export default function CaseSearchView({ program }) {
           </div>
         </details>
       </div>
-      {program === "h1b" && <p className="inline-notice">DOL labor condition applications · case counts are applications, not workers or visa approvals.</p>}
+      {program === "h1b" && <p className="inline-notice search-program-note">DOL labor condition applications · case counts are applications, not workers or visa approvals.</p>}
+      <div className="search-workspace">
+      <aside className="search-filter-panel" aria-label="Search filters">
+      <div className="filter-panel-heading"><p className="section-kicker">Refine your results</p><h3>Search filters</h3></div>
       <details
+        ref={filtersPanel}
         className={`search-controls${activeFilters.length ? " has-filters" : ""}`}
         key={`${program}-${filtersKey}`}
         open={wide || !activeFilters.length}
       >
         <summary>
           <FiSearch aria-hidden="true" />
-          Edit search filters
+          Search filters
+          {activeFilters.length > 0 && <span className="filter-count">{activeFilters.length} applied</span>}
         </summary>
         <SearchFilters
           key={`${program}-${filtersKey}-${params.size ? "filtered" : location.key}`}
@@ -412,6 +427,8 @@ export default function CaseSearchView({ program }) {
           </button>
         </p>
       )}
+      </aside>
+      <div className="search-results-panel">
       {activeFilters.length > 0 && (
         <div className="active-filters" aria-label="Applied filters">
           <FiSliders aria-hidden="true" />
@@ -455,16 +472,6 @@ export default function CaseSearchView({ program }) {
           )}
         </div>
         <div className="result-controls">
-          <button
-            type="button"
-            className="insights-toggle"
-            aria-expanded={insightsOpen}
-            aria-controls="search-insights"
-            onClick={() => setInsightsOpen((value) => !value)}
-          >
-            <FiBarChart2 aria-hidden="true" />
-            {insightsOpen ? "Hide insights" : "Explore insights"}
-          </button>
           <div className="view-switch" role="group" aria-label="Results layout">
             <button
               type="button"
@@ -500,6 +507,16 @@ export default function CaseSearchView({ program }) {
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            className="insights-toggle"
+            aria-expanded={insightsOpen}
+            aria-controls="search-insights"
+            onClick={() => setInsightsOpen((value) => !value)}
+          >
+            <FiBarChart2 aria-hidden="true" />
+            {insightsOpen ? "Hide insights" : "Explore insights"}
+          </button>
         </div>
       </div>
       {insightsOpen && (
@@ -597,6 +614,8 @@ export default function CaseSearchView({ program }) {
           </button>
         </nav>
       )}
+      </div>
+      </div>
     </section>
   );
 }

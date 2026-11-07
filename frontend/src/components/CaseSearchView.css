@@ -1,0 +1,125 @@
+/* The same research workspace serves PWD, PERM, and H-1B. */
+.case-search-page { width: 100%; min-width: 0; max-width: 2300px; margin-inline: auto; }
+.case-search-page :is(section, aside, form, label, fieldset), .search-results-panel { min-width: 0; }
+.case-search-page .search-page-heading { gap: 20px 32px; margin-bottom: 26px; }
+.case-search-page .search-page-heading h2 { font-size: clamp(27px, 2.3vw, 38px); letter-spacing: -.035em; line-height: 1.2; text-wrap: balance; }
+.case-search-page .search-page-heading p { line-height: 1.65; text-wrap: pretty; }
+.case-search-page .data-guide summary { min-height: 44px; display: list-item; padding-block: 11px; }
+.case-search-page .data-guide > div { width: min(440px, 80vw); line-height: 1.7; }
+.search-program-note { max-width: 90ch; margin: -10px 0 24px; }
+.search-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.search-filter-panel { min-width: 0; }
+.filter-panel-heading { display: none; }
+.case-search-page .case-search-form { padding: clamp(16px, 1.5vw, 24px); }
+.case-search-page .primary-search-fields { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; }
+.case-search-page .case-search-form label { font-size: 13px; }
+.case-search-page .search-input { width: 100%; min-width: 0; min-height: 46px; }
+.case-search-page .advanced-search summary { min-height: 44px; padding-block: 10px; }
+.case-search-page .advanced-search-fields { grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); max-width: 1000px; }
+.case-search-page .search-refinements { gap: 24px; }
+.case-search-page .btn, .case-search-page .text-button { min-height: 44px; }
+.case-search-page .search-hint { max-width: 90ch; line-height: 1.65; }
+.case-search-page .results-toolbar { padding-top: 0; gap: 18px 24px; align-items: flex-start; }
+.case-search-page .results-summary { min-width: 0; }
+.case-search-page .results-summary h3 { font-size: clamp(19px, 1.4vw, 23px); line-height: 1.4; overflow-wrap: anywhere; }
+.case-search-page .results-summary p { font-size: 13px; line-height: 1.6; }
+.case-search-page .result-controls { flex-wrap: wrap; gap: 12px 18px; }
+.case-search-page .view-switch { padding: 2px; border-radius: 5px; }
+.case-search-page .view-switch button { min-height: 44px; justify-content: center; padding-inline: 14px; }
+.case-search-page .page-size { gap: 8px; }
+.case-search-page .page-size .search-input { width: 76px; min-height: 48px; }
+.case-search-page .insights-toggle { min-height: 48px; justify-content: center; border-radius: 5px; padding-inline: 14px; white-space: normal; }
+.case-search-page .insights-toggle:hover { background: var(--input-bg); border-color: var(--focus-ring); }
+.case-search-page .active-filters { margin: 0 0 20px; gap: 8px 10px; }
+.case-search-page .filter-chip { min-height: 44px; padding: 8px 12px; font-size: 13px; }
+.case-search-page .filter-chip > span { min-width: 0; }
+.case-search-page .results-content { container: search-results / inline-size; }
+.case-search-page .table-scroll { max-height: min(74svh, 1100px); overscroll-behavior: contain; }
+.case-search-page .table-scroll-note { display: none; line-height: 1.6; }
+.case-search-page .case-table { min-width: 1120px; }
+.case-search-page .case-table th, .case-search-page .case-table td { padding: clamp(12px, 1vw, 20px); }
+.case-search-page .case-table .col-employer { width: 19%; }
+.case-search-page .case-table .col-job { width: 19%; }
+.case-search-page .case-table .col-location { width: 13%; }
+.case-search-page .case-table .col-wage { width: 15%; }
+.case-search-page .case-table .col-status { width: 12%; }
+.case-search-page .case-table .col-date { width: 11%; }
+.case-search-page .result-case-link { min-height: 44px; }
+.case-search-page .result-case-number { font-size: 12px; }
+.case-search-page .cell-secondary { font-size: 12px; }
+.case-search-page .results-grid, .case-search-page .skeleton-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: clamp(16px, 1.3vw, 24px); align-items: stretch; }
+.case-search-page .case-card { padding: clamp(18px, 1.4vw, 26px); }
+.case-search-page .company-name { font-size: 14px; line-height: 1.6; }
+.case-search-page .card-job-title { font-size: 19px; }
+.case-search-page .card-location { font-size: 13px; }
+.case-search-page .card-wage strong { font-size: clamp(19px, 1.25vw, 23px); }
+.case-search-page .card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; align-content: start; }
+.case-search-page .card-facts > div { display: block; }
+.case-search-page .card-facts dd { text-align: left; margin-top: 4px; font-size: 13px; }
+.case-search-page .card-footer { min-height: 44px; }
+.case-search-page .case-number { font-size: 12px; }
+.case-search-page .pagination { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; }
+.case-search-page .page-info { overflow-wrap: anywhere; }
+.case-search-page .search-state { padding: clamp(32px, 6vw, 80px) 20px; }
+@container search-results (max-width: 1120px) { .case-search-page .table-scroll-note { display: block; } }
+@media (min-width: 1600px) {
+    .search-workspace { grid-template-columns: 300px minmax(0, 1fr); gap: clamp(28px, 2vw, 48px); }
+    .filter-panel-heading { display: block; padding: 0 0 18px; }
+    .filter-panel-heading h3 { font-size: 21px; font-weight: 600; letter-spacing: -.02em; }
+    .case-search-page .case-search-form { padding: 20px; }
+    .case-search-page .primary-search-fields, .case-search-page .advanced-search-fields { grid-template-columns: minmax(0, 1fr); }
+    .case-search-page .field-employer { grid-column: auto; }
+    .case-search-page .search-refinements { flex-direction: column; align-items: stretch; gap: 20px; }
+    .case-search-page .advanced-search { width: 100%; }
+    .case-search-page .search-actions { width: 100%; }
+    .case-search-page .search-submit { flex: 1; min-width: 0; }
+    .case-search-page .search-actions .btn { padding-inline: 14px; }
+    .case-search-page .search-hint { margin-top: 18px; }
+}
+@media (max-width: 1279px) {
+    .case-search-page .search-controls > summary { display: flex; align-items: center; gap: 8px; min-height: 48px; width: 100%; padding: 12px 0; color: var(--focus-ring); font-size: 14px; cursor: pointer; }
+    .case-search-page .search-controls > summary::after { content: '+'; margin-left: auto; font-size: 20px; }
+    .case-search-page .search-controls[open] > summary::after { content: '−'; }
+    .case-search-page .search-controls[open] > summary { margin-bottom: 8px; }
+    .filter-count { margin-left: 4px; color: var(--text-secondary); font-size: 12px; }
+}
+@media (max-width: 800px) {
+    .case-search-page .primary-search-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .case-search-page .field-employer { grid-column: 1 / -1; }
+    .case-search-page .search-refinements { flex-direction: column; align-items: stretch; gap: 16px; }
+    .case-search-page .advanced-search-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .case-search-page .advanced-search-fields > label:first-child { grid-column: 1 / -1; }
+    .case-search-page .search-input { font-size: 16px; }
+    .case-search-page .search-actions { width: 100%; }
+    .case-search-page .search-submit { flex: 1; }
+    .case-search-page .data-guide > div { width: 100%; }
+}
+@media (max-width: 600px) {
+    .search-workspace { gap: 24px; }
+    .case-search-page .search-page-heading { margin-bottom: 16px; gap: 8px; }
+    .case-search-page .search-page-heading h2 { font-size: 28px; }
+    .case-search-page .primary-search-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .case-search-page .case-search-form { padding: 16px; }
+    .case-search-page .search-refinements { gap: 18px; }
+    .case-search-page .result-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; width: 100%; }
+    .case-search-page .view-switch { min-width: 0; }
+    .case-search-page .view-switch button { flex: 1; min-width: 0; padding-inline: 10px; }
+    .case-search-page .page-size { justify-content: flex-end; gap: 6px; }
+    .case-search-page .insights-toggle { grid-column: 1 / -1; }
+    .case-search-page .results-toolbar { padding-bottom: 20px; }
+    .case-search-page .pagination { gap: 8px; }
+    .case-search-page .pagination .btn { padding-inline: 10px; font-size: 13px; }
+    .case-search-page .page-info { font-size: 12px; }
+    .search-program-note { margin-top: 0; font-size: 12px; }
+}
+@media (max-width: 380px) {
+    .case-search-page .primary-search-fields { grid-template-columns: minmax(0, 1fr); }
+    .case-search-page .case-search-form { padding: 14px 12px; }
+    .case-search-page .advanced-search-fields { grid-template-columns: minmax(0, 1fr); }
+    .case-search-page .page-size { flex-direction: column; align-items: stretch; gap: 3px; font-size: 11px; }
+    .case-search-page .page-size .search-input { width: 68px; }
+    .case-search-page .case-card { padding: 16px; }
+    .case-search-page .pagination .page-info { grid-column: 1 / -1; grid-row: 1; }
+    .case-search-page .pagination { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .case-search-page .pagination .btn { width: 100%; }
+}
