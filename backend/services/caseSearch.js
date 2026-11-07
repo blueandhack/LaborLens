@@ -55,11 +55,11 @@ function buildSearch(program, input) {
     let hint;
     if (filters.company) hint = 'search_company_v2';
     else if (filters.jobTitle) hint = 'search_title_v2';
-    else if (filters.receivedYear) hint = 'search_received_v3';
     else if (filters.caseNumber.length >= 10) hint = 'CASE_NUMBER_1';
+    else if (filters.receivedYear) hint = 'search_received_v3';
     else if (!location) hint = 'search_recent_v3';
     return { config, query, filters, hint, page, limit, skip: (page - 1) * limit,
-        branches: location && !filters.company && !filters.jobTitle
+        branches: location && !filters.company && !filters.jobTitle && filters.caseNumber.length < 10
             ? location.map(branch => ({ $and: [...conditions, branch] })) : null,
         intersection: location ? { $and: [...conditions, ...location] } : null,
         sort: { [config.date]: -1, _id: 1 } };

@@ -26,12 +26,17 @@ test('covered search preserves matches, paging, dates and PWD links', { skip: !p
             JOB_OPP_PWD_NUMBER: program === 'perm' ? 'P-00000' : undefined,
             _DOL_ALTERNATE_RECORDS: [{ notes: 'x'.repeat(4096) }],
         })));
+        await Model.collection.insertOne({ CASE_NUMBER: 'P-100-26092-750023',
+            [config.company]: 'unique case fixture', [config.employer]: 'Unique case fixture',
+            [config.city]: 'california city', [config.state]: 'CA',
+            [config.date]: new Date('2026-06-30'), RECEIVED_DATE: new Date('2025-01-01') });
     }
     await t.test('matches and exact counts agree with original queries for every filter combination', async () => {
         for (const [program, config] of Object.entries(programs)) {
             for (const input of [{}, { company: 'GOO' }, { jobTitle: 'Software' }, { location: 'cA' },
                 { location: 'San' }, { caseNumber: 'p-0000' }, { company: 'google', jobTitle: 'soft', location: 'ca' },
                 { location: 'a', page: '2', limit: '12' }, { location: 'san', receivedYear: '2023' },
+                { caseNumber: 'p-100-26092-750023', location: 'ca', receivedYear: '2025' },
                 { [config.year]: '2025' }, { receivedYear: '2023' }, { company: 'no[match' }]) {
                 invalidateCounts();
                 const spec = buildSearch(program, input);

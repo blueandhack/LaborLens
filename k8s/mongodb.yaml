@@ -36,10 +36,10 @@ spec:
           runAsUser: 999
           runAsGroup: 999
           runAsNonRoot: true
-        args: ["--wiredTigerCacheSizeGB=0.5"]
+        args: ["--wiredTigerCacheSizeGB=0.375"]
         resources:
           requests:
-            memory: 768Mi
+            memory: 640Mi
             cpu: 100m
           limits:
             memory: 1536Mi

@@ -11,6 +11,9 @@ Search keeps literal, case-insensitive prefixes for employers, titles, locations
 - Browser responses cache search results for 15 seconds, year options for five minutes and details for one minute. Hash-named static assets cache for a year; HTML must revalidate.
 - Queries have server time limits, abandoned page selections are cancelled, page sizes are capped at 100, and connection pools are bounded. Deep or unusually broad requests can return HTTP 503 with a prompt to narrow the search.
 - Production disables Mongoose automatic index creation. Only the indexes needed by the current search are declared. The unused text and older prefix/sort indexes can be removed after rollout. The unique case-number index is always preserved.
+- MongoDB's WiredTiger cache budget is 384 MiB, down from 512 MiB. Its reservation is 640 MiB, while the existing 1536 MiB hard limit leaves room for server overhead and future index builds. The API and frontend also have explicit resource reservations/limits; the API retains heap headroom for streaming manual imports.
+
+There are now eight indexes per case collection, including `_id` and the unique case number. Covering entries are wider than the former prefix-only entries: fewer indexes does not imply less total index storage. The tradeoff is additional disk space for greatly reduced document reads, with RAM controlled by the explicit cache budget.
 
 The frontend uses native fetch and loads admin/detail code on demand, with a recoverable page-load error screen. Google Fonts starts loading from HTML instead of a serial CSS import. Nginx compresses assets and Traefik compresses API responses. A small SVG favicon replaces the large PNG on normal page loads; the PNG remains available for social previews.
 

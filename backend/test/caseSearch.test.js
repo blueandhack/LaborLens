@@ -11,6 +11,9 @@ test('search bounds page size and rejects malformed filters instead of unbounded
     }
     assert.equal(buildSearch('pwd', { page: '3', limit: '48' }).skip, 96);
     assert.equal(buildSearch('pwd', {}).limit, 20);
+    const specific = buildSearch('pwd', { caseNumber: 'p-100-26092-750023', receivedYear: '2025', location: 'ca' });
+    assert.equal(specific.hint, 'CASE_NUMBER_1', 'a specific case number must win over broad year/location indexes');
+    assert.equal(specific.branches, null);
 });
 
 test('literal prefixes escape regex metacharacters and dates retain calendar semantics', () => {

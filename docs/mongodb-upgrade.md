@@ -10,7 +10,7 @@ The migration uses a frozen, consistent application database backup, followed by
 
 Scheduled imports are suspended during migration. The source is locked against writes with `fsyncLock`; reads remain available. Database Tools 100.20.0 is used for both dump and restore. On the VPS, use the official Ubuntu 22.04 x86_64 tools: the tools bundled in the MongoDB 9 image require a newer CPU ISA than this host provides. The server binary itself runs successfully.
 
-The upgraded database uses `mongodb-data-v9-skycat-pvc` on SkyCat. Production uses `Recreate` to ensure only one database process mounts its data volume. Memory requests protect MongoDB from being treated as a BestEffort pod during host memory pressure; its WiredTiger cache is bounded at 0.5 GiB.
+The upgraded database uses `mongodb-data-v9-skycat-pvc` on SkyCat. Production uses `Recreate` to ensure only one database process mounts its data volume. Memory requests protect MongoDB from being treated as a BestEffort pod during host memory pressure; its WiredTiger cache is bounded at 0.375 GiB (384 MiB) after search queries were changed to use index metadata instead of fetching every matching disclosure.
 
 The original `mongodb-data-pvc` and private migration archive directory on SkyLion were retired after a newer encrypted backup was downloaded from Google Drive and fully restored locally. Recovery now uses a completed encrypted backup, restored into an isolated MongoDB 9 database before any production cutover. Backup archives contain application data and administrator password hashes; keep them private and do not commit them to Git.
 
