@@ -30,6 +30,8 @@ Representative backend measurements against more than 4.2 million production cas
 
 These are samples, not latency guarantees. Database cache warmth, background imports and exact-count work affect first requests; broad location counts can take several seconds. Browser/network latency is additional. Search correctness and zero-document index selection are verified separately with MongoDB integration tests and profiler assertions.
 
+After reducing the cache to 384 MiB, live HTTPS requests through the production ingress measured employer searches at 0.31–0.33 seconds initially and 0.13–0.16 seconds on repeat. Broad `software` searches took 0.88–0.99 seconds initially and 0.06–0.07 seconds on repeat. The PWD state-only `CA` count took 3.87 seconds initially and 0.08 seconds on repeat. These measurements included a running historical importer. Final interactive browser verification was unavailable because the browser automation host was offline; HTTP responses, production health, compression/cache headers, builds and integration tests were verified directly.
+
 The initial JavaScript bundle fell from 323,255 bytes (103,640 bytes gzipped) to about 263 KB (83 KB gzipped). The admin and details bundles are downloaded separately when visited.
 
 ## Deployment and verification
