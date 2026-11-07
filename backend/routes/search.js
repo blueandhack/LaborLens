@@ -3,264 +3,48 @@ const router = express.Router();
 const Case = require('../models/Case');
 const PermCase = require('../models/PermCase');
 const { getAvailableYears } = require('../services/searchYears');
+const { searchCases, invalidateCounts } = require('../services/caseSearch');
+const { programs } = require('../services/searchConfig');
+const { BoundedCache } = require('../services/boundedCache');
 
-// Escape special regex characters to prevent injection and ensure index use
-const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const years = new BoundedCache({ capacity: 2, ttlMs: 10 * 60 * 1000 });
+const invalidateCache = () => { years.clear(); invalidateCounts(); };
 
-// Simple in-memory cache for the years dropdown (invalidated on import)
-const cache = {};
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
-const getCached = (key) => {
-    const entry = cache[key];
-    if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.value;
-    return null;
-};
-const setCached = (key, value) => { cache[key] = { value, ts: Date.now() }; };
-const invalidateCache = () => { Object.keys(cache).forEach(k => delete cache[k]); };
+function searchHandler(Model, program) {
+    return async (req, res) => {
+        const controller = new AbortController();
+        const disconnect = () => { if (!res.writableEnded) controller.abort(); };
+        res.once('close', disconnect);
+        try {
+            const result = await searchCases(Model, program, req.query, { signal: controller.signal });
+            // Public records only. Brief browser caching makes back navigation cheap.
+            if (!controller.signal.aborted) res.set('Cache-Control', 'public, max-age=15').json(result);
+        } catch (error) {
+            if (controller.signal.aborted) return;
+            const status = error.status || (error.code === 50 || error.name === 'MongoWaitQueueTimeoutError' ? 503 : 500);
+            if (status >= 500) console.error(`${program.toUpperCase()} search failed:`, error.message);
+            res.status(status).json({ error: status === 400 ? error.message : status === 503
+                ? 'This search is taking too long. Add a company, date, or case number to narrow it.'
+                : 'An error occurred while searching' });
+        } finally { res.removeListener('close', disconnect); }
+    };
+}
 
-// Fields returned for the card list view (avoids fetching 100+ unused fields)
-const PWD_CARD_FIELDS = {
-    CASE_NUMBER: 1, CASE_STATUS: 1,
-    EMPLOYER_LEGAL_BUSINESS_NAME: 1, EMPLOYER_CITY: 1, EMPLOYER_STATE: 1,
-    JOB_TITLE: 1, VISA_CLASS: 1, NAICS_CODE: 1,
-    PWD_WAGE_RATE: 1, PWD_UNIT_OF_PAY: 1, PWD_OES_WAGE_LEVEL: 1,
-    PWD_SOC_CODE: 1, PWD_SOC_TITLE: 1,
-    DETERMINATION_DATE: 1, RECEIVED_DATE: 1, PWD_WAGE_EXPIRATION_DATE: 1,
-};
-
-const PERM_CARD_FIELDS = {
-    CASE_NUMBER: 1, CASE_STATUS: 1,
-    EMP_BUSINESS_NAME: 1, EMP_CITY: 1, EMP_STATE: 1,
-    JOB_TITLE: 1, VISA_CLASS: 1, EMP_NAICS_CODE: 1,
-    JOB_OPP_WAGE_FROM: 1, JOB_OPP_WAGE_TO: 1, JOB_OPP_WAGE_PER: 1,
-    PWD_SOC_CODE: 1, PWD_SOC_TITLE: 1,
-    JOB_OPP_PWD_NUMBER: 1,
-    DECISION_DATE: 1, RECEIVED_DATE: 1,
-};
-
-// ── PWD Search ────────────────────────────────────────────────────────────────
-
-router.get('/', async (req, res) => {
-    try {
-        const {
-            company, location, caseNumber, jobTitle,
-            determinationYear, receivedYear,
-            page = 1, limit = 20
-        } = req.query;
-
-        const lim  = parseInt(limit);
-        const skip = (parseInt(page) - 1) * lim;
-        const sort = { DETERMINATION_DATE: -1, EMPLOYER_LEGAL_BUSINESS_NAME: 1 };
-        const conditions = [];
-
-        // Use pre-computed lowercase fields with case-sensitive prefix regex so
-        // MongoDB can do a B-tree range scan instead of a full collection scan.
-        if (company?.trim())
-            conditions.push({ EMPLOYER_NAME_LOWER: { $regex: `^${escapeRegex(company.trim().toLowerCase())}` } });
-
-        if (location?.trim()) {
-            const loc = `^${escapeRegex(location.trim().toLowerCase())}`;
-            conditions.push({ $or: [
-                { EMPLOYER_CITY_LOWER: { $regex: loc } },
-                { EMPLOYER_STATE:      { $regex: loc, $options: 'i' } }
-            ]});
+function yearsHandler(Model, program) {
+    return async (_req, res) => {
+        try {
+            const config = programs[program];
+            const result = await years.get(program, () => getAvailableYears(Model, [config.date, 'RECEIVED_DATE']));
+            res.set('Cache-Control', 'public, max-age=300').json(result);
+        } catch (error) {
+            console.error('Year options failed:', error.message);
+            res.status(500).json({ error: 'An error occurred while fetching years' });
         }
+    };
+}
 
-        if (caseNumber?.trim())
-            conditions.push({ CASE_NUMBER: { $regex: `^${escapeRegex(caseNumber.trim())}`, $options: 'i' } });
-
-        if (jobTitle?.trim())
-            conditions.push({ JOB_TITLE_LOWER: { $regex: `^${escapeRegex(jobTitle.trim().toLowerCase())}` } });
-
-        if (determinationYear && !isNaN(parseInt(determinationYear))) {
-            const y = parseInt(determinationYear);
-            conditions.push({ DETERMINATION_DATE: {
-                $gte: new Date(`${y}-01-01T00:00:00.000Z`),
-                $lte: new Date(`${y}-12-31T23:59:59.999Z`)
-            }});
-        }
-
-        if (receivedYear && !isNaN(parseInt(receivedYear))) {
-            const y = parseInt(receivedYear);
-            conditions.push({ RECEIVED_DATE: {
-                $gte: new Date(`${y}-01-01T00:00:00.000Z`),
-                $lte: new Date(`${y}-12-31T23:59:59.999Z`)
-            }});
-        }
-
-        const query      = conditions.length > 0 ? { $and: conditions } : {};
-        const hasFilters = conditions.length > 0;
-
-        // Hint the most selective index for each filter combination.
-        let hint;
-        if (company?.trim())         hint = { EMPLOYER_NAME_LOWER: 1, DETERMINATION_DATE: -1 };
-        else if (jobTitle?.trim())   hint = { JOB_TITLE_LOWER: 1, DETERMINATION_DATE: -1 };
-        else if (caseNumber?.trim()) hint = { CASE_NUMBER: 1 };
-
-        // Run find and count in parallel — halves round-trip time
-        const findQuery = Case.find(query, PWD_CARD_FIELDS)
-            .sort(sort).skip(skip).limit(lim).lean();
-        if (hint) findQuery.hint(hint);
-
-        const [cases, totalCount] = await Promise.all([
-            findQuery,
-            hasFilters
-                ? Case.countDocuments(query)
-                : Case.estimatedDocumentCount()
-        ]);
-
-        res.json({
-            cases,
-            totalPages: Math.ceil(totalCount / lim),
-            currentPage: parseInt(page),
-            totalCount
-        });
-    } catch (error) {
-        console.error('Search API error:', error);
-        res.status(500).json({ error: 'An error occurred while searching' });
-    }
-});
-
-// ── PWD Years dropdown (cached) ───────────────────────────────────────────────
-
-router.get('/years', async (req, res) => {
-    try {
-        const cached = getCached('pwd_years');
-        if (cached) return res.json(cached);
-
-        const range = await getAvailableYears(Case, ['DETERMINATION_DATE', 'RECEIVED_DATE']);
-        if (!range.length) return res.json([]);
-
-        setCached('pwd_years', range);
-        res.json(range);
-    } catch (error) {
-        console.error('Get years API error:', error);
-        res.status(500).json({ error: 'An error occurred while fetching years' });
-    }
-});
-
-// ── PERM Search ───────────────────────────────────────────────────────────────
-
-router.get('/perm', async (req, res) => {
-    try {
-        const {
-            company, location, caseNumber, jobTitle,
-            decisionYear, receivedYear,
-            page = 1, limit = 20
-        } = req.query;
-
-        const lim  = parseInt(limit);
-        const skip = (parseInt(page) - 1) * lim;
-        const sort = { DECISION_DATE: -1, EMP_BUSINESS_NAME: 1 };
-        const conditions = [];
-
-        if (company?.trim())
-            conditions.push({ EMP_BUSINESS_NAME_LOWER: { $regex: `^${escapeRegex(company.trim().toLowerCase())}` } });
-
-        if (location?.trim()) {
-            const loc = `^${escapeRegex(location.trim().toLowerCase())}`;
-            conditions.push({ $or: [
-                { EMP_CITY_LOWER: { $regex: loc } },
-                { EMP_STATE:      { $regex: loc, $options: 'i' } }
-            ]});
-        }
-
-        if (caseNumber?.trim())
-            conditions.push({ CASE_NUMBER: { $regex: `^${escapeRegex(caseNumber.trim())}`, $options: 'i' } });
-
-        if (jobTitle?.trim())
-            conditions.push({ JOB_TITLE_LOWER: { $regex: `^${escapeRegex(jobTitle.trim().toLowerCase())}` } });
-
-        if (decisionYear && !isNaN(parseInt(decisionYear))) {
-            const y = parseInt(decisionYear);
-            conditions.push({ DECISION_DATE: {
-                $gte: new Date(`${y}-01-01T00:00:00.000Z`),
-                $lte: new Date(`${y}-12-31T23:59:59.999Z`)
-            }});
-        }
-
-        if (receivedYear && !isNaN(parseInt(receivedYear))) {
-            const y = parseInt(receivedYear);
-            conditions.push({ RECEIVED_DATE: {
-                $gte: new Date(`${y}-01-01T00:00:00.000Z`),
-                $lte: new Date(`${y}-12-31T23:59:59.999Z`)
-            }});
-        }
-
-        const query      = conditions.length > 0 ? { $and: conditions } : {};
-        const hasFilters = conditions.length > 0;
-
-        // Hint the most selective index for each filter combination.
-        let permHint;
-        if (company?.trim())         permHint = { EMP_BUSINESS_NAME_LOWER: 1, DECISION_DATE: -1 };
-        else if (jobTitle?.trim())   permHint = { JOB_TITLE_LOWER: 1, DECISION_DATE: -1 };
-        else if (caseNumber?.trim()) permHint = { CASE_NUMBER: 1 };
-
-        const permPipeline = [
-            { $match: query },
-            { $sort: sort },
-            { $skip: skip },
-            { $limit: lim },
-            { $project: PERM_CARD_FIELDS },
-            { $lookup: {
-                from: 'cases',
-                localField: 'JOB_OPP_PWD_NUMBER',
-                foreignField: 'CASE_NUMBER',
-                as: 'pwdDoc',
-                pipeline: [{ $project: {
-                    DETERMINATION_DATE: 1,
-                    RECEIVED_DATE: 1,
-                    PWD_WAGE_EXPIRATION_DATE: 1
-                }}]
-            }},
-            { $addFields: { pwdDoc: { $arrayElemAt: ['$pwdDoc', 0] } } },
-            { $addFields: {
-                PWD_DETERMINATION_DATE: '$pwdDoc.DETERMINATION_DATE',
-                PWD_RECEIVED_DATE:      '$pwdDoc.RECEIVED_DATE',
-                PWD_EXPIRATION_DATE:    '$pwdDoc.PWD_WAGE_EXPIRATION_DATE'
-            }},
-            { $project: { pwdDoc: 0 } }
-        ];
-
-        const permAggQuery = PermCase.aggregate(permPipeline);
-        if (permHint) permAggQuery.option({ hint: permHint });
-
-        // Run aggregation and count in parallel
-        const [results, totalCount] = await Promise.all([
-            permAggQuery,
-            hasFilters
-                ? PermCase.countDocuments(query)
-                : PermCase.estimatedDocumentCount()
-        ]);
-
-        res.json({
-            cases: results,
-            totalPages: Math.ceil(totalCount / lim),
-            currentPage: parseInt(page),
-            totalCount
-        });
-    } catch (error) {
-        console.error('PERM Search API error:', error);
-        res.status(500).json({ error: 'An error occurred while searching PERM cases' });
-    }
-});
-
-// ── PERM Years dropdown (cached) ──────────────────────────────────────────────
-
-router.get('/perm/years', async (req, res) => {
-    try {
-        const cached = getCached('perm_years');
-        if (cached) return res.json(cached);
-
-        const range = await getAvailableYears(PermCase, ['DECISION_DATE', 'RECEIVED_DATE']);
-        if (!range.length) return res.json([]);
-
-        setCached('perm_years', range);
-        res.json(range);
-    } catch (error) {
-        console.error('Get PERM years API error:', error);
-        res.status(500).json({ error: 'An error occurred while fetching PERM years' });
-    }
-});
-
+router.get('/', searchHandler(Case, 'pwd'));
+router.get('/years', yearsHandler(Case, 'pwd'));
+router.get('/perm', searchHandler(PermCase, 'perm'));
+router.get('/perm/years', yearsHandler(PermCase, 'perm'));
 module.exports = { router, invalidateCache };

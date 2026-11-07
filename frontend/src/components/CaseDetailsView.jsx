@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import axios from "axios";
+import { getJSON } from "../utils/api";
 import {
   FiArrowLeft,
   FiExternalLink,
@@ -83,17 +83,16 @@ export default function CaseDetailsView() {
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
-    axios
-      .get(`/api/cases/${id}`, { signal: controller.signal })
-      .then(({ data }) => {
+    getJSON(`/api/cases/${id}`, { signal: controller.signal })
+      .then((data) => {
         if (current) setResponse({ key: requestKey, data, error: null });
       })
       .catch((error) => {
-        if (current && !axios.isCancel(error))
+        if (current && !controller.signal.aborted)
           setResponse({
             key: requestKey,
             data: null,
-            error: error.response?.status === 404 ? "missing" : "failed",
+            error: error.status === 404 ? "missing" : "failed",
           });
       });
     return () => {

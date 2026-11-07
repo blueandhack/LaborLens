@@ -20,7 +20,23 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 5001
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            memory: 768Mi
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5001
+          periodSeconds: 5
+          timeoutSeconds: 2
         env:
+        - name: NODE_ENV
+          value: production
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=512"
         - name: PORT
           value: "5001"
         - name: MONGO_URI

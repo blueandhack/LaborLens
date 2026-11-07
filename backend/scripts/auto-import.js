@@ -22,7 +22,7 @@ async function main() {
             return;
         }
         if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
-        await mongoose.connect(process.env.MONGO_URI, { autoIndex: false, serverSelectionTimeoutMS: 30000 });
+        await mongoose.connect(process.env.MONGO_URI, { autoIndex: false, maxPoolSize: 3, maxIdleTimeMS: 60000, serverSelectionTimeoutMS: 30000 });
         await runAutoImport(mongoose.connection.db, {
             models: { pwd: require('../models/Case'), perm: require('../models/PermCase') },
             force: args.includes('--force'), signal: controller.signal,

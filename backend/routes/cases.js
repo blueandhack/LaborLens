@@ -9,16 +9,17 @@ const { invalidateCache } = require('./search');
 
 router.get('/:id', async (req, res) => {
     try {
-        let caseItem = await Case.findById(req.params.id);
+        if (!mongoose.isObjectIdOrHexString(req.params.id)) return res.status(404).json({ error: 'Case not found' });
+        let caseItem = await Case.findById(req.params.id).lean().maxTimeMS(5000);
 
         if (!caseItem) {
-            caseItem = await PermCase.findById(req.params.id);
+            caseItem = await PermCase.findById(req.params.id).lean().maxTimeMS(5000);
         }
 
         if (!caseItem) {
             return res.status(404).json({ error: 'Case not found' });
         }
-        res.json(caseItem);
+        res.set('Cache-Control', 'public, max-age=60').json(caseItem);
     } catch (error) {
         console.error('Case fetch error:', error);
         res.status(500).json({ error: 'Failed to fetch case details' });

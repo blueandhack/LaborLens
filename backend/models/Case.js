@@ -129,35 +129,7 @@ const caseSchema = new mongoose.Schema({
     WAGE_DET_NOTES: String,
 }, { strict: false, timestamps: true });
 
-// Text index for search functionality
-caseSchema.index({
-    EMPLOYER_LEGAL_BUSINESS_NAME: 'text',
-    CASE_NUMBER: 'text',
-    EMPLOYER_ADDRESS_1: 'text',
-    EMPLOYER_CITY: 'text',
-    EMPLOYER_STATE: 'text',
-    JOB_TITLE: 'text'
-}, {
-    weights: {
-        EMPLOYER_LEGAL_BUSINESS_NAME: 10,
-        CASE_NUMBER: 5,
-        EMPLOYER_ADDRESS_1: 2,
-        JOB_TITLE: 2
-    }
-});
-
-// Regular indexes for partial (regex) search performance
-caseSchema.index({ EMPLOYER_LEGAL_BUSINESS_NAME: 1 });
-caseSchema.index({ EMPLOYER_CITY: 1 });
-caseSchema.index({ EMPLOYER_STATE: 1 });
-caseSchema.index({ JOB_TITLE: 1 });
-caseSchema.index({ DETERMINATION_DATE: -1 });
-caseSchema.index({ RECEIVED_DATE: -1 });
-
-// Compound index for the default sorting
-caseSchema.index({ DETERMINATION_DATE: -1, EMPLOYER_LEGAL_BUSINESS_NAME: 1 });
-caseSchema.index({ EMPLOYER_NAME_LOWER: 1, DETERMINATION_DATE: -1 }, { name: 'EMPLOYER_NAME_LOWER_1_DET_DATE_-1' });
-caseSchema.index({ JOB_TITLE_LOWER: 1, DETERMINATION_DATE: -1 }, { name: 'JOB_TITLE_LOWER_1_DET_DATE_-1' });
-caseSchema.index({ EMPLOYER_CITY_LOWER: 1 });
+// Only indexes used by the prefix search API; build/prune explicitly in production.
+require('../services/searchConfig').addSearchIndexes(caseSchema, 'pwd');
 
 module.exports = mongoose.model('Case', caseSchema);

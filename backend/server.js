@@ -16,6 +16,7 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/pwd_cases'
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.get('/api/health', (_req, res) => res.status(mongoose.connection.readyState === 1 ? 200 : 503).json({ ready: mongoose.connection.readyState === 1 }));
 
 // Routes
 app.use('/api/upload', uploadRoute);
@@ -24,7 +25,8 @@ app.use('/api/cases', caseRoute);
 app.use('/api/admin', adminRoute);
 
 // MongoDB connection
-mongoose.connect(MONGO_URI)
+mongoose.connect(MONGO_URI, { autoIndex: process.env.NODE_ENV !== 'production', maxPoolSize: 8,
+    minPoolSize: 0, maxIdleTimeMS: 60000, waitQueueTimeoutMS: 5000, serverSelectionTimeoutMS: 10000 })
     .then(async () => {
         console.log('Connected to MongoDB');
         // Seed default admin if none exists

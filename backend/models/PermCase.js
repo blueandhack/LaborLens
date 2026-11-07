@@ -15,38 +15,7 @@ const permCaseSchema = new mongoose.Schema({
     // Other fields can naturally map into this schema due to `strict: false`
 }, { strict: false, timestamps: true });
 
-// Text index for search functionality
-permCaseSchema.index({
-    EMP_BUSINESS_NAME: 'text',
-    CASE_NUMBER: 'text',
-    EMP_ADDR1: 'text',
-    EMP_CITY: 'text',
-    EMP_STATE: 'text',
-    JOB_TITLE: 'text'
-}, {
-    weights: {
-        EMP_BUSINESS_NAME: 10,
-        CASE_NUMBER: 5,
-        EMP_ADDR1: 2,
-        JOB_TITLE: 2
-    }
-});
-
-// Regular indexes for partial (regex) search performance and standard lookup
-permCaseSchema.index({ EMP_BUSINESS_NAME: 1 });
-permCaseSchema.index({ EMP_CITY: 1 });
-permCaseSchema.index({ EMP_STATE: 1 });
-permCaseSchema.index({ JOB_TITLE: 1 });
-permCaseSchema.index({ DECISION_DATE: -1 });
-permCaseSchema.index({ RECEIVED_DATE: -1 });
-
-// To join/look up PWD Case quickly via JOB_OPP_PWD_NUMBER
-permCaseSchema.index({ JOB_OPP_PWD_NUMBER: 1 });
-
-// Compound index for default sorting
-permCaseSchema.index({ DECISION_DATE: -1, EMP_BUSINESS_NAME: 1 });
-permCaseSchema.index({ EMP_BUSINESS_NAME_LOWER: 1, DECISION_DATE: -1 }, { name: 'EMP_NAME_LOWER_1_DEC_DATE_-1' });
-permCaseSchema.index({ JOB_TITLE_LOWER: 1, DECISION_DATE: -1 }, { name: 'JOB_TITLE_LOWER_1_DEC_DATE_-1' });
-permCaseSchema.index({ EMP_CITY_LOWER: 1 });
+// Only indexes used by the prefix search API; build/prune explicitly in production.
+require('../services/searchConfig').addSearchIndexes(permCaseSchema, 'perm');
 
 module.exports = mongoose.model('PermCase', permCaseSchema);

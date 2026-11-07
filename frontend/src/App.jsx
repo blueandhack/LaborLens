@@ -1,11 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import { Component, lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { FiSun, FiMoon, FiGithub } from 'react-icons/fi';
-import ImportView from './components/ImportView';
 import SearchView from './components/SearchView';
 import PermSearchView from './components/PermSearchView';
-import CaseDetailsView from './components/CaseDetailsView';
 import './index.css';
+
+const ImportView = lazy(() => import('./components/ImportView'));
+const CaseDetailsView = lazy(() => import('./components/CaseDetailsView'));
+
+class PageBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed) return (
+      <div className="search-state" role="alert">
+        <h2>This page couldn’t load</h2>
+        <p>Reload to get the latest version and try again.</p>
+        <button className="btn" onClick={() => window.location.reload()}>Reload page</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 const Navigation = () => {
   const location = useLocation();
@@ -61,12 +77,16 @@ function App() {
         </header>
 
         <main id="main-content" className="glass-panel app-main" tabIndex={-1}>
+          <PageBoundary>
+          <Suspense fallback={<div className="loading-overlay" role="status"><div className="spinner-large" /><p>Loading page…</p></div>}>
           <Routes>
             <Route path="/" element={<SearchView />} />
             <Route path="/perm" element={<PermSearchView />} />
             <Route path="/import" element={<ImportView />} />
             <Route path="/cases/:id" element={<CaseDetailsView />} />
           </Routes>
+          </Suspense>
+          </PageBoundary>
         </main>
 
         <footer className="site-footer">

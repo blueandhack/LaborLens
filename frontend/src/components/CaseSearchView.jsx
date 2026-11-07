@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
+import { getJSON } from "../utils/api";
 import { useSearchParams, useLocation } from "react-router-dom";
 import {
   FiArrowLeft,
@@ -256,22 +256,22 @@ export default function CaseSearchView({ program }) {
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
-    axios
-      .get(endpoint, {
-        params: Object.fromEntries(new URLSearchParams(query)),
+    getJSON(`${endpoint}?${query}`, {
         signal: controller.signal,
       })
-      .then(({ data: result }) => {
+      .then((result) => {
         if (current)
           setResponse({ key: requestKey, data: result, error: null });
       })
       .catch((failure) => {
-        if (current && !axios.isCancel(failure))
+        if (current && !controller.signal.aborted)
           setResponse({
             key: requestKey,
             data: null,
             error:
-              "We couldn’t load these cases. Your search has been kept. Please try again.",
+              failure.status === 503 || failure.status === 400
+                ? failure.message
+                : "We couldn’t load these cases. Your search has been kept. Please try again.",
           });
       });
     return () => {
@@ -282,14 +282,13 @@ export default function CaseSearchView({ program }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    axios
-      .get(`${endpoint}/years`, { signal: controller.signal })
-      .then(({ data: result }) => {
+    getJSON(`${endpoint}/years`, { signal: controller.signal })
+      .then((result) => {
         setYears(result);
         setYearsError(false);
       })
-      .catch((failure) => {
-        if (!axios.isCancel(failure)) setYearsError(true);
+      .catch(() => {
+        if (!controller.signal.aborted) setYearsError(true);
       });
     return () => controller.abort();
   }, [endpoint]);

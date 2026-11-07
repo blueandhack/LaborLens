@@ -2,6 +2,9 @@
 .env
 .env.local
 .env.*.local
+.local/
+rclone.conf
+*.archive.gz
 
 # Data files — too large and may contain personal data
 *.xlsx
