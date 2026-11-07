@@ -1,4 +1,4 @@
-const { programs } = require('./searchConfig');
+const { programs, indexNames } = require('./searchConfig');
 const { BoundedCache } = require('./boundedCache');
 
 const counts = new BoundedCache();
@@ -53,11 +53,11 @@ function buildSearch(program, input) {
     }
     const query = conditions.length || location ? { $and: [...conditions, ...(location ? [{ $or: location }] : [])] } : {};
     let hint;
-    if (filters.company) hint = 'search_company_v2';
-    else if (filters.jobTitle) hint = 'search_title_v2';
+    if (filters.company) hint = indexNames.company;
+    else if (filters.jobTitle) hint = indexNames.title;
     else if (filters.caseNumber.length >= 10) hint = 'CASE_NUMBER_1';
-    else if (filters.receivedYear) hint = 'search_received_v3';
-    else if (!location) hint = 'search_recent_v3';
+    else if (filters.receivedYear) hint = indexNames.received;
+    else if (!location) hint = indexNames.recent;
     return { config, query, filters, hint, page, limit, skip: (page - 1) * limit,
         branches: location && !filters.company && !filters.jobTitle && filters.caseNumber.length < 10
             ? location.map(branch => ({ $and: [...conditions, branch] })) : null,
@@ -78,8 +78,8 @@ function pageIds(collection, query, spec, signal, hint, skip = spec.skip, limit 
         .sort(spec.sort).skip(skip).limit(limit).toArray();
 }
 
-function metadataStages(spec, query, hint, withDate = false) {
-    const fields = new Set();
+function metadataStages(spec, query, hint, withDate = false, extraFields = []) {
+    const fields = new Set(extraFields);
     function visit(value) {
         for (const [key, condition] of Object.entries(value)) {
             if (key === '$and' || key === '$or') condition.forEach(visit);
@@ -87,9 +87,9 @@ function metadataStages(spec, query, hint, withDate = false) {
         }
     }
     visit(query);
-    const primary = ({ search_company_v2: spec.config.company, search_title_v2: 'JOB_TITLE_LOWER',
-        search_city_v2: spec.config.city, search_state_v2: spec.config.state,
-        search_received_v3: 'RECEIVED_DATE', search_recent_v3: spec.config.date, CASE_NUMBER_1: 'CASE_NUMBER' })[hint];
+    const primary = ({ [indexNames.company]: spec.config.company, [indexNames.title]: 'JOB_TITLE_LOWER',
+        [indexNames.city]: spec.config.city, [indexNames.state]: spec.config.state,
+        [indexNames.received]: 'RECEIVED_DATE', [indexNames.recent]: spec.config.date, CASE_NUMBER_1: 'CASE_NUMBER' })[hint];
     const leading = (query.$and || [query]).filter(condition => Object.hasOwn(condition, primary));
     const projection = { _id: withDate ? 1 : 0, ...(withDate ? { [spec.config.date]: 1 } : {}) };
     // A computed projection keeps residual OR/regex filters above the index-only
@@ -105,7 +105,7 @@ async function locationPage(collection, spec, signal) {
     const end = spec.skip + spec.limit;
     if (end > 2000) return pageIds(collection, spec.query, spec, signal);
     const pages = await Promise.all(spec.branches.map((query, index) =>
-        pageIds(collection, query, spec, signal, index ? 'search_state_v2' : 'search_city_v2', 0, end)));
+        pageIds(collection, query, spec, signal, index ? indexNames.state : indexNames.city, 0, end)));
     const rows = [...new Map(pages.flat().map(row => [String(row._id), row])).values()];
     // Older malformed date values retain MongoDB's BSON ordering via fallback.
     if (rows.some(row => row[spec.config.date] != null && !(row[spec.config.date] instanceof Date))) {
@@ -139,8 +139,8 @@ async function searchCases(Model, program, input, { signal } = {}) {
     const total = counts.get(countKey, async () => {
         if (spec.branches) {
             const [city, state, overlap] = await Promise.all([
-                count(spec.branches[0], 'search_city_v2'), count(spec.branches[1], 'search_state_v2'),
-                count(spec.intersection, 'search_city_v2'),
+                count(spec.branches[0], indexNames.city), count(spec.branches[1], indexNames.state),
+                count(spec.intersection, indexNames.city),
             ]);
             return city + state - overlap;
         }
@@ -158,7 +158,7 @@ async function searchCases(Model, program, input, { signal } = {}) {
         // A short trial budget protects rare/historical queries; those fall back
         // to their selective prefix index.
         if (hasFilters && totalCount >= 1000 && spec.skip + spec.limit <= 2000 && !spec.filters.receivedYear) {
-            const stages = metadataStages(spec, query, 'search_recent_v3', true);
+            const stages = metadataStages(spec, query, indexNames.recent, true);
             stages[1].$project[config.date] = 1;
             try {
                 // The bounded window also fences MongoDB's optimizer: without
@@ -167,7 +167,7 @@ async function searchCases(Model, program, input, { signal } = {}) {
                 const window = Math.min(20000, Math.max(5000, (spec.skip + limit) * 100));
                 ids = await collection.aggregate([stages[0], { $sort: spec.sort }, { $limit: window }, stages[1], stages[2],
                     { $skip: spec.skip }, { $limit: limit }, { $project: { _id: 1, [config.date]: 1 } }],
-                { hint: 'search_recent_v3', maxTimeMS: 500, signal }).toArray();
+                { hint: indexNames.recent, maxTimeMS: 500, signal }).toArray();
                 if (ids.length < Math.min(limit, totalCount - spec.skip)) ids = undefined;
             } catch (error) {
                 if (error.code !== 50 || signal?.aborted) throw error;
@@ -196,4 +196,4 @@ async function searchCases(Model, program, input, { signal } = {}) {
     return { cases, totalPages: Math.ceil(totalCount / limit), currentPage: page, totalCount };
 }
 
-module.exports = { buildSearch, insensitivePrefix, searchCases, invalidateCounts: () => counts.clear() };
+module.exports = { buildSearch, insensitivePrefix, searchCases, metadataStages, invalidateCounts: () => counts.clear() };

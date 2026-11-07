@@ -43,12 +43,12 @@ async function main() {
                     ...(program === 'pwd' ? ['EMPLOYER_NAME_LOWER_1_DET_DATE_-1', 'JOB_TITLE_LOWER_1_DET_DATE_-1', 'EMPLOYER_NAME_1_DET_DATE_-1', 'JOB_TITLE_1_DET_DATE_-1']
                         : ['EMP_NAME_LOWER_1_DEC_DATE_-1', 'JOB_TITLE_LOWER_1_DEC_DATE_-1', 'JOB_OPP_PWD_NUMBER_1']),
                     ...['recent', 'company', 'title', 'city', 'state', 'received'].map(name => `search_${name}_v1`),
-                    'search_recent_v2', 'search_received_v2',
+                    'search_recent_v2', 'search_received_v2', 'search_recent_v3', 'search_company_v2', 'search_title_v2', 'search_city_v2', 'search_state_v2',
                 ]);
                 for (const index of before) {
                     if (obsolete.has(index.name) && !names.has(index.name) && !index.unique && index.expireAfterSeconds === undefined &&
                             !index.partialFilterExpression && !index.sparse && !index.hidden &&
-                            (Object.keys(index.key).every(field => oldFields.has(field)) || /^search_(?:recent|company|title|city|state|received)_v1$/.test(index.name) || ['search_recent_v2', 'search_received_v2'].includes(index.name))) {
+                            (Object.keys(index.key).every(field => oldFields.has(field)) || /^search_(?:recent|company|title|city|state|received)_v1$/.test(index.name) || ['search_recent_v2', 'search_received_v2', 'search_recent_v3', 'search_company_v2', 'search_title_v2', 'search_city_v2', 'search_state_v2'].includes(index.name))) {
                         console.log(`Removing obsolete ${config.collection}.${index.name}`);
                         await collection.dropIndex(index.name);
                     }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { getJSON } from "../utils/api";
 import { useSearchParams, useLocation } from "react-router-dom";
 import {
@@ -10,6 +10,7 @@ import {
   FiX,
   FiRefreshCw,
   FiSliders,
+  FiBarChart2,
 } from "react-icons/fi";
 import CaseResults from "./CaseResults";
 import {
@@ -17,6 +18,8 @@ import {
   readSearchState,
   writeSearchState,
 } from "../utils/searchState";
+
+const SearchInsights = lazy(() => import("./SearchInsights"));
 
 const savedView = () => {
   try {
@@ -202,6 +205,7 @@ export default function CaseSearchView({ program }) {
   const [years, setYears] = useState([]);
   const [yearsError, setYearsError] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const [response, setResponse] = useState({
     key: null,
     data: null,
@@ -451,6 +455,16 @@ export default function CaseSearchView({ program }) {
           )}
         </div>
         <div className="result-controls">
+          <button
+            type="button"
+            className="insights-toggle"
+            aria-expanded={insightsOpen}
+            aria-controls="search-insights"
+            onClick={() => setInsightsOpen((value) => !value)}
+          >
+            <FiBarChart2 aria-hidden="true" />
+            {insightsOpen ? "Hide insights" : "Explore insights"}
+          </button>
           <div className="view-switch" role="group" aria-label="Results layout">
             <button
               type="button"
@@ -488,6 +502,18 @@ export default function CaseSearchView({ program }) {
           </label>
         </div>
       </div>
+      {insightsOpen && (
+        <div id="search-insights">
+          <Suspense fallback={<p className="inline-notice" role="status">Loading insights…</p>}>
+            <SearchInsights
+              program={program}
+              filters={filters}
+              onSelectYear={(year) => update({ ...filters, [perm ? "decisionYear" : "determinationYear"]: String(year) }, 1)}
+              onOverview={reset}
+            />
+          </Suspense>
+        </div>
+      )}
       <div aria-busy={loading} className="results-content">
         {loading ? (
           <div className={`results-skeleton skeleton-${view}`} role="status">

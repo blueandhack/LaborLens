@@ -5,6 +5,7 @@ const { createHash, randomUUID } = require('crypto');
 const { fetchDatasets, downloadDataset } = require('./dolSource');
 const { importWorkbook, auditWorkbook, VALIDATION_VERSION, sourceRank } = require('./importWorkbook');
 const { acquireImportLock } = require('./importLock');
+const { noteInsightsChange } = require('./searchInsights');
 
 async function runAutoImport(db, {
     models, force = false, signal, fromYear, maxFiles = Infinity, backfill = false,
@@ -55,6 +56,7 @@ async function runAutoImport(db, {
             if (newer && fromYear === undefined) throw new Error(`Refusing to replace ${dataset.type.toUpperCase()} data with a superseded DOL release`);
             const historical = fromYear !== undefined && (sourceRank(dataset) < latest[dataset.type] || !!newer);
             const destination = path.join(tempDir, sourceId + '.xlsx');
+            let writesStarted = false;
             await sources.updateOne({ _id: sourceId }, {
                 $set: { ...dataset, status: 'downloading', runId, startedAt: new Date(), error: null },
                 $inc: { attempts: 1 },
@@ -87,6 +89,7 @@ async function runAutoImport(db, {
                     validation.report.sha256 = downloaded.sha256;
                     await sources.updateOne({ _id: sourceId }, { $set: { validation: validation.report, status: 'importing' } });
                     if (!validation.report.canImport) throw new Error(`Validation rejected ${validation.report.rejectedRows} rows without case numbers; file not imported`);
+                    writesStarted = true;
                     const stats = await importFile(destination, {
                         type: dataset.type, Model: models[dataset.type], ensureActive, validation, historical,
                         source: { ...dataset, sha256: downloaded.sha256 },
@@ -110,6 +113,10 @@ async function runAutoImport(db, {
                 errors.push(`${dataset.filename}: ${error.message}`);
                 log({ event: 'file-failed', filename: dataset.filename, error: error.message });
             } finally {
+                if (writesStarted) {
+                    try { await noteInsightsChange(db, dataset.type); }
+                    catch (error) { log({ event: 'insights-invalidation-failed', error: error.message }); }
+                }
                 await fs.rm(destination, { force: true });
             }
             await runs.updateOne({ _id: runId }, { $set: { results } });

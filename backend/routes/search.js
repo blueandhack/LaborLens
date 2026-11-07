@@ -6,9 +6,28 @@ const { getAvailableYears } = require('../services/searchYears');
 const { searchCases, invalidateCounts } = require('../services/caseSearch');
 const { programs } = require('../services/searchConfig');
 const { BoundedCache } = require('../services/boundedCache');
+const { getSearchInsights, invalidateInsights } = require('../services/searchInsights');
 
 const years = new BoundedCache({ capacity: 2, ttlMs: 10 * 60 * 1000 });
-const invalidateCache = () => { years.clear(); invalidateCounts(); };
+const invalidateCache = () => { years.clear(); invalidateCounts(); invalidateInsights(); };
+
+function insightsHandler(Model, program) {
+    return async (req, res) => {
+        const controller = new AbortController();
+        const disconnect = () => { if (!res.writableEnded) controller.abort(); };
+        res.once('close', disconnect);
+        try {
+            const result = await getSearchInsights(Model, program, req.query, { signal: controller.signal });
+            if (!controller.signal.aborted) res.set('Cache-Control', 'public, max-age=15').json(result);
+        } catch (error) {
+            if (controller.signal.aborted) return;
+            const status = error.status || ([50, 292, 4031700].includes(error.code) ? 503 : 500);
+            if (status >= 500) console.error(`${program.toUpperCase()} insights failed:`, error.message);
+            res.status(status).set('Cache-Control', 'no-store').json({ error: status === 400 ? error.message
+                : 'Insights could not load. Try again, or narrow this search. Your case results are still available.' });
+        } finally { res.removeListener('close', disconnect); }
+    };
+}
 
 function searchHandler(Model, program) {
     return async (req, res) => {
@@ -45,6 +64,8 @@ function yearsHandler(Model, program) {
 
 router.get('/', searchHandler(Case, 'pwd'));
 router.get('/years', yearsHandler(Case, 'pwd'));
+router.get('/insights', insightsHandler(Case, 'pwd'));
 router.get('/perm', searchHandler(PermCase, 'perm'));
 router.get('/perm/years', yearsHandler(PermCase, 'perm'));
+router.get('/perm/insights', insightsHandler(PermCase, 'perm'));
 module.exports = { router, invalidateCache };

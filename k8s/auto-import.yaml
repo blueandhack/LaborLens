@@ -1,6 +1,47 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  name: laborlens-insights-refresh
+  namespace: laborlens
+spec:
+  schedule: "45 3 * * *"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          nodeSelector:
+            kubernetes.io/hostname: skycat
+          containers:
+          - name: insights
+            image: ghcr.io/blueandhack/laborlens-backend:9e322c55f4eef92125d0b7bc27bc3c06a4aa0a59
+            imagePullPolicy: Always
+            command: ["node", "scripts/refresh-insights.js"]
+            env:
+            - name: MONGO_URI
+              value: "mongodb://laborlens-mongodb:27017/pwd_cases"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=96"
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: "1"
+                memory: 192Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
   name: laborlens-auto-import
   namespace: laborlens
 spec:

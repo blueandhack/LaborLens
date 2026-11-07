@@ -17,6 +17,8 @@ There are now eight indexes per case collection, including `_id` and the unique 
 
 The frontend uses native fetch and loads admin/detail code on demand, with a recoverable page-load error screen. Google Fonts starts loading from HTML instead of a serial CSS import. Nginx compresses assets and Traefik compresses API responses. A small SVG favicon replaces the large PNG on normal page loads; the PNG remains available for social previews.
 
+[Search insights](search-insights.md) adds optional SVG charts for the current search or whole imported program. Status metadata extends five existing covering indexes; the final index count remains eight per collection. Charts load separately (about 3 KB JS and 1.3 KB CSS gzipped), use a short bounded cache and database time budget, and read a persisted summary for the whole dataset. They do not increase the MongoDB cache budget or load full disclosure documents on normal analytics paths.
+
 ## Measurements
 
 Representative backend measurements against more than 4.2 million production cases, while historical imports were running:

@@ -2,6 +2,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const { fetchDatasets } = require('../services/dolSource');
 const { runAutoImport } = require('../services/autoImport');
+const { refreshGlobalInsights } = require('../services/searchInsights');
 
 async function main() {
     const args = process.argv.slice(2);
@@ -23,12 +24,17 @@ async function main() {
         }
         if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
         await mongoose.connect(process.env.MONGO_URI, { autoIndex: false, maxPoolSize: 3, maxIdleTimeMS: 60000, serverSelectionTimeoutMS: 30000 });
-        await runAutoImport(mongoose.connection.db, {
-            models: { pwd: require('../models/Case'), perm: require('../models/PermCase') },
+        const models = { pwd: require('../models/Case'), perm: require('../models/PermCase') };
+        const result = await runAutoImport(mongoose.connection.db, {
+            models,
             force: args.includes('--force'), signal: controller.signal,
             fromYear: fromYear === undefined ? undefined : Number(fromYear),
             maxFiles: maxFiles === undefined ? Infinity : Number(maxFiles), backfill: args.includes('--backfill'),
         });
+        for (const program of [...new Set(result.results.filter(row => row.outcome === 'imported').map(row => row.type))]) {
+            try { console.log(JSON.stringify(await refreshGlobalInsights(models[program], program, { signal: controller.signal }))); }
+            catch (error) { console.warn(JSON.stringify({ event: 'insights-refresh-failed', error: error.message })); }
+        }
     } finally {
         await mongoose.disconnect();
         process.removeListener('SIGTERM', stop);

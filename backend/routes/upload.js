@@ -8,6 +8,7 @@ const { authMiddleware } = require('./admin');
 const { importWorkbook, VALIDATION_VERSION } = require('../services/importWorkbook');
 const { acquireImportLock } = require('../services/importLock');
 const { invalidateCache } = require('./search');
+const { noteInsightsChange, refreshGlobalInsights } = require('../services/searchInsights');
 
 const router = express.Router();
 const upload = multer({ dest: '/tmp/pwd_uploads/', limits: { fileSize: 768 * 1024 * 1024 } });
@@ -92,9 +93,13 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
             currentJob.logs.push(`Error: ${error.message}`);
         } finally {
             // Partial writes also change search results; invalidate on failure.
+            try { await noteInsightsChange(mongoose.connection.db, type); }
+            catch (error) { console.error('Insights invalidation failed:', error.message); }
             invalidateCache();
             try { await fs.rm(filePath, { force: true }); }
             finally { await lease.release(); }
+            refreshGlobalInsights(type === 'perm' ? PermCase : Case, type)
+                .catch(error => console.error('Insights refresh failed:', error.message));
         }
     })().catch(error => console.error('Import cleanup failed:', error));
 });

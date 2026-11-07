@@ -15,6 +15,11 @@ const programs = {
     },
 };
 
+const indexNames = {
+    recent: 'search_recent_v4', company: 'search_company_v3', title: 'search_title_v3',
+    city: 'search_city_v3', state: 'search_state_v3', received: 'search_received_v3',
+};
+
 function searchIndexes(program) {
     const config = programs[program];
     const sort = { [config.date]: -1, _id: 1 };
@@ -25,12 +30,12 @@ function searchIndexes(program) {
         return key;
     }
     return [
-        { name: 'search_recent_v3', key: { ...sort, ...Object.fromEntries(filters.map(field => [field, 1])) } },
+        { name: indexNames.recent, key: { ...sort, ...Object.fromEntries(filters.map(field => [field, 1])), CASE_STATUS: 1 } },
         ...Object.entries({ company: config.company, title: 'JOB_TITLE_LOWER', city: config.city,
             state: config.state, received: 'RECEIVED_DATE' }).map(([name, field]) => ({
-            name: `search_${name}_v${name === 'received' ? 3 : 2}`, key: covered(field, name === 'received' ? -1 : 1,
-                name === 'company' || name === 'title' ? filters : name === 'received' ? []
-                    : [config.city, config.state, 'RECEIVED_DATE', 'CASE_NUMBER']),
+            name: indexNames[name], key: covered(field, name === 'received' ? -1 : 1,
+                name === 'company' || name === 'title' ? [...filters, 'CASE_STATUS'] : name === 'received' ? []
+                    : [config.city, config.state, 'RECEIVED_DATE', 'CASE_NUMBER', 'CASE_STATUS']),
         })),
     ];
 }
@@ -39,4 +44,4 @@ function addSearchIndexes(schema, program) {
     for (const { name, key } of searchIndexes(program)) schema.index(key, { name });
 }
 
-module.exports = { programs, searchIndexes, addSearchIndexes };
+module.exports = { programs, indexNames, searchIndexes, addSearchIndexes };

@@ -6,6 +6,7 @@ const { authMiddleware } = require('./admin');
 const mongoose = require('mongoose');
 const { acquireImportLock } = require('../services/importLock');
 const { invalidateCache } = require('./search');
+const { noteInsightsChange } = require('../services/searchInsights');
 
 router.get('/:id', async (req, res) => {
     try {
@@ -38,6 +39,7 @@ router.delete('/', authMiddleware, async (req, res) => {
         // not changed, since the administrator deliberately cleared this data.
         await mongoose.connection.db.collection('import_sources').updateMany({ type }, { $set: { status: 'cleared' } });
         const result = await Model.deleteMany({});
+        await noteInsightsChange(mongoose.connection.db, type, { clear: true });
         invalidateCache();
         res.json({ success: true, deletedCount: result.deletedCount, message: `Successfully deleted ${result.deletedCount} ${type.toUpperCase()} cases` });
     } catch (error) {
