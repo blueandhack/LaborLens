@@ -77,3 +77,18 @@ changed source files with missing visa columns still require source review.
 Blocked sources are not repeatedly downloaded during hourly backfill; an updated
 recovery rule or an explicit `--force` retries them. Program-specific discovery
 preserves the other programs in archive coverage.
+
+On November 7, 2026, FY2008 completed its production backfill: **399,211 H-1B
+applications** inserted from 405,641 source rows, with 6,430 H-1B1/E-3 rows
+excluded, zero rejected identifiers, and zero field-format issues. Public
+case-number and employer/year searches and the FY2008 year dropdown were
+verified. The continuing archive backfill runs as a Kubernetes job, with the
+hourly historical schedule providing resumable fallback; its live per-file
+status is available under Administration.
+
+The full FY2010 read-only audit independently passed all 342,575 source rows:
+336,024 distinct H-1B applications decoded from their documented case IDs,
+6,551 H-1B1/E-3 rows excluded, and zero rejected rows. All offered-wage periods
+remain unreported, and one invalid optional end date is preserved as a source
+issue. This audit confirms import eligibility, not completed production loading
+of FY2010; consult file history for that file's actual import result.
