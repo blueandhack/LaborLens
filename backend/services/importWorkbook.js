@@ -121,6 +121,10 @@ async function importWorkbook(filePath, {
         : type === 'pwd'
         ? { EMPLOYER_LEGAL_BUSINESS_NAME: 'EMPLOYER_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMPLOYER_CITY: 'EMPLOYER_CITY_LOWER' }
         : { EMP_BUSINESS_NAME: 'EMP_BUSINESS_NAME_LOWER', JOB_TITLE: 'JOB_TITLE_LOWER', EMP_CITY: 'EMP_CITY_LOWER' };
+    // H-1B's declared fields are all typed by normalizeRecord and the complete
+    // preflight verifies case identifiers before writes. Avoid re-casting every
+    // wide disclosure through Mongoose; preserve its timestamp/upsert behavior.
+    const nativeWrites = type === 'h1b' && typeof Model.collection?.bulkWrite === 'function';
     async function flush() {
         if (!batch.length) return;
         ensureActive();
@@ -162,10 +166,13 @@ async function importWorkbook(filePath, {
                 }
             }
             if (source && update === record) record._DOL_SOURCE = { ...source, rank: sourceRank(source), validationVersion: VALIDATION_VERSION };
-            operations.push({ updateOne: { filter: { CASE_NUMBER: record.CASE_NUMBER }, update: { $set: update }, upsert: true } });
+            const timestamps = nativeWrites ? { $setOnInsert: { createdAt: new Date(), __v: 0 } } : {};
+            operations.push({ updateOne: { filter: { CASE_NUMBER: record.CASE_NUMBER },
+                update: { $set: nativeWrites ? { ...update, updatedAt: new Date() } : update, ...timestamps }, upsert: true } });
         }
         if (operations.length) {
-            const result = await Model.bulkWrite(operations, { ordered: false, throwOnValidationError: true });
+            const writer = nativeWrites ? Model.collection : Model;
+            const result = await writer.bulkWrite(operations, { ordered: false, ...(!nativeWrites ? { throwOnValidationError: true } : {}) });
             stats.inserted += result.upsertedCount || 0;
             stats.updated += result.modifiedCount || 0;
         }

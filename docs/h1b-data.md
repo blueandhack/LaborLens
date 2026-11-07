@@ -24,6 +24,8 @@ node scripts/auto-import.js --programs=h1b --max-files=1
 
 Run these in the backend environment with its private `MONGO_URI`. All files receive a complete preflight before database writes and use the shared import/clear/backup lease. Workbook download, parsing, source tracking, duplicate handling and historical-write protection use the established importer. A source's validation report records excluded visa classes and counts.
 
+After normalization and preflight, H-1B uses native bulk upserts to avoid re-casting its wide disclosures through Mongoose. Creation/update timestamps are written explicitly, and replay preserves case IDs and creation times. A disposable 5,000-record benchmark took 4.84 seconds through schema casting versus 0.43 seconds with native writes; actual import time also includes parsing, network and index work. PWD/PERM retain their established write paths.
+
 Weekly automatic imports discover the newest cumulative release for PWD, PERM and H-1B. Quarterly files are cumulative, so superseded quarters and supplement files are excluded. The hourly archive job explicitly selects `--programs=pwd,perm` so adding this tab does not launch a large H-1B historical backfill. `--programs` accepts a comma-separated subset; the CLI defaults to all three programs.
 
 After successful imports, H-1B's saved whole-dataset Insights overview refreshes. The daily refresh also includes all three programs. Filtered analytics retain their five-second budget and optional lazy loading. Database backups include the new collection automatically because they dump the application database.
