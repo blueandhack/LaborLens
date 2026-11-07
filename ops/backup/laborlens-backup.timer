@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly LaborLens backup on the 1st at 04:05 Pacific
+
+[Timer]
+OnCalendar=*-*-01 04:05:00 America/Los_Angeles
+RandomizedDelaySec=5m
+Persistent=true
+Unit=laborlens-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -16,6 +16,8 @@ Search filters, page size, pagination, and explicit layout choices stay in the U
 
 MongoDB is pinned to 9.0.4 and the backend uses Node 24. See the [MongoDB migration and recovery notes](docs/mongodb-upgrade.md) before reusing an older database volume.
 
+Optional encrypted Google Drive backup and isolated restore utilities are documented in the [backup setup and recovery guide](docs/google-drive-backup.md).
+
 ### Docker (recommended)
 
 ```bash

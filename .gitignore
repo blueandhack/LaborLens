@@ -1,9 +1,23 @@
 # Environment variables
 .env
+.env.*
+!.env.example
+!.env.*.example
 .env.local
 .env.*.local
 .local/
 rclone.conf
+google-client.json
+client_secret*.json
+credentials.json
+token.json
+tokens.json
+service-account*.json
+authorization.json
+recovery.json
+restore-check.json
+__pycache__/
+*.py[cod]
 *.archive.gz
 
 # Data files — too large and may contain personal data
