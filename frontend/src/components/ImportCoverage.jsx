@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FiActivity, FiArrowUpRight, FiCheck, FiClock, FiChevronDown, FiExternalLink, FiX } from 'react-icons/fi';
+import { FiActivity, FiArrowUpRight, FiCheck, FiChevronDown, FiExternalLink, FiX } from 'react-icons/fi';
 import ReportLoader from './ValidationReportLoader';
 import { formatCount, formatImportDate, programLabel, sourceStatus } from '../utils/importPresentation';
 import './ImportCoverage.css';
@@ -10,11 +10,11 @@ const quarterLabel = file => file.period === 'annual' ? 'Annual release' : `Q${f
 const viaLabel = cell => cell.viaAnnual ? 'annual file' : `Q${cell.viaQuarter}`;
 const CellIcon = ({ state }) => state === 'imported' ? <FiCheck /> : state === 'covered' ? <FiArrowUpRight /> : state === 'active' ? <FiActivity /> : null;
 
-function CurrentFile({ file, onSelect }) {
+function CurrentFile({ file, type, onSelect }) {
     const label = file.stage === 'importing' ? 'Importing cases' : file.stage === 'validating' ? 'Validating workbook' : 'Downloading workbook';
     return <div className="coverage-current-file">
-        <div className="coverage-current-heading"><span><FiActivity aria-hidden="true" /> {label}</span><strong>FY{file.fiscalYear} · {quarterLabel(file)}</strong></div>
-        <div className="coverage-file-name">{file.filename}</div>
+        <div className="coverage-current-description"><div className="coverage-current-heading"><span><FiActivity aria-hidden="true" /> {label}</span><strong>{programLabel(type)} · FY{file.fiscalYear} · {quarterLabel(file)}</strong></div>
+        <div className="coverage-file-name">{file.filename}</div></div><div className="coverage-current-progress">
         <div className={`coverage-meter current ${file.percentage == null ? 'indeterminate' : ''}`} role="progressbar" aria-label={`${label}: ${file.filename}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={file.percentage ?? undefined} aria-valuetext={file.percentage == null ? file.stage === 'validating' ? `${formatCount(file.processed)} source rows checked; total not yet known` : 'Download in progress' : `${formatCount(file.processed)} of ${formatCount(file.total)} cases processed`}>
             <span style={{ width: file.percentage == null ? '30%' : `${file.percentage}%` }} />
         </div>
@@ -23,7 +23,7 @@ function CurrentFile({ file, onSelect }) {
             {file.percentage != null && <strong>{file.percentage}%</strong>}
         </div>
         {file.stage === 'importing' && <p className="admin-help">{formatCount(file.inserted)} inserted · {formatCount(file.updated)} updated{file.protected > 0 ? ` · ${formatCount(file.protected)} newer records protected` : ''}</p>}
-        <button className="admin-text-button" onClick={onSelect}>Inspect this release</button>
+        </div><button id={`coverage-current-${type}`} className="btn btn-secondary coverage-inspect" onClick={onSelect}>Inspect release <FiArrowUpRight aria-hidden="true" /></button>
     </div>;
 }
 
@@ -40,15 +40,15 @@ export default function ImportCoverage({ progress, sources }) {
     const cell = selectedProgram?.years.find(row => row.fiscalYear === selection.year)?.quarters.find(item => item.quarter === selection.quarter);
     const selectedFiles = cell ? selectedProgram.files.filter(file => cell.fileUrls.includes(file.url)) : [];
     const directFiles = cell ? selectedProgram.files.filter(file => cell.directUrls.includes(file.url) && !cell.fileUrls.includes(file.url)) : [];
-    const select = (type, fiscalYear, quarter) => {
-        setSelection({ type, year: fiscalYear, quarter });
+    const select = (type, fiscalYear, quarter, anchorId) => {
+        setSelection({ type, year: fiscalYear, quarter, anchorId });
         setOpenReport(null);
         requestAnimationFrame(() => document.getElementById('coverage-detail-heading')?.focus({ preventScroll: false }));
     };
     const close = () => {
         const previous = selection;
         setSelection(null); setOpenReport(null);
-        document.getElementById(`coverage-${previous.type}-${previous.year}-${previous.quarter}`)?.focus({ preventScroll: true });
+        [previous.anchorId, `coverage-table-${previous.type}-${previous.year}-${previous.quarter}`, `coverage-phone-${previous.type}-${previous.year}-${previous.quarter}`].map(id => document.getElementById(id)).find(element => element?.getClientRects().length)?.focus({ preventScroll: true });
     };
     const renderFile = file => {
         const source = sources.find(item => item._id === file.sourceId);
@@ -61,18 +61,28 @@ export default function ImportCoverage({ progress, sources }) {
         </div>;
     };
 
+    const renderQuarter = (program, fiscalYear, item, mode) => <button
+        id={`coverage-${mode}-${program.type}-${fiscalYear}-${item.quarter}`}
+        className={`coverage-cell ${item.state} ${selection?.type === program.type && selection?.year === fiscalYear && selection?.quarter === item.quarter ? 'is-selected' : ''}`}
+        aria-label={`${programLabel(program.type)} FY${fiscalYear} Q${item.quarter}: ${item.label}${item.viaQuarter ? ` via ${viaLabel(item)}` : ''}`}
+        aria-pressed={selection?.type === program.type && selection?.year === fiscalYear && selection?.quarter === item.quarter}
+        onClick={event => select(program.type, fiscalYear, item.quarter, event.currentTarget.id)}>
+        {mode === 'phone' && <span className="coverage-quarter-number">Q{item.quarter}</span>}
+        <span><CellIcon state={item.state} />{CELL_LABEL[item.state]}</span>
+        {item.viaQuarter && item.state !== 'imported' && item.state !== 'unavailable' && <small>{item.viaAnnual ? 'Annual' : item.viaQuarter > item.quarter ? `via Q${item.viaQuarter}` : `Q${item.viaQuarter} release`}</small>}
+    </button>;
+
     return <section className="coverage-dashboard" aria-labelledby="coverage-heading">
         <div className="admin-section-heading"><div><p className="section-kicker">Live import monitor</p><h3 id="coverage-heading">Progress by program</h3></div><p className="coverage-updated"><span>Updates every 15 seconds</span><span>Updated <time dateTime={progress.asOf} title={formatImportDate(progress.asOf)}>{new Date(progress.asOf).toLocaleTimeString()}</time></span></p></div>
         <div className="coverage-programs">
             {programs.map(program => <article className={`coverage-program ${program.state} ${view === program.type ? 'selected' : ''}`} key={program.type}>
                 <div className="coverage-program-heading"><h4><button aria-pressed={view === program.type} onClick={() => { setView(program.type); setSelection(null); setOpenReport(null); }}>{programLabel(program.type)}</button></h4><span className={`import-status ${program.state === 'active' ? 'neutral' : program.state === 'attention' ? 'error' : program.state === 'complete' ? 'success' : ''}`}>{PROGRAM_LABEL[program.state]}</span></div>
-                <p className="coverage-program-total"><strong>{formatCount(program.completedFiles)}</strong><span> / {formatCount(program.totalFiles)} releases imported</span></p>
+                <p className="coverage-program-total"><strong>{formatCount(program.completedFiles)}</strong><span className="coverage-total-count"> / {formatCount(program.totalFiles)}</span><span className="coverage-total-label">releases imported</span></p>
                 <div className="coverage-meter" role="progressbar" aria-label={`${programLabel(program.type)} required release files imported`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={program.percentage ?? undefined} aria-valuetext={program.inventoryKnown ? `${program.completedFiles} of ${program.totalFiles} required release files imported` : 'Archive inventory has not loaded'}><span style={{ width: `${program.percentage ?? 0}%` }} /></div>
-                <p className="coverage-program-caption">{program.inventoryKnown ? `${program.percentage}% of required releases · ${program.pendingFiles} queued${program.attentionFiles ? ` · ${program.attentionFiles} need attention` : ''}` : 'Waiting for archive inventory'}</p>
-                {program.current.map(file => <CurrentFile key={file.url} file={file} onSelect={() => { setView(program.type); setYear('all'); select(program.type, file.fiscalYear, file.quarter); }} />)}
-                {!program.current.length && <p className="coverage-idle"><FiClock aria-hidden="true" />{program.state === 'complete' ? 'Latest listed releases are imported.' : program.state === 'attention' ? 'Review the highlighted releases below.' : program.pendingFiles > 0 && programs.some(item => item.current.length > 0) ? 'Queued while another program imports.' : 'No file is processing for this program.'}</p>}
+                <p className="coverage-program-caption">{program.inventoryKnown ? <><span>{program.percentage}% complete</span><span>{program.pendingFiles} queued{program.attentionFiles ? ` · ${program.attentionFiles} need attention` : ''}</span></> : 'Waiting for archive inventory'}</p>
             </article>)}
         </div>
+        <div className="coverage-active-files">{programs.flatMap(program => program.current.map(file => <CurrentFile key={file.url} type={program.type} file={file} onSelect={() => { setView(program.type); setYear('all'); select(program.type, file.fiscalYear, file.quarter, `coverage-current-${program.type}`); }} />))}</div>
         <div className="coverage-grid-heading"><div><h3>Year & quarter coverage</h3><p className="admin-help">Each cell opens the release status and validation details.</p></div><div className="coverage-grid-controls"><label><span id="coverage-view-label">Program</span><select aria-labelledby="coverage-view-label" value={view} onChange={event => { setView(event.target.value); setSelection(null); setOpenReport(null); }}>{programs.map(program => <option value={program.type} key={program.type}>{programLabel(program.type)}</option>)}<option value="all">All programs</option></select></label><label><span id="coverage-year-label">Fiscal year</span><select aria-labelledby="coverage-year-label" value={year} onChange={event => { setYear(event.target.value); setSelection(null); setOpenReport(null); }}><option value="all">All years</option>{allYears.map(value => <option value={value} key={value}>{value}</option>)}</select></label></div></div>
         <p className="coverage-explainer"><strong>Imported</strong> means the quarter’s file was imported directly. <strong>Covered</strong> means a later cumulative or annual release includes that quarter. Earlier snapshot files do not need a separate import.</p>
         <div className="coverage-legend" aria-label="Coverage legend">{['imported', 'covered', 'active', 'pending', 'partial', 'attention', 'unavailable', 'unknown'].map(state => <span key={state}><i className={`coverage-key ${state}`} aria-hidden="true" />{CELL_LABEL[state]}</span>)}</div>
@@ -88,8 +98,17 @@ export default function ImportCoverage({ progress, sources }) {
         <div className={`coverage-table-scroll ${shown.length > 1 ? 'compare-programs' : ''}`} tabIndex={0} aria-label="Scrollable fiscal-year and quarter import coverage">
             <table className="coverage-table"><caption className="sr-only">{shown.map(program => programLabel(program.type)).join(', ')} fiscal-year and quarter import coverage. Choose a cell to inspect its source files.</caption><thead><tr><th rowSpan={2} scope="col">Fiscal<br />year</th>{shown.map(program => <th colSpan={4} scope="colgroup" key={program.type}>{programLabel(program.type)}</th>)}</tr><tr>{shown.flatMap(program => [1, 2, 3, 4].map(q => <th scope="col" key={`${program.type}-${q}`}>Q{q}</th>))}</tr></thead><tbody>{years.map(fiscalYear => <tr key={fiscalYear}><th scope="row">{fiscalYear}</th>{shown.flatMap(program => {
                 const row = program.years.find(item => item.fiscalYear === fiscalYear);
-                return (row?.quarters || []).map(item => <td key={`${program.type}-${item.quarter}`}><button id={`coverage-${program.type}-${fiscalYear}-${item.quarter}`} className={`coverage-cell ${item.state} ${selection?.type === program.type && selection?.year === fiscalYear && selection?.quarter === item.quarter ? 'is-selected' : ''}`} aria-label={`${programLabel(program.type)} FY${fiscalYear} Q${item.quarter}: ${item.label}${item.viaQuarter ? ` via ${viaLabel(item)}` : ''}`} aria-pressed={selection?.type === program.type && selection?.year === fiscalYear && selection?.quarter === item.quarter} onClick={() => select(program.type, fiscalYear, item.quarter)}><span><CellIcon state={item.state} />{CELL_LABEL[item.state]}</span>{item.viaQuarter && item.state !== 'imported' && item.state !== 'unavailable' && <small>{item.viaAnnual ? 'Annual' : item.viaQuarter > item.quarter ? `via Q${item.viaQuarter}` : `Q${item.viaQuarter} release`}</small>}</button></td>);
+                return (row?.quarters || []).map(item => <td key={`${program.type}-${item.quarter}`}>{renderQuarter(program, fiscalYear, item, 'table')}</td>);
             })}</tr>)}</tbody></table>
+        </div>
+        <div className="coverage-phone-years" role="region" tabIndex={0} aria-label="Fiscal-year and quarter import coverage">
+            {years.map(fiscalYear => <article className="coverage-phone-year" key={fiscalYear}>
+                <h4>FY{fiscalYear}</h4>
+                {shown.map(program => <section className="coverage-phone-program" key={program.type} aria-label={`${programLabel(program.type)} fiscal year ${fiscalYear}`}>
+                    {shown.length > 1 && <h5>{programLabel(program.type)}</h5>}
+                    <div className="coverage-phone-quarters">{(program.years.find(row => row.fiscalYear === fiscalYear)?.quarters || []).map(item => <div key={item.quarter}>{renderQuarter(program, fiscalYear, item, 'phone')}</div>)}</div>
+                </section>)}
+            </article>)}
         </div>
         <p className="admin-help coverage-table-note">Fiscal years follow DOL disclosure releases. Required-release counts use the latest cumulative release per year, including all independent files or form variants. “Covered” describes data coverage; it does not count as a separately imported quarterly file.</p>
         <p className="admin-help">DOL archive inventory checked {formatImportDate(progress.inventoryCheckedAt)}.</p>

@@ -1,9 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import AutomaticImports from './AutomaticImports';
 import './ImportView.css';
-import { FiUploadCloud, FiLogOut, FiSettings, FiX, FiShield, FiUnlock } from 'react-icons/fi';
+import { FiUploadCloud, FiLogOut, FiSettings, FiX, FiShield, FiUnlock, FiRefreshCw, FiDatabase } from 'react-icons/fi';
 
 const ImportView = () => {
+    const [isSigningIn, setIsSigningIn] = useState(false);
+    const [isCheckingIPs, setIsCheckingIPs] = useState(false);
+    const [blockedIPsError, setBlockedIPsError] = useState('');
     const [section, setSection] = useState('automatic');
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [uploadError, setUploadError] = useState('');
@@ -44,7 +47,10 @@ const ImportView = () => {
         checkAuth();
     }, []);
 
-    useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
+    useEffect(() => {
+        const consoleElement = logsEndRef.current?.parentElement;
+        if (consoleElement) consoleElement.scrollTop = consoleElement.scrollHeight;
+    }, [logs]);
 
     const handleDrag = (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -111,12 +117,14 @@ const ImportView = () => {
 
     const handleLogin = async (e) => {
         e.preventDefault(); setAuthError('');
+        setIsSigningIn(true);
         try {
             const res  = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginForm) });
             const data = await res.json();
             if (res.ok) { localStorage.setItem('adminToken', data.token); localStorage.setItem('adminUsername', data.username); setIsAuthenticated(true); }
             else setAuthError(data.error || 'Login failed');
         } catch { setAuthError('Network error. Please try again.'); }
+        finally { setIsSigningIn(false); }
     };
 
     const handleLogout = () => {
@@ -128,14 +136,21 @@ const ImportView = () => {
         setSection('automatic');
         setFile(null);
         setUploadStatus('idle');
+        setShowChangePassword(false);
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setBlockedIPsError('');
     };
 
     const fetchBlockedIPs = useCallback(async () => {
+        setIsCheckingIPs(true);
         try {
             const token = localStorage.getItem('adminToken');
             const res = await fetch('/api/admin/blocked-ips', { headers: { 'Authorization': `Bearer ${token}` } });
-            if (res.ok) setBlockedIPs(await res.json());
-        } catch { /* ignore */ }
+            if (!res.ok) throw new Error('Unable to load blocked addresses. Refresh to try again.');
+            setBlockedIPs(await res.json());
+            setBlockedIPsError('');
+        } catch { setBlockedIPsError('Unable to load blocked addresses. Refresh to try again.'); }
+        finally { setIsCheckingIPs(false); }
     }, []);
 
     const fetchAutoStatus = useCallback(async () => {
@@ -209,183 +224,111 @@ const ImportView = () => {
         return () => clearInterval(iv);
     }, [isAuthenticated, fetchAutoStatus]);
 
+    const closePasswordForm = () => {
+        setShowChangePassword(false);
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setPwdMessage({ type: '', text: '' });
+        requestAnimationFrame(() => document.getElementById('admin-change-password-toggle')?.focus());
+    };
+
     if (isCheckingAuth) {
-        return <div className="loading-overlay"><div className="spinner-large" /><p>Checking authentication…</p></div>;
+        return <div className="loading-overlay" role="status"><div className="spinner-large" /><p>Checking authentication…</p></div>;
     }
 
     if (!isAuthenticated) {
-        return (
-            <div className="admin-login">
-                <p className="section-kicker">Administration</p>
-                <h2 style={{ marginBottom: '6px', fontSize: '20px', fontWeight: 700 }}>Data management</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '24px' }}>
-                    Sign in to monitor imports, review validation reports, and manage datasets.
-                </p>
-                {authError && (
-                    <div style={{ color: 'var(--status-denied)', marginBottom: '16px', padding: '10px 14px', background: 'rgba(181,83,58,0.1)', borderRadius: '6px', fontSize: '13px', border: '1px solid rgba(181,83,58,0.2)' }}>
-                        {authError}
-                    </div>
-                )}
-                <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <input type="text" aria-label="Username" autoComplete="username" placeholder="Username" className="search-input"
-                        value={loginForm.username} onChange={e => setLoginForm({ ...loginForm, username: e.target.value })} required style={{ width: '100%' }} />
-                    <input type="password" aria-label="Password" autoComplete="current-password" placeholder="Password" className="search-input"
-                        value={loginForm.password} onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} required style={{ width: '100%' }} />
-                    <button type="submit" className="btn" style={{ width: '100%', justifyContent: 'center', marginTop: '4px' }}>
-                        Sign In
-                    </button>
+        return <div className="admin-login">
+            <section className="admin-login-intro" aria-labelledby="admin-login-heading">
+                <span className="admin-login-mark" aria-hidden="true"><FiDatabase /></span>
+                <p className="section-kicker">LaborLens administration</p>
+                <h2 id="admin-login-heading">Data management</h2>
+                <p>Monitor DOL imports, inspect validation reports, and manage the disclosure archive.</p>
+                <dl className="admin-login-guide">
+                    <div><dt>Monitor imports</dt><dd>Live progress for H-1B, PWD, and PERM releases.</dd></div>
+                    <div><dt>Review source quality</dt><dd>Inspect validation details and original source values.</dd></div>
+                    <div><dt>Manage datasets</dt><dd>Upload a specific release and manage administrator access.</dd></div>
+                </dl>
+            </section>
+            <section className="admin-login-form" aria-labelledby="admin-sign-in-heading">
+                <FiShield aria-hidden="true" className="admin-form-icon" />
+                <h3 id="admin-sign-in-heading">Administrator sign-in</h3>
+                <p className="admin-help">Use your LaborLens administrator account.</p>
+                {authError && <p className="import-notice error" role="alert">{authError}</p>}
+                <form onSubmit={handleLogin} className="admin-form-stack">
+                    <label htmlFor="admin-username">Username<input id="admin-username" type="text" autoComplete="username" className="search-input" value={loginForm.username} onChange={event => setLoginForm({ ...loginForm, username: event.target.value })} required /></label>
+                    <label htmlFor="admin-password">Password<input id="admin-password" type="password" autoComplete="current-password" className="search-input" value={loginForm.password} onChange={event => setLoginForm({ ...loginForm, password: event.target.value })} required /></label>
+                    <button type="submit" className="btn" disabled={isSigningIn}>{isSigningIn ? 'Signing in…' : 'Sign in'}</button>
                 </form>
-            </div>
-        );
+            </section>
+        </div>;
     }
 
-    return (
-        <div className="import-container admin-page">
-            <div className="admin-page-heading">
-                <div><p className="section-kicker">Administration</p><h2>Data management</h2><p>Monitor DOL imports and inspect the quality of your datasets.</p></div>
-                <button onClick={handleLogout} className="btn btn-secondary"><FiLogOut /> Sign out</button>
-            </div>
-            <nav className="admin-sections" aria-label="Administration sections">
-                {[['automatic', 'Automatic imports'], ['manual', 'Manual upload'], ['security', 'Access & security']].map(([id, label]) => <button key={id} aria-pressed={section === id} onClick={() => setSection(id)}>{label}</button>)}
-            </nav>
+    return <div className="import-container admin-page">
+        <header className="admin-page-heading">
+            <div><p className="section-kicker">Administration</p><h2>Data management</h2><p>Monitor DOL imports and inspect the quality of your datasets.</p></div>
+            <button onClick={handleLogout} className="btn btn-secondary admin-sign-out"><FiLogOut aria-hidden="true" /> Sign out</button>
+        </header>
+        <nav className="admin-sections" aria-label="Administration sections">
+            {[['automatic', 'Automatic imports', <FiRefreshCw aria-hidden="true" />], ['manual', 'Manual upload', <FiUploadCloud aria-hidden="true" />], ['security', 'Access & security', <FiShield aria-hidden="true" />]].map(([id, label, icon]) => <button key={id} aria-pressed={section === id} onClick={() => setSection(id)}>{icon}<span>{label}</span></button>)}
+        </nav>
 
-            {/* Change password modal */}
-            {showChangePassword && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px' }}>
-                    <div className="glass-panel" style={{ width: '100%', maxWidth: '380px', padding: '28px', position: 'relative' }}>
-                        <button onClick={() => { setShowChangePassword(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPwdMessage({ type: '', text: '' }); }}
-                            style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 20, display: 'flex' }}>
-                            <FiX />
-                        </button>
-                        <h2 style={{ marginBottom: '20px', fontSize: '17px', fontWeight: 600 }}>Change Password</h2>
-                        {pwdMessage.text && (
-                            <div style={{ color: pwdMessage.type === 'error' ? 'var(--status-denied)' : 'var(--status-certified)', marginBottom: '14px', padding: '10px 14px', background: pwdMessage.type === 'error' ? 'rgba(181,83,58,0.1)' : 'rgba(78,140,92,0.1)', borderRadius: '6px', fontSize: '13px' }}>
-                                {pwdMessage.text}
-                            </div>
-                        )}
-                        <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <input type="password" placeholder="Current Password" className="search-input" value={passwordForm.currentPassword} onChange={e => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} required style={{ width: '100%' }} />
-                            <input type="password" placeholder="New Password" className="search-input" value={passwordForm.newPassword} onChange={e => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} required style={{ width: '100%' }} />
-                            <input type="password" placeholder="Confirm New Password" className="search-input" value={passwordForm.confirmPassword} onChange={e => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} required style={{ width: '100%' }} />
-                            <button type="submit" className="btn" style={{ width: '100%', justifyContent: 'center', marginTop: '6px' }}>
-                                Update Password
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
+        {section === 'automatic' && <AutomaticImports status={autoStatus} error={autoStatusError} refreshing={isRefreshing} onRefresh={fetchAutoStatus} />}
 
-            {section === 'automatic' && <AutomaticImports status={autoStatus} error={autoStatusError} refreshing={isRefreshing} onRefresh={fetchAutoStatus} />}
-            <section aria-labelledby="manual-upload-heading" hidden={section !== 'manual'}>
-                <div className="admin-section-heading"><div><h3 id="manual-upload-heading">Manual upload</h3><p className="admin-help">Use a manual upload for a specific DOL release or to recover a missing dataset.</p></div></div>
-                <p className="import-notice">Choose the matching program and an original DOL .xlsx workbook (up to 768 MB). Every row is validated before import; existing case numbers are updated.</p>
-                {autoStatus?.active && <p role="status" className="import-notice warning">{autoStatus.active.label} is running. Wait for it to finish before starting a manual import.</p>}
+        <section aria-labelledby="manual-upload-heading" hidden={section !== 'manual'}>
+            <div className="admin-section-heading"><div><p className="section-kicker">Dataset maintenance</p><h3 id="manual-upload-heading">Manual upload</h3><p className="admin-help">Import a specific DOL release or recover a missing dataset.</p></div></div>
+            <div className="admin-manual-layout">
+                <aside className="admin-upload-guide" aria-label="Upload guidance">
+                    <h4>Before you upload</h4>
+                    <ol><li>Choose the program that matches your workbook.</li><li>Select an original DOL .xlsx disclosure file, up to 768 MB.</li><li>Start the import and follow its validation and processing log.</li></ol>
+                    <p className="admin-help">Every row is validated before import. Existing case numbers are updated.</p>
+                    {autoStatus?.active && <p role="status" className="import-notice warning">{autoStatus.active.label} is running. Wait for it to finish before starting a manual import.</p>}
+                    <details className="import-danger-zone"><summary>Delete dataset records</summary><p>This removes all {dataType === 'h1b' ? 'H-1B' : dataType.toUpperCase()} cases. This cannot be undone.</p><button className="btn btn-danger" onClick={onClearData} disabled={isUploading || isClearing || Boolean(autoStatus?.active)}>{isClearing ? 'Deleting…' : `Delete all ${dataType.toUpperCase()} records`}</button></details>
+                </aside>
                 <div className="manual-upload-form">
-                <fieldset className="import-program-selector" disabled={isUploading || isClearing}><legend>Dataset program</legend>
-                    {['pwd', 'perm', 'h1b'].map(type => <label key={type}><input type="radio" name="dataType" value={type} checked={dataType === type} onChange={event => setDataType(event.target.value)} />{type === 'h1b' ? 'H-1B' : type.toUpperCase()}</label>)}
-                </fieldset>
-            {/* Drop zone */}
-            <button type="button" disabled={isUploading || isClearing} className={`drop-zone ${isDragActive ? 'active' : ''}`}
-                onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}>
-                <FiUploadCloud className="upload-icon" />
-                {file ? (
-                    <span className="upload-file"><strong>{file.name}</strong><span>{(file.size / 1024 / 1024).toFixed(2)} MB</span></span>
-                ) : (
-                    <span className="upload-file"><strong>Drop your <span className="mono">.xlsx</span> file here</strong><span>or click to browse</span></span>
-                )}
-            </button>
-            {uploadError && <p className="import-notice error" role="alert">{uploadError}</p>}
-
-            <input type="file" accept=".xlsx" style={{ display: 'none' }} ref={fileInputRef} onChange={e => selectFile(e.target.files?.[0])} />
-
-            {/* Action buttons */}
-            <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button className="btn" onClick={onUpload} disabled={!file || isUploading || isClearing || Boolean(autoStatus?.active)}>
-                    {isUploading ? 'Processing…' : `Import ${dataType === 'h1b' ? 'H-1B' : dataType.toUpperCase()} workbook`}
-                </button>
-            </div>
-
-            {/* Progress bar */}
-            {(isUploading || uploadStatus === 'error' || progress.percentage > 0) && (
-                <div style={{ marginTop: '24px', background: 'var(--surface)', padding: '18px 20px', borderRadius: '10px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '13px' }}>
-                        <span style={{ fontWeight: 600, color: uploadStatus === 'error' ? 'var(--status-denied)' : uploadStatus === 'done' ? 'var(--status-certified)' : 'var(--accent-primary)' }}>
-                            {uploadStatus === 'error' ? 'Import failed — see details below' : uploadStatus === 'done' ? 'Import complete' : 'Processing…'}
-                        </span>
-                        {progress.total > 0 && <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{progress.percentage}%</span>}
-                    </div>
-                    <div role="progressbar" aria-label="Manual import progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percentage} style={{ width: '100%', height: '6px', background: 'var(--progress-track)', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{ width: `${progress.percentage}%`, height: '100%', background: uploadStatus === 'error' ? 'var(--status-denied)' : uploadStatus === 'done' ? 'var(--status-certified)' : 'var(--accent-primary)', borderRadius: '3px', transition: 'width 0.3s ease' }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <span>{progress.processed.toLocaleString()}{progress.total > 0 ? ` / ${progress.total.toLocaleString()}` : ''} cases</span>
-                        <span>{progress.inserted.toLocaleString()} inserted · {progress.updated.toLocaleString()} updated</span>
-                    </div>
-                </div>
-            )}
-
-            {/* Console log */}
-            {(logs.length > 0 || isUploading) && (
-                <div className="progress-console">
-                    {logs.map((log, i) => <div key={i}>{log}</div>)}
-                    {isUploading && progress.percentage < 100 && (
-                        <span style={{ animation: 'blink 1s step-end infinite' }}>_</span>
-                    )}
-                    <div ref={logsEndRef} />
-                </div>
-            )}
-
-                </div>
-                <details className="import-danger-zone"><summary>Delete dataset records</summary><p>This removes all {dataType === 'h1b' ? 'H-1B' : dataType.toUpperCase()} cases. This cannot be undone.</p><button className="btn btn-danger" onClick={onClearData} disabled={isUploading || isClearing || Boolean(autoStatus?.active)}>{isClearing ? 'Deleting…' : `Delete all ${dataType.toUpperCase()} records`}</button></details>
-            </section>
-            <section aria-labelledby="access-security-heading" hidden={section !== 'security'}>
-                <div className="admin-section-heading"><div><h3 id="access-security-heading">Access & security</h3><p className="admin-help">Manage your administrator password and blocked sign-in attempts.</p></div><button onClick={() => setShowChangePassword(true)} className="btn btn-secondary"><FiSettings /> Change password</button></div>
-            {/* Blocked IPs */}
-            <div style={{ marginTop: '32px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: 600 }}>
-                        <FiShield size={15} style={{ color: blockedIPs.length > 0 ? 'var(--status-denied)' : 'var(--text-secondary)' }} />
-                        Blocked IPs
-                        {blockedIPs.length > 0 && (
-                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '999px', background: 'rgba(181,83,58,0.15)', color: 'var(--status-denied)' }}>
-                                {blockedIPs.length}
-                            </span>
-                        )}
-                    </div>
-                    <button onClick={fetchBlockedIPs} className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '12px' }}>
-                        Refresh
+                    <fieldset className="import-program-selector" disabled={isUploading || isClearing}><legend>Dataset program</legend>
+                        {['pwd', 'perm', 'h1b'].map(type => <label key={type}><input type="radio" name="dataType" value={type} checked={dataType === type} onChange={event => setDataType(event.target.value)} /><span>{type === 'h1b' ? 'H-1B' : type.toUpperCase()}</span></label>)}
+                    </fieldset>
+                    <button type="button" disabled={isUploading || isClearing} className={`drop-zone ${isDragActive ? 'active' : ''}`} onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}>
+                        <FiUploadCloud className="upload-icon" aria-hidden="true" />
+                        {file ? <span className="upload-file"><strong>{file.name}</strong><span>{(file.size / 1024 / 1024).toFixed(2)} MB · select to replace</span></span> : <span className="upload-file"><strong>Drop your .xlsx workbook here</strong><span>or select to browse your files</span></span>}
                     </button>
+                    {uploadError && <p className="import-notice error" role="alert">{uploadError}</p>}
+                    <input type="file" accept=".xlsx" aria-label="DOL disclosure workbook" className="sr-only" tabIndex={-1} disabled={isUploading || isClearing} ref={fileInputRef} onChange={event => selectFile(event.target.files?.[0])} />
+                    <div className="admin-upload-actions"><span className="admin-help">{file ? 'Workbook selected. Ready to import.' : 'Select a workbook to continue.'}</span><button className="btn" onClick={onUpload} disabled={!file || isUploading || isClearing || Boolean(autoStatus?.active)}>{isUploading ? 'Processing…' : `Import ${dataType === 'h1b' ? 'H-1B' : dataType.toUpperCase()} workbook`}</button></div>
+                    {(isUploading || uploadStatus === 'error' || progress.percentage > 0) && <section className={`admin-upload-progress ${uploadStatus}`} aria-label="Manual import status">
+                        <div className="admin-upload-progress-heading"><strong>{uploadStatus === 'error' ? 'Import failed — see details below' : uploadStatus === 'done' ? 'Import complete' : 'Processing…'}</strong>{progress.total > 0 && <span>{progress.percentage}%</span>}</div>
+                        <div className="coverage-meter" role="progressbar" aria-label="Manual import progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percentage}><span style={{ width: `${progress.percentage}%` }} /></div>
+                        <dl className="admin-upload-counts"><div><dt>Cases processed</dt><dd>{progress.processed.toLocaleString()}{progress.total > 0 ? ` / ${progress.total.toLocaleString()}` : ''}</dd></div><div><dt>Inserted</dt><dd>{progress.inserted.toLocaleString()}</dd></div><div><dt>Updated</dt><dd>{progress.updated.toLocaleString()}</dd></div></dl>
+                    </section>}
+                    {(logs.length > 0 || isUploading) && <div className="progress-console" tabIndex={0} aria-label="Import activity log">{logs.map((log, index) => <div key={index}>{log}</div>)}{isUploading && progress.percentage < 100 && <span aria-hidden="true">_</span>}<div ref={logsEndRef} /></div>}
                 </div>
-
-                {blockedIPs.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>
-                        No IPs currently blocked.
-                    </p>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {blockedIPs.map(({ ip, attempts, secsLeft }) => {
-                            const mins = Math.floor(secsLeft / 60);
-                            const secs = secsLeft % 60;
-                            const timeLeft = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-                            return (
-                                <div key={ip} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(181,83,58,0.06)', border: '1px solid rgba(181,83,58,0.18)', borderRadius: '6px', fontSize: '13px', gap: '12px' }}>
-                                    <span className="mono" style={{ color: 'var(--text-primary)', flex: '1 1 auto' }}>{ip}</span>
-                                    <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{attempts} attempts</span>
-                                    <span style={{ color: 'var(--status-withdrawn)', whiteSpace: 'nowrap', fontWeight: 600 }}>{timeLeft} left</span>
-                                    <button onClick={() => handleUnblock(ip)} className="btn btn-secondary"
-                                        style={{ padding: '4px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                                        <FiUnlock size={12} /> Unblock
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
             </div>
-            </section>
-        </div>
-    );
+        </section>
+
+        <section aria-labelledby="access-security-heading" hidden={section !== 'security'}>
+            <div className="admin-section-heading"><div><p className="section-kicker">Administrator controls</p><h3 id="access-security-heading">Access & security</h3><p className="admin-help">Manage your password and review blocked sign-in attempts.</p></div></div>
+            <div className="admin-security-layout">
+                <section className="admin-account-panel" aria-labelledby="admin-account-heading">
+                    <FiSettings className="admin-form-icon" aria-hidden="true" /><h4 id="admin-account-heading">Your administrator account</h4><p className="admin-help">Update the password used to access data management.</p>
+                    {!showChangePassword && <button id="admin-change-password-toggle" onClick={() => { setShowChangePassword(true); requestAnimationFrame(() => document.getElementById('admin-current-password')?.focus()); }} className="btn btn-secondary" aria-expanded={false}>Change password</button>}
+                    {showChangePassword && <form onSubmit={handleChangePassword} className="admin-form-stack">
+                        {pwdMessage.text && <p className={`import-notice ${pwdMessage.type}`} role={pwdMessage.type === 'error' ? 'alert' : 'status'}>{pwdMessage.text}</p>}
+                        <label htmlFor="admin-current-password">Current password<input id="admin-current-password" type="password" autoComplete="current-password" className="search-input" value={passwordForm.currentPassword} onChange={event => setPasswordForm({ ...passwordForm, currentPassword: event.target.value })} required /></label>
+                        <label htmlFor="admin-new-password">New password<input id="admin-new-password" type="password" autoComplete="new-password" className="search-input" value={passwordForm.newPassword} onChange={event => setPasswordForm({ ...passwordForm, newPassword: event.target.value })} required /></label>
+                        <label htmlFor="admin-confirm-password">Confirm new password<input id="admin-confirm-password" type="password" autoComplete="new-password" className="search-input" value={passwordForm.confirmPassword} onChange={event => setPasswordForm({ ...passwordForm, confirmPassword: event.target.value })} required /></label>
+                        <div className="admin-form-actions"><button type="submit" className="btn">Update password</button><button type="button" onClick={closePasswordForm} className="btn btn-secondary"><FiX aria-hidden="true" /> Cancel</button></div>
+                    </form>}
+                </section>
+                <section className="admin-blocked-panel" aria-labelledby="blocked-addresses-heading">
+                    <div className="admin-section-heading"><div><h4 id="blocked-addresses-heading">Blocked addresses</h4><p className="admin-help">Addresses temporarily blocked after repeated failed sign-ins.</p></div><button onClick={fetchBlockedIPs} className="btn btn-secondary" disabled={isCheckingIPs}><FiRefreshCw className={isCheckingIPs ? 'is-refreshing' : ''} aria-hidden="true" />{isCheckingIPs ? 'Refreshing…' : 'Refresh addresses'}</button></div>
+                    {blockedIPsError && <p className="import-notice error" role="alert">{blockedIPsError}</p>}
+                    {isCheckingIPs && blockedIPs.length === 0 ? <p className="admin-empty" role="status">Checking blocked addresses…</p> : !blockedIPsError && blockedIPs.length === 0 ? <div className="admin-empty admin-security-empty"><FiShield aria-hidden="true" /><h4>No blocked addresses</h4><p>No sign-in addresses are currently blocked.</p></div> : null}
+                    {blockedIPs.length > 0 && <ul className="admin-blocked-list">{blockedIPs.map(({ ip, attempts, secsLeft }) => <li key={ip}>
+                        <code className="admin-blocked-ip">{ip}</code><dl><div><dt>Attempts</dt><dd>{attempts}</dd></div><div><dt>Time remaining</dt><dd>{Math.floor(secsLeft / 60) > 0 ? `${Math.floor(secsLeft / 60)}m ` : ''}{secsLeft % 60}s</dd></div></dl><button onClick={() => handleUnblock(ip)} className="btn btn-secondary"><FiUnlock aria-hidden="true" /> Unblock</button>
+                    </li>)}</ul>}
+                </section>
+            </div>
+        </section>
+    </div>;
 };
 
 export default ImportView;
