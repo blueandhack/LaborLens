@@ -33,3 +33,7 @@ After successful imports, H-1B's saved whole-dataset Insights overview refreshes
 ## Checks
 
 The tests cover LCA file discovery/spelling variants, exclusion of H-1B1/E-3, wage/date/SOC mapping, multiple-worksite preservation, preflight failure before writes, empty-collection index creation, covered search/analytics, HTTP search/year/details/Insights consistency, application counts versus worker positions, hourly pay and URL state. The full official workbook is additionally audited privately outside Git.
+
+On November 7, 2026, production loading and the saved Insights overview both matched **426,952 applications**. The final replay inserted 391,952 applications and updated 35,000 from the first partial attempt, preserving existing case IDs. The feature passed **51 backend and nine frontend automated checks**, frontend lint, production builds and live HTTPS acceptance checks. The PWD archive job was resumed after loading, and temporary superseded loaders were removed.
+
+Representative live HTTPS samples: whole-program overview 0.20 seconds; employer `google` search/Insights (7,389 matches) 0.21–0.22 seconds; title `software` (64,624 matches) 0.51 seconds. Concurrent PWD employer search took 0.48 seconds. These are samples, not latency guarantees. Browser visual verification was unavailable because the browser access host was offline; served navigation/layout assets, early theme handling, APIs and data invariants were checked directly.
