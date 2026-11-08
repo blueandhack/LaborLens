@@ -2,7 +2,7 @@
 .case-search-page { width: 100%; min-width: 0; max-width: 2300px; margin-inline: auto; }
 .case-search-page :is(section, aside, form, label, fieldset), .search-results-panel { min-width: 0; }
 .case-search-page .search-page-heading { gap: 20px 32px; margin-bottom: 26px; }
-.case-search-page .search-page-heading h2 { font-size: clamp(27px, 2.3vw, 38px); letter-spacing: -.035em; line-height: 1.2; text-wrap: balance; }
+.case-search-page .search-page-heading h1 { font-size: clamp(27px, 2.3vw, 38px); font-weight: 600; letter-spacing: -.035em; line-height: 1.2; text-wrap: balance; }
 .case-search-page .search-page-heading p { line-height: 1.65; text-wrap: pretty; }
 .case-search-page .data-guide summary { min-height: 44px; display: list-item; padding-block: 11px; }
 .case-search-page .data-guide > div { width: min(440px, 80vw); line-height: 1.7; }
@@ -97,7 +97,7 @@
 @media (max-width: 600px) {
     .search-workspace { gap: 24px; }
     .case-search-page .search-page-heading { margin-bottom: 16px; gap: 8px; }
-    .case-search-page .search-page-heading h2 { font-size: 28px; }
+    .case-search-page .search-page-heading h1 { font-size: 28px; }
     .case-search-page .primary-search-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .case-search-page .case-search-form { padding: 16px; }
     .case-search-page .search-refinements { gap: 18px; }

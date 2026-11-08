@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { getJSON } from "../utils/api";
-import { useSearchParams, useLocation } from "react-router-dom";
+import { Link, useSearchParams, useLocation } from "react-router-dom";
 import {
   FiArrowLeft,
   FiArrowRight,
@@ -24,6 +24,7 @@ import {
 const SearchInsights = lazy(() => import("./SearchInsights"));
 
 const savedView = () => {
+  if (typeof window === 'undefined') return null;
   try {
     return localStorage.getItem("laborlens-results-view");
   } catch {
@@ -218,7 +219,7 @@ export default function CaseSearchView({ program }) {
   });
   const [preference, setPreference] = useState(savedView);
   const [wide, setWide] = useState(
-    () => window.matchMedia("(min-width: 1280px)").matches,
+    () => typeof window !== 'undefined' && window.matchMedia("(min-width: 1280px)").matches,
   );
   const resultsHeading = useRef(null);
   const filtersPanel = useRef(null);
@@ -251,10 +252,6 @@ export default function CaseSearchView({ program }) {
     decisionYear: program === "h1b" ? "Last action" : "Decided",
     receivedYear: config.receivedLabel,
   };
-
-  useEffect(() => {
-    document.title = `${config.title} | LaborLens`;
-  }, [config.title]);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1280px)");
@@ -358,7 +355,7 @@ export default function CaseSearchView({ program }) {
     >
       <div className="search-page-heading">
         <div>
-          <h2>{config.title}</h2>
+          <h1>{config.title}</h1>
           <p>
             {config.subtitle}
           </p>
@@ -383,6 +380,7 @@ export default function CaseSearchView({ program }) {
             >
               View DOL disclosure files
             </a>
+            <p><Link to="/data">Read our data sources and methodology</Link></p>
           </div>
         </details>
       </div>
@@ -616,6 +614,7 @@ export default function CaseSearchView({ program }) {
       )}
       </div>
       </div>
+      <footer className="search-data-note"><p>Free public DOL disclosure research. Wages retain their reported pay periods; historical coverage is expanding.</p><Link to="/data">Sources, coverage & methodology</Link></footer>
     </section>
   );
 }

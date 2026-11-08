@@ -4,6 +4,9 @@ import { FiSun, FiMoon, FiGithub } from 'react-icons/fi';
 import SearchView from './components/SearchView';
 import PermSearchView from './components/PermSearchView';
 import H1bSearchView from './components/H1bSearchView';
+import DataGuide from './components/DataGuide';
+import NotFound from './components/NotFound';
+import PageSEO from './components/PageSEO';
 import './index.css';
 
 const ImportView = lazy(() => import('./components/ImportView'));
@@ -45,8 +48,9 @@ const Navigation = () => {
   );
 };
 
-function App() {
-  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+function App(props) {
+  const { RouterComponent = Router, routerProps = {} } = props;
+  const [theme, setTheme] = useState(() => typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -56,7 +60,8 @@ function App() {
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
 
   return (
-    <Router>
+    <RouterComponent {...routerProps}>
+      <PageSEO />
       <div className="app-container">
         <a className="skip-link" href="#main-content">Skip to content</a>
         <header className="header">
@@ -64,7 +69,7 @@ function App() {
             <Link to={{ pathname: '/', search: '' }} style={{ textDecoration: 'none', color: 'inherit' }}>
               <div className="brand-mark">
                 <span className="brand-seal" aria-hidden="true">LL</span>
-                <h1 className="brand-name">LaborLens</h1>
+                <span className="brand-name">LaborLens</span>
               </div>
             </Link>
             <p className="brand-subtitle">U.S. Department of Labor disclosure records</p>
@@ -84,9 +89,11 @@ function App() {
             <Route path="/" element={<SearchView />} />
             <Route path="/perm" element={<PermSearchView />} />
             <Route path="/h1b" element={<H1bSearchView />} />
+            <Route path="/data" element={<DataGuide />} />
             <Route path="/admin/data" element={<ImportView />} />
             <Route path="/import" element={<Navigate to="/admin/data" replace />} />
             <Route path="/cases/:id" element={<CaseDetailsView />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
           </PageBoundary>
@@ -103,12 +110,13 @@ function App() {
             <span>Open source on GitHub</span>
           </a>
           <Link to="/admin/data" className="footer-github-link">Administration</Link>
+          <Link to="/data" className="footer-github-link">Data sources & methodology</Link>
           <a href="/backups/" className="footer-github-link">LaborLens Backups</a>
           <a href="/privacy/" className="footer-github-link">Privacy</a>
           <a href="/terms/" className="footer-github-link">Terms</a>
         </footer>
       </div>
-    </Router>
+    </RouterComponent>
   );
 }
 

@@ -10,6 +10,7 @@ import {
 import { programs } from "../utils/programs";
 import { StatusBadge } from "./CaseResults";
 import { presentCase, formatCaseDate } from "../utils/casePresentation";
+import { applyPageSEO, getCaseSEO, getPageSEO } from "../utils/seo.js";
 
 const FIELD_LABELS = {
   CASE_NUMBER: "Case number",
@@ -104,17 +105,18 @@ export default function CaseDetailsView() {
     };
   }, [id, requestKey]);
   const item = response.key === requestKey ? response.data : null;
+  const program = item?._PROGRAM || item?._DOL_SOURCE?.type ||
+    (item?.EMPLOYER_NAME ? "h1b" : item?.EMP_BUSINESS_NAME ? "perm" : "pwd");
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [id]);
   useEffect(() => {
-    document.title = item
-      ? `${item.CASE_NUMBER} | LaborLens`
-      : "Case details | LaborLens";
+    applyPageSEO(item ? getCaseSEO(item, program) : { ...getPageSEO(`/cases/${id}`),
+      title: response.error === 'missing' ? 'Case Not Found | LaborLens' : 'Case Disclosure | LaborLens',
+      ...(response.error ? { robots: 'noindex, follow', canonical: null } : {}),
+    });
     if (item) heading.current?.focus({ preventScroll: true });
-  }, [item]);
-  const program = item?._PROGRAM || item?._DOL_SOURCE?.type ||
-    (item?.EMPLOYER_NAME ? "h1b" : item?.EMP_BUSINESS_NAME ? "perm" : "pwd");
+  }, [item, program, id, response.error]);
   const perm = program !== "pwd";
   const from = location.state?.from;
   const back = typeof from === "string" && /^\/(?:\?.*|(?:perm|h1b)(?:\?.*)?)?$/.test(from)
@@ -207,9 +209,9 @@ export default function CaseDetailsView() {
           <span className="mono">{item.CASE_NUMBER}</span>
           <StatusBadge status={data.status} statusClass={data.statusClass} />
         </div>
-        <h2 ref={heading} tabIndex={-1}>
+        <h1 ref={heading} tabIndex={-1}>
           {data.employer}
-        </h2>
+        </h1>
         <p className="detail-job-title">{data.title}</p>
         <p className="detail-location">
           <FiMapPin aria-hidden="true" />
