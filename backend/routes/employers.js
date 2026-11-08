@@ -2,7 +2,7 @@ const express = require('express');
 const { readFile } = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
-const { getProfile, suggestions, publicEmployer, listEmployers } = require('../services/employers');
+const { getProfile, suggestions, publicEmployer, listEmployers, cacheIdFor, profileSlugFor } = require('../services/employers');
 let renderer;
 async function renderDocument(url, profile, employers) {
     renderer ||= import(pathToFileURL(path.resolve(__dirname, '../../frontend/dist-ssr/entry-server.js')).href);
@@ -47,9 +47,9 @@ function createEmployerRoutes({ db, models, render = renderDocument }) {
     pages.get('/sitemap.xml', async (_req, res, next) => {
         try {
             const rows = await db().collection('employers').find({ featured: true }).sort({ featuredRank: 1 }).limit(100).toArray();
-            const documents = await db().collection('employer_profiles').find({ _id: { $in: rows.map(row => row._id) } }, { projection: { updatedAt: 1 } }).toArray();
+            const documents = await db().collection('employer_profiles').find({ _id: { $in: rows.map(cacheIdFor) } }, { projection: { updatedAt: 1 } }).toArray();
             const updated = new Map(documents.map(row => [row._id, row.updatedAt]));
-            const xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + rows.filter(row => updated.has(row._id)).map(row => `<url><loc>https://laborlens.fyi/employers/${row.slug}</loc><lastmod>${updated.get(row._id).toISOString()}</lastmod></url>`).join('') + '</urlset>';
+            const xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + [...new Map(rows.map(row => [profileSlugFor(row.key), row])).values()].filter(row => updated.has(cacheIdFor(row))).map(row => `<url><loc>https://laborlens.fyi/employers/${profileSlugFor(row.key)}</loc><lastmod>${updated.get(cacheIdFor(row)).toISOString()}</lastmod></url>`).join('') + '</urlset>';
             res.type('application/xml').set('Cache-Control', 'public, max-age=300').send(xml);
         } catch (error) { next(error); }
     });

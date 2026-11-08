@@ -5,6 +5,7 @@ export const DEFAULT_LIMIT = 24;
 export const filterKeys = (program) => [
   "company",
   "employer",
+  "employerGroup",
   "location",
   "worksite",
   "caseNumber",

@@ -26,3 +26,14 @@ test('exact employer selection and separate worksite/employer locations survive 
   assert.equal(exact.get('employer'), stored, 'source spacing must survive profile-to-case URLs');
   assert.equal(readSearchState(exact, 'h1b').filters.employer, stored);
 });
+
+test('verified filing-name group URLs retain readable names, scope and sorting', () => {
+  const group = '11ae440bbf7c49bd9884ce58';
+  const query = new URLSearchParams({ employerGroup: group, company: 'INFOSYS LIMITED', sort: 'event_asc', page: '2' });
+  const state = readSearchState(query, 'perm');
+  assert.equal(state.filters.employerGroup, group);
+  assert.equal(state.filters.employer, '');
+  const written = writeSearchState(state.filters, state.page, state.limit, 'cards', query.get('sort'));
+  assert.equal(written.get('employerGroup'), group); assert.equal(written.get('sort'), 'event_asc');
+  assert.equal(getPageSEO('/perm', '?employerGroup=' + group).robots, 'noindex, follow');
+});

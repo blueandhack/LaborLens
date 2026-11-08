@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const { acquireImportLock } = require('../services/importLock');
 const { invalidateCache } = require('./search');
 const { noteInsightsChange } = require('../services/searchInsights');
-const { slugFor, clearEmployerProgram } = require('../services/employers');
+const { profileSlugFor: slugFor, clearEmployerProgram } = require('../services/employers');
 const { programs } = require('../services/searchConfig');
 
 router.get('/:id', async (req, res) => {

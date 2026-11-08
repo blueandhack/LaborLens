@@ -3,7 +3,7 @@ import { presentCase } from './casePresentation.js';
 
 export const SITE_ORIGIN = 'https://laborlens.fyi';
 export const PUBLIC_PATHS = ['/', '/h1b', '/perm', '/employers', '/data', '/privacy/', '/terms/'];
-export const SEARCH_RESULT_KEYS = ['company', 'employer', 'jobTitle', 'location', 'worksite', 'caseNumber', 'determinationYear', 'decisionYear', 'receivedYear', 'page', 'sort'];
+export const SEARCH_RESULT_KEYS = ['company', 'employer', 'employerGroup', 'jobTitle', 'location', 'worksite', 'caseNumber', 'determinationYear', 'decisionYear', 'receivedYear', 'page', 'sort'];
 const searchPrograms = { '/': 'pwd', '/perm': 'perm', '/h1b': 'h1b' };
 const descriptions = {
   pwd: 'Search public DOL prevailing wage determinations by employer, job title, location, and case number. View reported wage rates and original disclosure sources.',

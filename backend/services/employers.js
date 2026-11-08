@@ -1,13 +1,33 @@
 const { createHash, randomUUID } = require('node:crypto');
 const { programs, indexNames } = require('./searchConfig');
 const { fields: worksiteFields, stringExpression } = require('./worksites');
+const { groupForKey, groupForQuery, cacheIdFor } = require('./employerGroups');
 const VERSION = 1;
 const idFor = key => createHash('sha256').update(key).digest('hex').slice(0, 24);
 const searchKey = name => (name.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).join(' ');
 const slugFor = key => `${searchKey(key).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'employer'}--${idFor(key)}`;
-const publicEmployer = row => ({ id: row._id, key: row.key, slug: row.slug, name: row.name,
-    updatedAt: row.updatedAt, programs: Object.fromEntries(Object.entries(row.programs || {}).map(([program, info]) => [program, { count: info.count, updatedAt: info.updatedAt }])), location: row.location || null });
+const profileSlugFor = key => slugFor(groupForKey(key)?.key || key);
+const publicEmployer = row => ({ id: row._id, key: row.key, slug: profileSlugFor(row.key), name: row.name,
+    updatedAt: row.updatedAt, programs: Object.fromEntries(Object.entries(row.programs || {}).map(([program, info]) => [program, { count: info.count, updatedAt: info.updatedAt }])), location: row.location || null,
+    ...(groupForKey(row.key) ? { groupId: groupForKey(row.key).id, groupName: groupForKey(row.key).name } : {}) });
 let activeProfile = null;
+
+async function profileEmployer(db, row) {
+    const group = groupForKey(row.key);
+    if (!group) return row;
+    const members = await db.collection('employers').find({ _id: { $in: group.keys.map(idFor) } }, { maxTimeMS: 1000 }).toArray();
+    const canonical = members.find(member => member.key === group.key) || row;
+    const programs = {};
+    for (const member of members) for (const [program, info] of Object.entries(member.programs || {})) {
+        programs[program] ||= { count: 0, updatedAt: info.updatedAt };
+        programs[program].count += info.count;
+        if (info.updatedAt > programs[program].updatedAt) programs[program].updatedAt = info.updatedAt;
+    }
+    return { ...canonical, _id: group.id, key: group.key, name: group.name, slug: slugFor(group.key), programs,
+        groupId: group.id, groupKeys: group.keys,
+        reportedNames: members.map(member => ({ id: member._id, key: member.key, name: member.name, location: member.location || null, programs: publicEmployer(member).programs })),
+        grouping: { description: group.description, reason: group.reason, evidence: group.evidence } };
+}
 
 async function ensureEmployerIndexes(db) {
     await db.collection('employers').createIndex({ searchKey: 1, _id: 1 });
@@ -25,7 +45,9 @@ async function listEmployers(db, input = {}) {
     const limit = 24;
     if (!['h1b_desc', 'perm_desc', 'pwd_desc', 'name_asc', 'name_desc'].includes(sort) || typeof q !== 'string' || q.length > 160 ||
         input.page !== undefined && typeof input.page !== 'string' || !Number.isSafeInteger(page) || page < 1 || page > 100000) throw invalid();
-    const prefix = searchKey(q), query = prefix ? { searchKey: { $regex: '^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') } } : {};
+    const prefix = searchKey(q), group = groupForQuery(q);
+    const query = group ? { searchKey: { $in: [...new Set(group.keys.map(searchKey))] }, _id: { $in: group.keys.map(idFor) } }
+        : prefix ? { searchKey: { $regex: '^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') } } : {};
     const program = sort.split('_')[0];
     const order = sort.startsWith('name_') ? { searchKey: sort === 'name_asc' ? 1 : -1, _id: sort === 'name_asc' ? 1 : -1 }
         : { [`programs.${program}.count`]: -1, searchKey: 1, _id: 1 };
@@ -36,7 +58,8 @@ async function listEmployers(db, input = {}) {
     const selected = ids.slice(0, limit);
     const rows = await db.collection('employers').find({ _id: { $in: selected.map(row => row._id) } }, { maxTimeMS: 1000 }).toArray();
     const byId = new Map(rows.map(row => [row._id, row]));
-    return { employers: selected.filter(row => byId.has(row._id)).map(row => publicEmployer(byId.get(row._id))), page, limit, hasNextPage: ids.length > limit, sort, query: q.trim() };
+    return { employers: selected.filter(row => byId.has(row._id)).map(row => publicEmployer(byId.get(row._id))), page, limit, hasNextPage: ids.length > limit, sort, query: q.trim(),
+        ...(group ? { employerGroup: { id: group.id, name: group.name } } : {}) };
 }
 
 async function suggestions(db, input) {
@@ -47,10 +70,20 @@ async function suggestions(db, input) {
     const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const candidates = await db.collection('employers').find({ searchKey: { $regex: '^' + escaped } },
         { maxTimeMS: 1000 }).sort({ searchKey: 1, _id: 1 }).limit(32).toArray();
+    const directGroup = groupForQuery(input);
+    if (directGroup && !candidates.some(candidate => groupForKey(candidate.key)?.id === directGroup.id)) {
+        const canonical = await db.collection('employers').findOne({ _id: directGroup.id }, { maxTimeMS: 1000 });
+        if (canonical) candidates.push(canonical);
+    }
     const volume = row => Object.values(row.programs || {}).reduce((total, info) => total + info.count, 0);
     // Prefer substantive filing histories over tiny spelling variants, while
     // retaining distinct reported names and a bounded prefix-index read.
-    return candidates.sort((a, b) => volume(b) - volume(a) || a.name.localeCompare(b.name)).slice(0, 8).map(publicEmployer);
+    const identities = new Map();
+    for (const candidate of candidates) {
+        const group = groupForKey(candidate.key), id = group?.id || candidate._id;
+        if (!identities.has(id)) identities.set(id, group ? await profileEmployer(db, candidate) : candidate);
+    }
+    return [...identities.values()].sort((a, b) => volume(b) - volume(a) || a.name.localeCompare(b.name)).slice(0, 8).map(publicEmployer);
 }
 
 async function refreshDirectory(db, models, { signal, onProgress = () => {} } = {}) {
@@ -108,7 +141,7 @@ function profilePipeline(program, key) {
     const projected = [config.date, config.state, 'EMPLOYER_CITY', 'EMP_CITY', 'JOB_TITLE', 'CASE_STATUS', from, to, period,
         ...worksiteFields[program].city, ...worksiteFields[program].state, '_DOL_SOURCE.url', '_DOL_SOURCE.filename', '_DOL_SOURCE.fiscalYear'];
     return [
-        { $match: { [config.company]: key } },
+        { $match: { [config.company]: Array.isArray(key) ? { $in: key } : key } },
         { $project: Object.fromEntries([...new Set(projected)].map(field => [field, 1])) },
         { $facet: {
             total: [{ $count: 'count' }],
@@ -132,29 +165,32 @@ function profilePipeline(program, key) {
 }
 
 async function computeProfile(db, models, employer, { maxTimeMS = 12000, signal } = {}) {
+    employer = await profileEmployer(db, employer);
+    const keys = employer.groupKeys ? { $in: employer.groupKeys } : employer.key;
     const summaries = {};
     for (const [program, info] of Object.entries(employer.programs)) {
         if (!info.count || !models[program]) continue;
-        const [summary] = await models[program].collection.aggregate(profilePipeline(program, employer.key), {
+        const [summary] = await models[program].collection.aggregate(profilePipeline(program, employer.groupKeys || employer.key), {
             hint: indexNames.company, maxTimeMS, allowDiskUse: false, signal, comment: 'laborlens-employer-profile',
         }).toArray();
-        const recent = await models[program].collection.find({ [programs[program].company]: employer.key }, {
+        const recent = await models[program].collection.find({ [programs[program].company]: keys }, {
             projection: Object.fromEntries(programs[program].fields.map(field => [field, 1])), maxTimeMS: 2000, signal,
         }).sort({ [programs[program].date]: -1, _id: 1 }).hint(indexNames.company).limit(5).toArray();
         summaries[program] = { ...summary, totalCount: summary.total[0]?.count || 0, recent };
         delete summaries[program].total;
     }
-    const snapshot = { _id: employer._id, version: VERSION, summaries, updatedAt: new Date() };
-    await db.collection('employer_profiles').replaceOne({ _id: employer._id }, snapshot, { upsert: true });
-    await db.collection('employer_profile_requests').deleteOne({ _id: employer._id });
+    const snapshot = { _id: cacheIdFor(employer), version: VERSION, summaries, updatedAt: new Date() };
+    await db.collection('employer_profiles').replaceOne({ _id: snapshot._id }, snapshot, { upsert: true });
+    await db.collection('employer_profile_requests').deleteMany({ _id: { $in: (employer.groupKeys || [employer.key]).map(idFor) } });
     return snapshot;
 }
 
 async function getProfile(db, models, slug, { refresh = true } = {}) {
     if (typeof slug !== 'string' || !/^[a-z0-9-]+--[a-f0-9]{24}$/.test(slug) || slug.length > 110) return null;
-    const employer = await db.collection('employers').findOne({ _id: slug.slice(-24) }, { maxTimeMS: 1000 });
-    if (!employer) return null;
-    const snapshot = await db.collection('employer_profiles').findOne({ _id: employer._id, version: VERSION }, { maxTimeMS: 1000 });
+    const reported = await db.collection('employers').findOne({ _id: slug.slice(-24) }, { maxTimeMS: 1000 });
+    if (!reported) return null;
+    const employer = await profileEmployer(db, reported);
+    const snapshot = await db.collection('employer_profiles').findOne({ _id: cacheIdFor(employer), version: VERSION }, { maxTimeMS: 1000 });
     const complete = Boolean(snapshot && Object.entries(employer.programs).every(([program, info]) => !info.count || snapshot.summaries[program]));
     const directory = await db.collection('discovery_state').findOne({ _id: 'employers' }, { projection: { ready: 1 }, maxTimeMS: 1000 });
     const ready = Boolean(complete && directory?.ready);
@@ -171,7 +207,8 @@ async function getProfile(db, models, slug, { refresh = true } = {}) {
     }
     const summaries = Object.fromEntries(Object.entries(snapshot?.summaries || {}).filter(([program]) => employer.programs[program]?.count));
     const similarNames = (await suggestions(db, employer.name.slice(0, 160))).filter(row => row.id !== employer._id);
-    return { ...publicEmployer(employer), ready, summaries, similarNames, snapshotAt: snapshot?.updatedAt || null };
+    return { ...publicEmployer(employer), ready, summaries, similarNames, snapshotAt: snapshot?.updatedAt || null,
+        ...(employer.groupId ? { reportedNames: employer.reportedNames, grouping: employer.grouping } : {}) };
 }
 
 async function clearEmployerProgram(db, program) {
@@ -184,7 +221,7 @@ async function refreshFeatured(db, models, { signal, maxProfiles = 20, onProgres
     const requested = await db.collection('employer_profile_requests').find().sort({ requestedAt: 1 }).limit(maxProfiles).toArray();
     const top = await db.collection('employers').find({ 'programs.h1b.count': { $gt: 0 } }).sort({ 'programs.h1b.count': -1, _id: 1 }).limit(maxProfiles).toArray();
     const synthropic = await db.collection('employers').find({ searchKey: 'synthropic inc' }).limit(3).toArray();
-    const unique = new Map([...synthropic, ...top].map(row => [row._id, row]));
+    const unique = new Map([...synthropic, ...top].map(row => [groupForKey(row.key)?.id || row._id, row]));
     const attempted = new Set();
     let rank = 0;
     for (const employer of unique.values()) {
@@ -202,4 +239,4 @@ async function refreshFeatured(db, models, { signal, maxProfiles = 20, onProgres
         if (employer) await computeProfile(db, models, employer, { signal, maxTimeMS: 120000 });
     }
 }
-module.exports = { idFor, slugFor, searchKey, publicEmployer, ensureEmployerIndexes, listEmployers, suggestions, refreshDirectory, profilePipeline, computeProfile, getProfile, refreshFeatured, clearEmployerProgram };
+module.exports = { idFor, slugFor, profileSlugFor, searchKey, publicEmployer, profileEmployer, ensureEmployerIndexes, listEmployers, suggestions, refreshDirectory, profilePipeline, computeProfile, getProfile, refreshFeatured, clearEmployerProgram, cacheIdFor };

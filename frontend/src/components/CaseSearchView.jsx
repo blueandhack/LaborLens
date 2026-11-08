@@ -62,9 +62,9 @@ function SearchFilters({
     >
       <div className="primary-search-fields">
         <div className="field-employer"><EmployerAutocomplete id="search-company" value={draft.company || draft.employer || ''}
-          onChange={company => { setDraft(values => ({ ...values, company, employer: '' })); setSelectedEmployer(null); }}
-          onSelect={employer => { setDraft(values => ({ ...values, company: employer.name.slice(0, 160), employer: employer.key })); setSelectedEmployer(employer); }} />
-          {draft.employer && <p className="selected-employer-link">Matching this reported name exactly.{selectedEmployer && <> <Link to={'/employers/' + selectedEmployer.slug}>View employer profile</Link></>}</p>}
+          onChange={company => { setDraft(values => ({ ...values, company, employer: '', employerGroup: '' })); setSelectedEmployer(null); }}
+          onSelect={employer => { setDraft(values => ({ ...values, company: employer.name.slice(0, 160), employer: employer.groupId ? '' : employer.key, employerGroup: employer.groupId || '' })); setSelectedEmployer(employer); }} />
+          {(draft.employer || draft.employerGroup) && <p className="selected-employer-link">{draft.employerGroup ? 'Matching verified filing-name variants.' : 'Matching this reported name exactly.'}{selectedEmployer && <> <Link to={'/employers/' + selectedEmployer.slug}>View employer profile</Link></>}</p>}
         </div>
         <label htmlFor="search-job">
           Job title
@@ -255,10 +255,11 @@ export default function CaseSearchView({ program }) {
         ? "table"
         : "cards";
   const filtersKey = JSON.stringify(filters);
-  const activeFilters = Object.entries(filters).filter(([key, value]) => value && !(key === 'company' && filters.employer));
+  const activeFilters = Object.entries(filters).filter(([key, value]) => value && !(key === 'company' && (filters.employer || filters.employerGroup)));
   const filterLabels = {
     company: "Employer",
     employer: "Reported name",
+    employerGroup: "Employer",
     location: "Location",
     worksite: "Worksite",
     caseNumber: "Case",
@@ -479,11 +480,11 @@ export default function CaseSearchView({ program }) {
             <button
               className="filter-chip"
               key={key}
-              onClick={() => update({ ...filters, [key]: "", ...(key === 'employer' ? { company: '' } : {}) }, 1)}
-              aria-label={`Remove ${filterLabels[key]} filter ${value}`}
+              onClick={() => update({ ...filters, [key]: "", ...(['employer', 'employerGroup'].includes(key) ? { company: '', employer: '', employerGroup: '' } : {}) }, 1)}
+              aria-label={`Remove ${filterLabels[key]} filter ${key === 'employerGroup' ? filters.company || 'verified filing names' : value}`}
             >
               <span>
-                {filterLabels[key]}: {value}
+                {filterLabels[key]}: {key === 'employerGroup' ? filters.company || data?.employerGroup?.name || 'Verified filing names' : value}
               </span>
               <FiX aria-hidden="true" />
             </button>
@@ -493,6 +494,7 @@ export default function CaseSearchView({ program }) {
           </button>
         </div>
       )}
+      {data?.employerGroup && <p className="inline-notice">Matching {data.employerGroup.names} verified filing names for {data.employerGroup.name}. <Link to={'/employers/' + data.employerGroup.slug}>View combined profile and source names</Link></p>}
       <div className="results-toolbar" id="search-results">
         <div className="results-summary" aria-live="polite" aria-atomic="true">
           <h3 ref={resultsHeading} tabIndex={-1}>

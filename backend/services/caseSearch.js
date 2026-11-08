@@ -1,6 +1,7 @@
 const { programs, indexNames } = require('./searchConfig');
 const { BoundedCache } = require('./boundedCache');
-const { slugFor } = require('./employers');
+const { profileSlugFor: slugFor } = require('./employers');
+const { groupForId, groupForQuery } = require('./employerGroups');
 
 const counts = new BoundedCache();
 const QUERY_MS = 10000;
@@ -51,7 +52,7 @@ async function certificationIds(collection, spec, signal) {
     // A currently Certified application's determination is its certification.
     // Never substitute a withdrawal/denial action for an absent certification.
     const certified = /^\s*certified\s*$/i;
-    const certificateHint = spec.filters.employer || spec.filters.company ? indexNames.certificationCompany
+    const certificateHint = spec.filters.employer || spec.filters.employerGroup || spec.filters.company ? indexNames.certificationCompany
         : spec.filters.jobTitle ? indexNames.certificationTitle : spec.filters.caseNumber.length >= 10 ? 'CASE_NUMBER_1' : indexNames.certification;
     const current = constrained({ ...spec, sortKey: 'event_' + (spec.direction === 1 ? 'asc' : 'desc') },
         { CASE_STATUS: certified }, { DECISION_DATE: dateRange() });
@@ -75,7 +76,7 @@ async function certificationIds(collection, spec, signal) {
         rows = [...a.map(row => ({ ...row, _certificationSort: row.ORIGINAL_CERT_DATE })),
             ...b.map(row => ({ ...row, _certificationSort: row.DECISION_DATE }))]
             .sort((a, b) => compareRows(a, b, { _certificationSort: spec.direction, _id: -spec.direction })).slice(spec.skip, end);
-    } else if (!spec.filters.worksite || !(spec.filters.company || spec.filters.employer || spec.filters.jobTitle)) {
+    } else if (!spec.filters.worksite || !(spec.filters.company || spec.filters.employer || spec.filters.employerGroup || spec.filters.jobTitle)) {
         // Fence the ordered index scans before computed filters. MongoDB can
         // otherwise move a sort past those filters and scan the whole history.
         const deadline = Date.now() + QUERY_MS;
@@ -183,7 +184,7 @@ function buildSearch(program, input) {
     const direction = sortKey.endsWith('_asc') ? 1 : -1;
     const sortField = sortKey.startsWith('received_') ? 'RECEIVED_DATE' : config.date;
     const sort = { [sortField]: direction, ...(sortField !== config.date ? { [config.date]: direction } : {}), _id: -direction };
-    const filters = Object.fromEntries(['company', 'employer', 'location', 'worksite', 'caseNumber', 'jobTitle', config.year, 'receivedYear']
+    const filters = Object.fromEntries(['company', 'employer', 'employerGroup', 'location', 'worksite', 'caseNumber', 'jobTitle', config.year, 'receivedYear']
         .map(field => [field, text(input, field)]));
     const page = input.page === undefined ? 1 : Number(text(input, 'page'));
     const limit = input.limit === undefined ? 20 : Number(text(input, 'limit'));
@@ -191,7 +192,11 @@ function buildSearch(program, input) {
             !Number.isSafeInteger((page - 1) * limit)) throw badRequest('Invalid page or limit (maximum 100 cases per page)');
     const conditions = [];
     const prefix = value => ({ $regex: `^${escapeRegex(value.toLowerCase())}` });
-    if (filters.employer) conditions.push({ [config.company]: filters.employer.toLowerCase() });
+    if (filters.employer && filters.employerGroup) throw badRequest('Choose either an employer group or an exact reported name');
+    let employerGroup = filters.employerGroup ? groupForId(filters.employerGroup) : !filters.employer ? groupForQuery(filters.company) : undefined;
+    if (filters.employerGroup && !employerGroup) throw badRequest('Unknown verified employer group');
+    if (employerGroup) { filters.employerGroup = employerGroup.id; conditions.push({ [config.company]: { $in: employerGroup.keys } }); }
+    else if (filters.employer) conditions.push({ [config.company]: filters.employer.toLowerCase() });
     else if (filters.company) conditions.push({ [config.company]: employerPrefix(filters.company) });
     if (filters.jobTitle) conditions.push({ JOB_TITLE_LOWER: prefix(filters.jobTitle) });
     if (filters.caseNumber) {
@@ -225,16 +230,16 @@ function buildSearch(program, input) {
     }
     const query = conditions.length || location ? { $and: [...conditions, ...(location ? [{ $or: location }] : [])] } : {};
     let hint;
-    if (filters.employer || filters.company) hint = indexNames.company;
+    if (filters.employer || filters.employerGroup || filters.company) hint = indexNames.company;
     else if (filters.jobTitle) hint = indexNames.title;
     else if (filters.caseNumber.length >= 10) hint = 'CASE_NUMBER_1';
     else if (filters.receivedYear) hint = indexNames.received;
     else if (!location) hint = indexNames.recent;
-    const worksitePrefix = program === 'h1b' && filters.worksite && (filters.employer || filters.company || filters.jobTitle);
-    if (worksitePrefix) hint = filters.employer || filters.company ? indexNames.certificationCompany : indexNames.certificationTitle;
-    if (sortField === 'RECEIVED_DATE' && !(filters.employer || filters.company || filters.jobTitle || filters.caseNumber || location)) hint = indexNames.received;
+    const worksitePrefix = program === 'h1b' && filters.worksite && (filters.employer || filters.employerGroup || filters.company || filters.jobTitle);
+    if (worksitePrefix) hint = filters.employer || filters.employerGroup || filters.company ? indexNames.certificationCompany : indexNames.certificationTitle;
+    if (sortField === 'RECEIVED_DATE' && !(filters.employer || filters.employerGroup || filters.company || filters.jobTitle || filters.caseNumber || location)) hint = indexNames.received;
     return { config, query, filters, hint, page, limit, skip: (page - 1) * limit,
-        branches: location && !worksitePrefix && (filters.worksite || !filters.company && !filters.employer && !filters.jobTitle && filters.caseNumber.length < 10)
+        branches: location && !worksitePrefix && (filters.worksite || !filters.company && !filters.employer && !filters.employerGroup && !filters.jobTitle && filters.caseNumber.length < 10)
             ? location.map(branch => ({ $and: [...conditions, branch] })) : null,
         branchHints: filters.worksite ? [indexNames.worksiteCity, indexNames.worksiteState] : [indexNames.city, indexNames.state],
         intersection: location ? { $and: [...conditions, ...location] } : null,
@@ -242,7 +247,7 @@ function buildSearch(program, input) {
 }
 
 function pageIds(collection, query, spec, signal, hint, skip = spec.skip, limit = spec.limit) {
-    const complex = spec.forceMetadata || spec.filters.location || spec.filters.worksite || (spec.filters.company || spec.filters.employer) && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
+    const complex = spec.forceMetadata || spec.filters.location || spec.filters.worksite || (spec.filters.company || spec.filters.employer || spec.filters.employerGroup) && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
         || spec.filters.jobTitle && (spec.filters.receivedYear || spec.filters.caseNumber);
     if (complex && hint && hint !== 'CASE_NUMBER_1') {
         return collection.aggregate([...metadataStages(spec, query, hint, true), { $sort: spec.sort },
@@ -422,7 +427,8 @@ async function searchCases(Model, program, input, { signal } = {}) {
                 PWD_RECEIVED_DATE: match.RECEIVED_DATE, PWD_EXPIRATION_DATE: match.PWD_WAGE_EXPIRATION_DATE });
         }
     }
-    return { cases, totalPages: knownTotal === null ? null : Math.ceil(knownTotal / limit), currentPage: page, totalCount: knownTotal,
+    const group = groupForId(spec.filters.employerGroup);
+    return { cases, ...(group ? { employerGroup: { id: group.id, name: group.name, slug: slugFor(group.key), names: group.keys.length } } : {}), totalPages: knownTotal === null ? null : Math.ceil(knownTotal / limit), currentPage: page, totalCount: knownTotal,
         ...(deferred ? { hasNextPage } : {}) };
 }
 

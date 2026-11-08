@@ -38,11 +38,12 @@ export default function EmployerAutocomplete({ id, value, onChange, onSelect, la
         {items.map((item, index) => <li role="presentation" key={item.id}><button type="button" role="option" id={`${listId}-${index}`} tabIndex={-1}
           aria-selected={index === active} onMouseDown={event => event.preventDefault()} onClick={() => choose(item)}>
           <strong>{item.name}</strong><span>{Object.entries(item.programs).map(([program, info]) => `${program === 'h1b' ? 'H-1B' : program.toUpperCase()} ${info.count.toLocaleString()}`).join(' · ')}</span>
+          {item.groupId && <small>Verified filing-name group · includes reviewed spelling and former names</small>}
           {item.location && <small>{item.location}</small>}
         </button></li>)}
       </ul>
       {!items.length && <p role="status">{response.key !== query ? 'Finding employer names…' : response.error ? 'Suggestions unavailable. You can still search by name.' : 'No suggestions. You can still search this name.'}</p>}
-      {items.length > 0 && <p>Choose a reported name for an exact match. Similar names stay separate.</p>}
+      {items.length > 0 && <p>Choose a reported name or verified group. Other similar names stay separate.</p>}
     </div>}
   </div>;
 }

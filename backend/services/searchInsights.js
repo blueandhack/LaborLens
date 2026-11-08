@@ -14,7 +14,7 @@ function insightsSpec(program, input = {}) {
 function insightsPipeline(spec, query = spec.query, selectedHint, exclude) {
     const { config, filters } = spec;
     const hint = selectedHint || ([indexNames.certificationCompany, indexNames.certificationTitle].includes(spec.hint) ? spec.hint : filters.caseNumber.length >= 10 ? 'CASE_NUMBER_1'
-        : filters.company || filters.employer ? indexNames.company : filters.jobTitle ? indexNames.title : indexNames.recent);
+        : filters.company || filters.employer || filters.employerGroup ? indexNames.company : filters.jobTitle ? indexNames.title : indexNames.recent);
     const date = '$' + config.date;
     const year = { $cond: [{ $and: [
         { $eq: [{ $type: date }, 'date'] }, { $gte: [date, new Date('1901-01-01')] },
