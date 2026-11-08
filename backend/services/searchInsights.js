@@ -14,7 +14,7 @@ function insightsSpec(program, input = {}) {
 function insightsPipeline(spec, query = spec.query, selectedHint, exclude) {
     const { config, filters } = spec;
     const hint = selectedHint || (filters.caseNumber.length >= 10 ? 'CASE_NUMBER_1'
-        : filters.company ? indexNames.company : filters.jobTitle ? indexNames.title : indexNames.recent);
+        : filters.company || filters.employer ? indexNames.company : filters.jobTitle ? indexNames.title : indexNames.recent);
     const date = '$' + config.date;
     const year = { $cond: [{ $and: [
         { $eq: [{ $type: date }, 'date'] }, { $gte: [date, new Date('1901-01-01')] },
@@ -22,7 +22,7 @@ function insightsPipeline(spec, query = spec.query, selectedHint, exclude) {
     ] }, { $year: { date, timezone: 'UTC' } }, null] };
     const rawStatus = { $cond: [{ $eq: [{ $type: '$CASE_STATUS' }, 'string'] }, '$CASE_STATUS', ''] };
     const normalizedStatus = { $toUpper: { $trim: { input: '$_id.status' } } };
-    const metadata = metadataStages(spec, query, hint, false, [config.date, 'CASE_STATUS', ...(exclude ? [config.city] : [])]);
+    const metadata = metadataStages(spec, query, hint, false, [config.date, 'CASE_STATUS', ...Object.keys(exclude || {})]);
     const leading = metadata[0].$match.$and || [];
     const residual = (query.$and || []).filter(condition => !leading.includes(condition));
     // Leading index predicates already ran before projection; don't repeat
@@ -56,8 +56,8 @@ async function computeInsights(Model, program, input, { maxTimeMS = 5000, signal
         // City and state are disjoint covered streams. Exclude city matches
         // from the state stream so overlapping prefixes count each case once.
         const scans = spec.branches ? [
-            insightsPipeline(spec, spec.branches[0], indexNames.city),
-            insightsPipeline(spec, spec.branches[1], indexNames.state, spec.branches[0].$and.at(-1)),
+            insightsPipeline(spec, spec.branches[0], spec.branchHints[0]),
+            insightsPipeline(spec, spec.branches[1], spec.branchHints[1], spec.branches[0].$and.at(-1)),
         ] : [insightsPipeline(spec)];
         const deadline = Date.now() + maxTimeMS;
         const years = new Map(), statuses = new Map();

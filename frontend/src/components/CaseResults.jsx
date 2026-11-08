@@ -72,6 +72,7 @@ export default function CaseResults({ records, program, view }) {
                           <FiArrowUpRight aria-hidden="true" />
                         </span>
                       </Link>
+                      {record.EMPLOYER_PROFILE_SLUG && <Link className="cell-secondary employer-profile-link" to={'/employers/' + record.EMPLOYER_PROFILE_SLUG}>Employer profile</Link>}
                     </th>
                     <td>
                       <span className="result-job">{data.title}</span>
@@ -143,7 +144,7 @@ export default function CaseResults({ records, program, view }) {
       {records.map((record) => {
         const data = presentCase(record, program);
         return (
-          <Link
+          <div className="case-card-with-profile" key={record._id}><Link
             className="case-card-link"
             key={record._id}
             to={`/cases/${record._id}`}
@@ -206,6 +207,8 @@ export default function CaseResults({ records, program, view }) {
               </div>
             </article>
           </Link>
+          {record.EMPLOYER_PROFILE_SLUG && <Link className="card-employer-profile" to={'/employers/' + record.EMPLOYER_PROFILE_SLUG}>Explore employer profile <FiArrowUpRight aria-hidden="true" /></Link>}
+          </div>
         );
       })}
     </div>

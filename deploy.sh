@@ -12,7 +12,7 @@ echo "Building frontend image: $FRONTEND_IMAGE"
 docker build -t $FRONTEND_IMAGE -f frontend/Dockerfile.prod frontend/
 
 echo "Building backend image: $BACKEND_IMAGE"
-docker build -t $BACKEND_IMAGE -f backend/Dockerfile.prod backend/
+docker build -t $BACKEND_IMAGE -f backend/Dockerfile.prod .
 
 echo "Pushing images to registry..."
 docker push $FRONTEND_IMAGE

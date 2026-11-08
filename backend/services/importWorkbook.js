@@ -1,4 +1,5 @@
 const { createHash } = require('crypto');
+const { addWorksite } = require('./worksites');
 const { resolveSourceCells } = require('./sourceCellResolutions');
 const { readWorkbookRows } = require('./xlsxRows');
 const { ALIASES, DATE_FIELDS, NUMBER_FIELDS, buildLayout, normalizeHeader, normalizeRecord, excelDateToJSDate, isMissing, eventTime } = require('./dolLayout');
@@ -177,6 +178,11 @@ async function importWorkbook(filePath, {
                     update._DOL_SUPPLEMENT_SOURCE = { url: source.url, fiscalYear: source.fiscalYear, fields: Object.keys(update) };
                     stats.supplemented++;
                 }
+            }
+            if (update === record) addWorksite(record, type);
+            else {
+                const derived = addWorksite({ ...old, ...update }, type);
+                for (const key of ['_WORKSITE_CITY_LOWER', '_WORKSITE_STATE_LOWER', '_DISCOVERY_VERSION']) update[key] = derived[key];
             }
             if (source && update === record) record._DOL_SOURCE = { ...source, rank: sourceRank(source), validationVersion: VALIDATION_VERSION };
             const timestamps = nativeWrites ? { $setOnInsert: { createdAt: new Date(), __v: 0 } } : {};

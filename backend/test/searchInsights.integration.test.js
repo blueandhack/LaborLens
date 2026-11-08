@@ -16,7 +16,7 @@ test('insights count every matching case with bounded covered reads and safe sna
         const Model = connection.model(program, new mongoose.Schema({}, { strict: false }), config.collection);
         models[program] = Model;
         await Model.collection.createIndex({ CASE_NUMBER: 1 }, { unique: true });
-        for (const index of searchIndexes(program)) await Model.collection.createIndex(index.key, { name: index.name });
+        for (const index of searchIndexes(program)) await Model.collection.createIndex(index.key, { name: index.name, ...(index.partialFilterExpression ? { partialFilterExpression: index.partialFilterExpression } : {}) });
         await Model.collection.insertMany(Array.from({ length: 160 }, (_, i) => ({
             CASE_NUMBER: `P-100-${String(i).padStart(8, '0')}`,
             [config.company]: i < 120 ? 'example llc' : 'other employer',

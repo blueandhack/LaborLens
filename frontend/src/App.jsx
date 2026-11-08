@@ -5,6 +5,8 @@ import SearchView from './components/SearchView';
 import PermSearchView from './components/PermSearchView';
 import H1bSearchView from './components/H1bSearchView';
 import DataGuide from './components/DataGuide';
+import EmployerProfile from './components/EmployerProfile';
+import EmployersView from './components/EmployersView';
 import NotFound from './components/NotFound';
 import PageSEO from './components/PageSEO';
 import './index.css';
@@ -44,6 +46,7 @@ const Navigation = () => {
       <Link to="/h1b" className={`tab ${isH1b ? 'active' : ''}`} aria-current={isH1b ? 'page' : undefined}>
         H-1B Search
       </Link>
+      <Link to="/employers" className={`tab ${location.pathname.startsWith('/employers') ? 'active' : ''}`} aria-current={location.pathname.startsWith('/employers') ? 'page' : undefined}>Employers</Link>
     </nav>
   );
 };
@@ -90,6 +93,8 @@ function App(props) {
             <Route path="/perm" element={<PermSearchView />} />
             <Route path="/h1b" element={<H1bSearchView />} />
             <Route path="/data" element={<DataGuide />} />
+            <Route path="/employers" element={<EmployersView initialEmployers={props.initialEmployers} />} />
+            <Route path="/employers/:slug" element={<EmployerProfile initialProfile={props.initialEmployer} />} />
             <Route path="/admin/data" element={<ImportView />} />
             <Route path="/import" element={<Navigate to="/admin/data" replace />} />
             <Route path="/cases/:id" element={<CaseDetailsView />} />

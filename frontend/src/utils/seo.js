@@ -2,8 +2,8 @@ import { programs } from './programs.js';
 import { presentCase } from './casePresentation.js';
 
 export const SITE_ORIGIN = 'https://laborlens.fyi';
-export const PUBLIC_PATHS = ['/', '/h1b', '/perm', '/data', '/privacy/', '/terms/'];
-export const SEARCH_RESULT_KEYS = ['company', 'jobTitle', 'location', 'caseNumber', 'determinationYear', 'decisionYear', 'receivedYear', 'page'];
+export const PUBLIC_PATHS = ['/', '/h1b', '/perm', '/employers', '/data', '/privacy/', '/terms/'];
+export const SEARCH_RESULT_KEYS = ['company', 'employer', 'jobTitle', 'location', 'worksite', 'caseNumber', 'determinationYear', 'decisionYear', 'receivedYear', 'page'];
 const searchPrograms = { '/': 'pwd', '/perm': 'perm', '/h1b': 'h1b' };
 const descriptions = {
   pwd: 'Search public DOL prevailing wage determinations by employer, job title, location, and case number. View reported wage rates and original disclosure sources.',
@@ -17,13 +17,13 @@ export function getPageSEO(pathname, search = '') {
   const params = new URLSearchParams(search);
   const filtered = Boolean(program && SEARCH_RESULT_KEYS.some(key => params.get(key)));
   const title = program ? `${program === 'h1b' ? 'H1B Salary Database & LCA Search' : program === 'perm' ? 'PERM Database & Employer Case Search' : 'Prevailing Wage Determination Search'} | LaborLens`
-    : path === '/data' ? 'DOL Data Sources & Methodology | LaborLens'
+    : path === '/employers' ? 'Employer H1B, PERM & Wage Profiles | LaborLens' : path === '/data' ? 'DOL Data Sources & Methodology | LaborLens'
       : ['/admin/data', '/import'].includes(path) ? 'Administration | LaborLens'
         : /^\/cases\/[a-f\d]{24}$/i.test(path) ? 'Case Disclosure | LaborLens' : 'Page Not Found | LaborLens';
   const description = program ? descriptions[program] : path === '/data'
     ? 'Understand LaborLens H-1B, PERM, and prevailing wage data: DOL sources, historical coverage, reported wage periods, case dates, and validation.'
     : 'Research public U.S. Department of Labor H-1B LCA, PERM labor certification, and prevailing wage disclosure records with LaborLens.';
-  const indexable = Boolean((program || path === '/data') && !filtered);
+  const indexable = Boolean((program || path === '/data' || path === '/employers') && !filtered);
   const casePage = /^\/cases\/[a-f\d]{24}$/i.test(path);
   return {
     title, description, canonical: indexable ? SITE_ORIGIN + path : null,
@@ -35,6 +35,16 @@ export function getPageSEO(pathname, search = '') {
       ],
     } : null,
   };
+}
+
+export function getEmployerSEO(profile) {
+  const title = `${profile.name} · H1B Salary & PERM Filing History | LaborLens`;
+  const description = `Research ${profile.name} in public DOL H-1B, PERM, and prevailing wage disclosures. View filing history, reported wage ranges by pay period, job titles, and original sources.`;
+  const canonical = SITE_ORIGIN + '/employers/' + profile.slug;
+  return { title, description, canonical, robots: profile.ready ? 'index, follow' : 'noindex, follow', structuredData: profile.ready ? {
+    '@context': 'https://schema.org', '@type': 'WebPage', url: canonical, name: title, description,
+    dateModified: profile.snapshotAt, isPartOf: { '@type': 'WebSite', name: 'LaborLens', url: SITE_ORIGIN },
+  } : null };
 }
 
 export function getCaseSEO(record, program) {

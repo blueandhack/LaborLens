@@ -15,7 +15,7 @@ test('covered search preserves matches, paging, dates and PWD links', { skip: !p
         const Model = connection.model(program, new mongoose.Schema({}, { strict: false }), config.collection);
         models[program] = Model;
         await Model.collection.createIndex({ CASE_NUMBER: 1 }, { unique: true });
-        for (const index of searchIndexes(program)) await Model.collection.createIndex(index.key, { name: index.name });
+        for (const index of searchIndexes(program)) await Model.collection.createIndex(index.key, { name: index.name, ...(index.partialFilterExpression ? { partialFilterExpression: index.partialFilterExpression } : {}) });
         await Model.collection.insertMany(Array.from({ length: 2000 }, (_, i) => ({
             CASE_NUMBER: `${i % 2 ? 'p' : 'P'}-${String(i).padStart(5, '0')}`,
             [config.company]: i < 1000 ? 'google llc' : 'other employer',

@@ -1,20 +1,18 @@
-# Use the official Node.js image as base
+FROM node:24-alpine AS profile-ui
+WORKDIR /usr/src/app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build && npm prune --omit=dev
+
 FROM node:24-alpine
-
-# Set the working directory
-WORKDIR /usr/src/app
-
-# Copy package.json and package-lock.json (if available)
-COPY package*.json ./
-
-# Install dependencies (production only for smaller image)
+WORKDIR /usr/src/app/backend
+COPY backend/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-
-# Copy the remaining source code
-COPY . .
-
-# Expose the backend port
+COPY backend/ ./
+# Employer pages use the same React components and assets as the browser.
+COPY --from=profile-ui /usr/src/app/frontend/dist /usr/src/app/frontend/dist
+COPY --from=profile-ui /usr/src/app/frontend/dist-ssr /usr/src/app/frontend/dist-ssr
+COPY --from=profile-ui /usr/src/app/frontend/node_modules /usr/src/app/frontend/node_modules
 EXPOSE 5001
-
-# Start the application
 CMD ["npm", "start"]

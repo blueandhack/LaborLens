@@ -13,6 +13,7 @@ import {
   FiBarChart2,
 } from "react-icons/fi";
 import CaseResults from "./CaseResults";
+import EmployerAutocomplete from './EmployerAutocomplete';
 import "./CaseSearchView.css";
 import { programs } from "../utils/programs";
 import {
@@ -39,8 +40,10 @@ function SearchFilters({
   onSearch,
   onClear,
   loading,
+  worksiteReady,
 }) {
   const [draft, setDraft] = useState(initialValues);
+  const [selectedEmployer, setSelectedEmployer] = useState(null);
   const perm = program !== "pwd";
   const config = programs[program];
   const yearKey = config.yearKey;
@@ -57,18 +60,11 @@ function SearchFilters({
       }}
     >
       <div className="primary-search-fields">
-        <label className="field-employer" htmlFor="search-company">
-          Employer name
-          <input
-            id="search-company"
-            name="company"
-            className="search-input"
-            placeholder="e.g. Amazon"
-            value={draft.company}
-            onChange={edit("company")}
-            autoComplete="off"
-          />
-        </label>
+        <div className="field-employer"><EmployerAutocomplete id="search-company" value={draft.company || draft.employer || ''}
+          onChange={company => { setDraft(values => ({ ...values, company, employer: '' })); setSelectedEmployer(null); }}
+          onSelect={employer => { setDraft(values => ({ ...values, company: employer.name.slice(0, 160), employer: employer.key })); setSelectedEmployer(employer); }} />
+          {draft.employer && <p className="selected-employer-link">Matching this reported name exactly.{selectedEmployer && <> <Link to={'/employers/' + selectedEmployer.slug}>View employer profile</Link></>}</p>}
+        </div>
         <label htmlFor="search-job">
           Job title
           <input
@@ -80,6 +76,10 @@ function SearchFilters({
             onChange={edit("jobTitle")}
             autoComplete="off"
           />
+        </label>
+        <label htmlFor="search-worksite">Worksite location
+          <input id="search-worksite" name="worksite" className="search-input" placeholder={worksiteReady ? 'Primary worksite city or state' : 'Worksite search preparing…'}
+            value={draft.worksite || ''} onChange={edit('worksite')} disabled={!worksiteReady} autoComplete="off" />
         </label>
         <label htmlFor="search-location">
           Employer location
@@ -199,6 +199,7 @@ function SearchFilters({
       <p className="search-hint">
         Search by the beginning of a name, title, city, or case number. Employer names tolerate punctuation and spacing differences. Combine
         fields to narrow your results.
+        {' '}Employer location is the business address; worksite location is the reported primary worksite. Missing worksites are not inferred.
       </p>
     </form>
   );
@@ -210,6 +211,7 @@ export default function CaseSearchView({ program }) {
   const { filters, page, limit } = readSearchState(params, program);
   const [years, setYears] = useState([]);
   const [yearsError, setYearsError] = useState(false);
+  const [worksites, setWorksites] = useState({});
   const [retry, setRetry] = useState(0);
   const [countRetry, setCountRetry] = useState(0);
   const [countResponse, setCountResponse] = useState({ key: null, totalCount: null, error: null });
@@ -249,16 +251,24 @@ export default function CaseSearchView({ program }) {
         ? "table"
         : "cards";
   const filtersKey = JSON.stringify(filters);
-  const activeFilters = Object.entries(filters).filter(([, value]) => value);
+  const activeFilters = Object.entries(filters).filter(([key, value]) => value && !(key === 'company' && filters.employer));
   const filterLabels = {
     company: "Employer",
+    employer: "Reported name",
     location: "Location",
+    worksite: "Worksite",
     caseNumber: "Case",
     jobTitle: "Job",
     determinationYear: "Determined",
     decisionYear: program === "h1b" ? "Last action" : "Decided",
     receivedYear: config.receivedLabel,
   };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getJSON('/api/employers/status', { signal: controller.signal }).then(data => setWorksites(data.worksites || {})).catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1280px)");
@@ -428,6 +438,7 @@ export default function CaseSearchView({ program }) {
           program={program}
           years={years}
           loading={loading}
+          worksiteReady={Boolean(worksites[program]?.ready)}
           onSearch={(next) => {
             update(next, 1);
             requestAnimationFrame(scrollToResults);
@@ -457,7 +468,7 @@ export default function CaseSearchView({ program }) {
             <button
               className="filter-chip"
               key={key}
-              onClick={() => update({ ...filters, [key]: "" }, 1)}
+              onClick={() => update({ ...filters, [key]: "", ...(key === 'employer' ? { company: '' } : {}) }, 1)}
               aria-label={`Remove ${filterLabels[key]} filter ${value}`}
             >
               <span>

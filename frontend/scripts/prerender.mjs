@@ -4,6 +4,7 @@ import { getPageSEO, SITE_ORIGIN } from '../src/utils/seo.js';
 
 const dist = new URL('../dist/', import.meta.url);
 const template = await readFile(new URL('index.html', dist), 'utf8');
+await writeFile(new URL('profile-shell.html', dist), template);
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const head = metadata => [
   `<title>${escape(metadata.title)}</title>`,
@@ -28,14 +29,14 @@ function page(path, metadata = getPageSEO(path), body = render(path)) {
 }
 
 await mkdir(new URL('seo/', dist), { recursive: true });
-for (const [path, file] of [['/', 'pwd'], ['/h1b', 'h1b'], ['/perm', 'perm'], ['/data', 'data']]) {
+for (const [path, file] of [['/', 'pwd'], ['/h1b', 'h1b'], ['/perm', 'perm'], ['/data', 'data'], ['/employers', 'employers']]) {
   const html = page(path);
   await writeFile(new URL(`seo/${file}.html`, dist), html);
   if (path === '/') await writeFile(new URL('index.html', dist), html);
-  if (path === '/data') continue;
+  if (path === '/data' || path === '/employers') continue;
   await writeFile(new URL(`seo/${file}-filtered.html`, dist), page(path, getPageSEO(path, '?company=filtered')));
 }
 await writeFile(new URL('seo/admin.html', dist), page('/admin/data', getPageSEO('/admin/data'), ''));
 await writeFile(new URL('app.html', dist), page('/cases/' + '0'.repeat(24), getPageSEO('/cases/' + '0'.repeat(24)), ''));
 await writeFile(new URL('404.html', dist), page('/not-found'));
-console.log('Pre-rendered four public pages, filtered search shells, admin metadata, case shell, and 404 page.');
+console.log('Pre-rendered five public pages, filtered search shells, employer SSR template, admin metadata, case shell, and 404 page.');

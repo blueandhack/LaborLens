@@ -59,7 +59,7 @@ jobs:
       - name: Build and push backend
         uses: docker/build-push-action@v7
         with:
-          context: ./backend
+          context: .
           file: ./backend/Dockerfile.prod
           push: true
           provenance: false
@@ -120,13 +120,14 @@ jobs:
         run: |
           sed -i "s|image: .*laborlens-backend.*|image: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}|" k8s/backend.yaml
           sed -i "s|image: .*laborlens-backend.*|image: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}|" k8s/auto-import.yaml
+          sed -i "s|image: .*laborlens-backend.*|image: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}|" k8s/employers.yaml
           sed -i "s|image: .*laborlens-frontend.*|image: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}|" k8s/frontend.yaml
 
       - name: Commit updated manifests
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/backend.yaml k8s/frontend.yaml k8s/auto-import.yaml
+          git add k8s/backend.yaml k8s/frontend.yaml k8s/auto-import.yaml k8s/employers.yaml
           git diff --cached --quiet && echo "No manifest changes" && exit 0
           git commit -m "ci: update images to ${GITHUB_SHA::8} [skip ci]"
           git push

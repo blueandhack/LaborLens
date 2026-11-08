@@ -35,6 +35,13 @@ spec:
   - host: laborlens.fyi
     http:
       paths:
+      - path: /employers
+        pathType: Prefix
+        backend:
+          service:
+            name: laborlens-backend
+            port:
+              number: 5001
       - path: /api
         pathType: Prefix
         backend:

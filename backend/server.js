@@ -22,6 +22,9 @@ app.get('/api/health', (_req, res) => res.status(mongoose.connection.readyState 
 app.use('/api/upload', uploadRoute);
 app.use('/api/search', searchRoute);
 app.use('/api/cases', caseRoute);
+const employers = require('./routes/employers').createEmployerRoutes({ db: () => mongoose.connection.db, models: require('./models/programModels') });
+app.use('/api/employers', employers.api);
+app.use('/employers', employers.pages);
 app.use('/api/admin', adminRoute);
 
 // MongoDB connection

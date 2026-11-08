@@ -23,12 +23,13 @@ async function main() {
             }
             for (const index of desired) {
                 if (args.includes('--check')) {
-                    if (!before.some(existing => existing.name === index.name && JSON.stringify(existing.key) === JSON.stringify(index.key))) {
+                    if (!before.some(existing => existing.name === index.name && JSON.stringify(existing.key) === JSON.stringify(index.key)
+                        && JSON.stringify(existing.partialFilterExpression) === JSON.stringify(index.partialFilterExpression))) {
                         throw new Error(`Missing ${config.collection}.${index.name}`);
                     }
                 } else {
                     console.log(`Ensuring ${config.collection}.${index.name}`);
-                    await collection.createIndex(index.key, { name: index.name });
+                    await collection.createIndex(index.key, { name: index.name, ...(index.partialFilterExpression ? { partialFilterExpression: index.partialFilterExpression } : {}) });
                 }
             }
             if (args.includes('--prune-obsolete')) {

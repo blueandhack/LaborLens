@@ -4,7 +4,9 @@ export const PAGE_SIZES = [12, 24, 48, 96];
 export const DEFAULT_LIMIT = 24;
 export const filterKeys = (program) => [
   "company",
+  "employer",
   "location",
+  "worksite",
   "caseNumber",
   "jobTitle",
   programs[program].yearKey,

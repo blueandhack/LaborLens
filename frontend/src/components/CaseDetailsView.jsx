@@ -43,7 +43,7 @@ const fieldLabel = (key, program) =>
 const visibleEntries = (record) =>
   Object.entries(record).filter(
     ([key, value]) =>
-      !["_id", "__v", "score", "createdAt", "updatedAt", "_PROGRAM"].includes(key) &&
+      !["_id", "__v", "score", "createdAt", "updatedAt", "_PROGRAM", "_DISCOVERY_VERSION", "EMPLOYER_PROFILE_SLUG"].includes(key) &&
       !key.startsWith("_DOL_") &&
       !key.endsWith("_LOWER") &&
       value != null &&
@@ -119,7 +119,7 @@ export default function CaseDetailsView() {
   }, [item, program, id, response.error]);
   const perm = program !== "pwd";
   const from = location.state?.from;
-  const back = typeof from === "string" && /^\/(?:\?.*|(?:perm|h1b)(?:\?.*)?)?$/.test(from)
+  const back = typeof from === "string" && /^\/(?:\?.*|(?:perm|h1b)(?:\?.*)?|employers\/[a-z0-9-]+--[a-f0-9]{24})?$/.test(from)
     ? from : program === "pwd" ? "/" : `/${program}`;
   if (response.key !== requestKey)
     return (
@@ -152,7 +152,7 @@ export default function CaseDetailsView() {
         )}
         <Link className="btn btn-secondary" to={back}>
           <FiArrowLeft aria-hidden="true" />
-          Back to results
+          {back.startsWith("/employers/") ? "Back to employer" : "Back to results"}
         </Link>
       </div>
     );
@@ -199,7 +199,7 @@ export default function CaseDetailsView() {
     <article className="case-details-page">
       <Link className="back-to-results" to={back}>
         <FiArrowLeft aria-hidden="true" />
-        Back to results
+        {back.startsWith("/employers/") ? "Back to employer" : "Back to results"}
       </Link>
       <header className="case-details-header">
         <div className="case-detail-meta">
@@ -213,6 +213,7 @@ export default function CaseDetailsView() {
           {data.employer}
         </h1>
         <p className="detail-job-title">{data.title}</p>
+        {item.EMPLOYER_PROFILE_SLUG && <p className="selected-employer-link"><Link to={'/employers/' + item.EMPLOYER_PROFILE_SLUG}>View this reported employer’s profile</Link></p>}
         <p className="detail-location">
           <FiMapPin aria-hidden="true" />
           {data.location}

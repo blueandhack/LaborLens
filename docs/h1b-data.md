@@ -16,7 +16,7 @@ The source is the [DOL OFLC performance disclosure page](https://www.dol.gov/age
 
 ## Import and operations
 
-Create indexes before routing traffic to the new program. The migration script now also handles a program collection that does not yet exist. Each collection retains eight indexes, including the unique case-number index; MongoDB's configured cache budget is unchanged.
+Create indexes before routing traffic to the new program. The migration script now also handles a program collection that does not yet exist. Employer/worksite discovery brings each collection to twelve indexes after its separate migration, including the preserved unique case-number index; MongoDB's configured cache budget is unchanged.
 
 ```sh
 node scripts/search-indexes.js

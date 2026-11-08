@@ -24,7 +24,7 @@ test('H-1B HTTP search, year options, insights and details agree on application 
         require('../routes/search').invalidateCache(); await mongoose.connection.dropDatabase(); await mongoose.disconnect();
     });
     await models.h1b.collection.createIndex({ CASE_NUMBER: 1 }, { unique: true });
-    for (const index of searchIndexes('h1b')) await models.h1b.collection.createIndex(index.key, { name: index.name });
+    for (const index of searchIndexes('h1b')) await models.h1b.collection.createIndex(index.key, { name: index.name, ...(index.partialFilterExpression ? { partialFilterExpression: index.partialFilterExpression } : {}) });
     const rows = [0, 1].map(i => ({ CASE_NUMBER: `I-200-26001-00000${i}`, VISA_CLASS: 'H-1B',
         EMPLOYER_NAME: 'Example LLC', EMPLOYER_NAME_LOWER: 'example llc', EMPLOYER_CITY_LOWER: 'austin', EMPLOYER_STATE: 'TX',
         JOB_TITLE: 'Engineer', JOB_TITLE_LOWER: 'engineer', DECISION_DATE: new Date('2026-01-07'), RECEIVED_DATE: new Date('2025-12-31'),

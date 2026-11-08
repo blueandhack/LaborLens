@@ -19,7 +19,7 @@ test('index migration bootstraps empty program collections before their first im
     await run(process.execPath, [script, '--check'], options);
     for (const config of Object.values(programs)) {
         const indexes = await connection.db.collection(config.collection).indexes();
-        assert.equal(indexes.length, 8);
+        assert.equal(indexes.length, 12);
         assert.equal(indexes.find(index => index.name === 'CASE_NUMBER_1').unique, true);
         assert.equal(await connection.db.collection(config.collection).countDocuments(), 0);
     }

@@ -18,7 +18,7 @@ export const programs = {
     endpoint: "/api/search/h1b", event: "last action", wageLabel: "LCA offered wage",
     dateLabel: "Last action date", yearLabel: "Last action year", events: "recorded actions", receivedLabel: "DOL received",
     subtitle: "Explore employer labor condition applications and reported wage ranges.",
-    description: "These are H-1B Labor Condition Applications (LCAs), not USCIS visa approvals. One application can request multiple workers. Wages retain their reported pay periods. Location filters use the employer’s address; reported worksite details appear within each case.",
+    description: "These are H-1B Labor Condition Applications (LCAs), not USCIS visa approvals. One application can request multiple workers. Wages retain their reported pay periods. Employer location filters use the employer’s address; worksite filters use the reported primary worksite. Additional worksites are retained in case disclosures.",
     dateExplanation: "The last action date may reflect a withdrawal years after the LCA was certified. It does not always indicate initial certification. DOL reports the original certification date separately for Certified–Withdrawn cases; it may be absent for other statuses.",
   },
 };

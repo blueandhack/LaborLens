@@ -1,5 +1,6 @@
 const { programs, indexNames } = require('./searchConfig');
 const { BoundedCache } = require('./boundedCache');
+const { slugFor } = require('./employers');
 
 const counts = new BoundedCache();
 const QUERY_MS = 10000;
@@ -17,7 +18,7 @@ function employerPrefix(value) {
 function text(query, field) {
     const value = query[field];
     if (value === undefined) return '';
-    if (typeof value !== 'string' || value.length > 160) throw badRequest(`Invalid ${field}`);
+    if (typeof value !== 'string' || value.length > (field === 'employer' ? 512 : 160)) throw badRequest(`Invalid ${field}`);
     return value.trim();
 }
 
@@ -38,7 +39,7 @@ function insensitivePrefix(value) {
 function buildSearch(program, input) {
     const config = programs[program];
     if (!config) throw badRequest('Invalid case program');
-    const filters = Object.fromEntries(['company', 'location', 'caseNumber', 'jobTitle', config.year, 'receivedYear']
+    const filters = Object.fromEntries(['company', 'employer', 'location', 'worksite', 'caseNumber', 'jobTitle', config.year, 'receivedYear']
         .map(field => [field, text(input, field)]));
     const page = input.page === undefined ? 1 : Number(text(input, 'page'));
     const limit = input.limit === undefined ? 20 : Number(text(input, 'limit'));
@@ -46,12 +47,18 @@ function buildSearch(program, input) {
             !Number.isSafeInteger((page - 1) * limit)) throw badRequest('Invalid page or limit (maximum 100 cases per page)');
     const conditions = [];
     const prefix = value => ({ $regex: `^${escapeRegex(value.toLowerCase())}` });
-    if (filters.company) conditions.push({ [config.company]: employerPrefix(filters.company) });
+    if (filters.employer) conditions.push({ [config.company]: filters.employer.toLowerCase() });
+    else if (filters.company) conditions.push({ [config.company]: employerPrefix(filters.company) });
     if (filters.jobTitle) conditions.push({ JOB_TITLE_LOWER: prefix(filters.jobTitle) });
     if (filters.caseNumber) conditions.push({ CASE_NUMBER: insensitivePrefix(filters.caseNumber) });
-    const location = filters.location ? [
+    const employerLocation = filters.location ? [
         { [config.city]: prefix(filters.location) }, { [config.state]: insensitivePrefix(filters.location) },
     ] : null;
+    const location = filters.worksite ? [
+        { _WORKSITE_CITY_LOWER: { ...prefix(filters.worksite), $gt: '' } },
+        { _WORKSITE_STATE_LOWER: { ...prefix(filters.worksite), $gt: '' } },
+    ] : employerLocation;
+    if (filters.worksite && employerLocation) conditions.push({ $or: employerLocation });
     for (const [parameter, field] of [[config.year, config.date], ['receivedYear', 'RECEIVED_DATE']]) {
         const value = filters[parameter];
         if (!value) continue;
@@ -61,20 +68,21 @@ function buildSearch(program, input) {
     }
     const query = conditions.length || location ? { $and: [...conditions, ...(location ? [{ $or: location }] : [])] } : {};
     let hint;
-    if (filters.company) hint = indexNames.company;
+    if (filters.employer || filters.company) hint = indexNames.company;
     else if (filters.jobTitle) hint = indexNames.title;
     else if (filters.caseNumber.length >= 10) hint = 'CASE_NUMBER_1';
     else if (filters.receivedYear) hint = indexNames.received;
     else if (!location) hint = indexNames.recent;
     return { config, query, filters, hint, page, limit, skip: (page - 1) * limit,
-        branches: location && !filters.company && !filters.jobTitle && filters.caseNumber.length < 10
+        branches: location && (filters.worksite || !filters.company && !filters.employer && !filters.jobTitle && filters.caseNumber.length < 10)
             ? location.map(branch => ({ $and: [...conditions, branch] })) : null,
+        branchHints: filters.worksite ? [indexNames.worksiteCity, indexNames.worksiteState] : [indexNames.city, indexNames.state],
         intersection: location ? { $and: [...conditions, ...location] } : null,
         sort: { [config.date]: -1, _id: 1 } };
 }
 
 function pageIds(collection, query, spec, signal, hint, skip = spec.skip, limit = spec.limit) {
-    const complex = spec.filters.location || spec.filters.company && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
+    const complex = spec.filters.location || spec.filters.worksite || (spec.filters.company || spec.filters.employer) && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
         || spec.filters.jobTitle && (spec.filters.receivedYear || spec.filters.caseNumber);
     if (complex && hint && hint !== 'CASE_NUMBER_1') {
         return collection.aggregate([...metadataStages(spec, query, hint, true), { $sort: spec.sort },
@@ -97,7 +105,8 @@ function metadataStages(spec, query, hint, withDate = false, extraFields = []) {
     visit(query);
     const primary = ({ [indexNames.company]: spec.config.company, [indexNames.title]: 'JOB_TITLE_LOWER',
         [indexNames.city]: spec.config.city, [indexNames.state]: spec.config.state,
-        [indexNames.received]: 'RECEIVED_DATE', [indexNames.recent]: spec.config.date, CASE_NUMBER_1: 'CASE_NUMBER' })[hint];
+        [indexNames.worksiteCity]: '_WORKSITE_CITY_LOWER', [indexNames.worksiteState]: '_WORKSITE_STATE_LOWER',
+        [indexNames.received]: 'RECEIVED_DATE', [indexNames.recent]: spec.config.date, [indexNames.worksiteRecent]: spec.config.date, CASE_NUMBER_1: 'CASE_NUMBER' })[hint];
     const leading = (query.$and || [query]).filter(condition => Object.hasOwn(condition, primary));
     const projection = { _id: withDate ? 1 : 0, ...(withDate ? { [spec.config.date]: 1 } : {}) };
     // A computed projection keeps residual OR/regex filters above the index-only
@@ -117,7 +126,7 @@ async function locationPage(collection, spec, signal) {
     const end = spec.skip + spec.limit;
     if (end > 2000) return pageIds(collection, spec.query, spec, signal);
     const pages = await Promise.all(spec.branches.map((query, index) =>
-        pageIds(collection, query, spec, signal, index ? indexNames.state : indexNames.city, 0, end)));
+        pageIds(collection, query, spec, signal, spec.branchHints[index], 0, end)));
     const rows = [...new Map(pages.flat().map(row => [String(row._id), row])).values()];
     // Older malformed date values retain MongoDB's BSON ordering via fallback.
     if (rows.some(row => row[spec.config.date] != null && !(row[spec.config.date] instanceof Date))) {
@@ -156,8 +165,8 @@ async function totalFor(Model, program, spec) {
         try {
             if (spec.branches) {
                 const [city, state, overlap] = await Promise.allSettled([
-                    count(spec.branches[0], indexNames.city), count(spec.branches[1], indexNames.state),
-                    count(spec.intersection, indexNames.city),
+                    count(spec.branches[0], spec.branchHints[0]), count(spec.branches[1], spec.branchHints[1]),
+                    count(spec.intersection, spec.branchHints[0]),
                 ]);
                 // Keep the concurrency slot until every branch has stopped.
                 for (const result of [city, state, overlap]) if (result.status === 'rejected') throw result.reason;
@@ -197,7 +206,8 @@ async function searchCases(Model, program, input, { signal } = {}) {
         // A short trial budget protects rare/historical queries; those fall back
         // to their selective prefix index.
         if (hasFilters && (totalCount === null || totalCount >= 1000) && spec.skip + selection.limit <= 2000 && !spec.filters.receivedYear) {
-            const stages = metadataStages(spec, query, indexNames.recent, true);
+            const recentHint = spec.filters.worksite ? indexNames.worksiteRecent : indexNames.recent;
+            const stages = metadataStages(spec, query, recentHint, true);
             stages[1].$project[config.date] = 1;
             try {
                 // The bounded window also fences MongoDB's optimizer: without
@@ -206,7 +216,7 @@ async function searchCases(Model, program, input, { signal } = {}) {
                 const window = Math.min(20000, Math.max(5000, (spec.skip + selection.limit) * 100));
                 ids = await collection.aggregate([stages[0], { $sort: spec.sort }, { $limit: window }, stages[1], stages[2],
                     { $skip: spec.skip }, { $limit: selection.limit }, { $project: { _id: 1, [config.date]: 1 } }],
-                { hint: indexNames.recent, maxTimeMS: 500, signal }).toArray();
+                { hint: recentHint, maxTimeMS: 500, signal }).toArray();
                 if (ids.length < (totalCount === null ? selection.limit : Math.min(selection.limit, totalCount - spec.skip))) ids = undefined;
             } catch (error) {
                 if (error.code !== 50 || signal?.aborted) throw error;
@@ -220,10 +230,16 @@ async function searchCases(Model, program, input, { signal } = {}) {
     const knownTotal = deferred && spec.skip === 0 && !hasNextPage ? ids.length : totalCount;
     ids = ids.slice(0, limit);
     const projection = Object.fromEntries(config.fields.map(field => [field, 1]));
+    projection[config.company] = 1;
     const rows = ids.length ? await collection.find({ _id: { $in: ids.map(row => row._id) } },
         { projection, maxTimeMS: QUERY_MS, signal }).toArray() : [];
     const byId = new Map(rows.map(row => [String(row._id), row]));
     const cases = ids.map(row => byId.get(String(row._id))).filter(Boolean);
+    for (const row of cases) {
+        const key = row[config.company] || row[config.employer]?.toLowerCase();
+        if (typeof key === 'string' && key) row.EMPLOYER_PROFILE_SLUG = slugFor(key);
+        delete row[config.company];
+    }
     if (program === 'perm' && cases.length) {
         const numbers = [...new Set(cases.map(row => row.JOB_OPP_PWD_NUMBER).filter(value => typeof value === 'string' && value))];
         const pwd = numbers.length ? await Model.db.collection('cases').find({ CASE_NUMBER: { $in: numbers } }, {

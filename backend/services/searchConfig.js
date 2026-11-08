@@ -12,20 +12,22 @@ const programs = {
         city: 'EMPLOYER_CITY_LOWER', state: 'EMPLOYER_STATE', date: 'DETERMINATION_DATE', year: 'determinationYear',
         fields: ['CASE_NUMBER', 'CASE_STATUS', 'EMPLOYER_LEGAL_BUSINESS_NAME', 'EMPLOYER_CITY', 'EMPLOYER_STATE',
             'JOB_TITLE', 'VISA_CLASS', 'NAICS_CODE', 'PWD_WAGE_RATE', 'PWD_UNIT_OF_PAY', 'PWD_OES_WAGE_LEVEL',
-            'PWD_SOC_CODE', 'PWD_SOC_TITLE', 'DETERMINATION_DATE', 'RECEIVED_DATE', 'PWD_WAGE_EXPIRATION_DATE'],
+            'PWD_SOC_CODE', 'PWD_SOC_TITLE', 'DETERMINATION_DATE', 'RECEIVED_DATE', 'PWD_WAGE_EXPIRATION_DATE', 'PRIMARY_WORKSITE_CITY', 'PRIMARY_WORKSITE_STATE'],
     },
     perm: {
         collection: 'permcases', company: 'EMP_BUSINESS_NAME_LOWER', employer: 'EMP_BUSINESS_NAME',
         city: 'EMP_CITY_LOWER', state: 'EMP_STATE', date: 'DECISION_DATE', year: 'decisionYear',
         fields: ['CASE_NUMBER', 'CASE_STATUS', 'EMP_BUSINESS_NAME', 'EMP_CITY', 'EMP_STATE', 'JOB_TITLE',
             'VISA_CLASS', 'EMP_NAICS_CODE', 'JOB_OPP_WAGE_FROM', 'JOB_OPP_WAGE_TO', 'JOB_OPP_WAGE_PER',
-            'PWD_SOC_CODE', 'PWD_SOC_TITLE', 'JOB_OPP_PWD_NUMBER', 'DECISION_DATE', 'RECEIVED_DATE'],
+            'PWD_SOC_CODE', 'PWD_SOC_TITLE', 'JOB_OPP_PWD_NUMBER', 'DECISION_DATE', 'RECEIVED_DATE', 'WORKSITE_CITY', 'WORKSITE_STATE', 'JOB_INFO_WORK_CITY', 'JOB_INFO_WORK_STATE', 'JOB_OPP_CITY', 'JOB_OPP_STATE'],
     },
 };
 
 const indexNames = {
     recent: 'search_recent_v4', company: 'search_company_v3', title: 'search_title_v3',
     city: 'search_city_v3', state: 'search_state_v3', received: 'search_received_v3',
+    worksiteCity: 'search_worksite_city_v1', worksiteState: 'search_worksite_state_v1',
+    worksiteRecent: 'search_worksite_recent_v1',
 };
 
 function searchIndexes(program) {
@@ -38,6 +40,13 @@ function searchIndexes(program) {
         return key;
     }
     return [
+        { name: 'discovery_version_v1', key: { _DISCOVERY_VERSION: 1, _id: 1 } },
+        { name: indexNames.worksiteRecent, key: { ...sort, ...Object.fromEntries(filters.map(field => [field, 1])), _WORKSITE_CITY_LOWER: 1, _WORKSITE_STATE_LOWER: 1, CASE_STATUS: 1 },
+            partialFilterExpression: { $or: [{ _WORKSITE_CITY_LOWER: { $gt: '' } }, { _WORKSITE_STATE_LOWER: { $gt: '' } }] } },
+        ...[['worksiteCity', '_WORKSITE_CITY_LOWER'], ['worksiteState', '_WORKSITE_STATE_LOWER']].map(([name, field]) => ({
+            name: indexNames[name], key: covered(field, 1, [...filters, '_WORKSITE_CITY_LOWER', '_WORKSITE_STATE_LOWER', 'CASE_STATUS']),
+            partialFilterExpression: { [field]: { $gt: '' } },
+        })),
         { name: indexNames.recent, key: { ...sort, ...Object.fromEntries(filters.map(field => [field, 1])), CASE_STATUS: 1 } },
         ...Object.entries({ company: config.company, title: 'JOB_TITLE_LOWER', city: config.city,
             state: config.state, received: 'RECEIVED_DATE' }).map(([name, field]) => ({
@@ -49,7 +58,7 @@ function searchIndexes(program) {
 }
 
 function addSearchIndexes(schema, program) {
-    for (const { name, key } of searchIndexes(program)) schema.index(key, { name });
+    for (const { name, key, partialFilterExpression } of searchIndexes(program)) schema.index(key, { name, ...(partialFilterExpression ? { partialFilterExpression } : {}) });
 }
 
 module.exports = { programs, indexNames, searchIndexes, addSearchIndexes };

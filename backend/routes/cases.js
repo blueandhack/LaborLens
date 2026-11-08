@@ -6,13 +6,18 @@ const mongoose = require('mongoose');
 const { acquireImportLock } = require('../services/importLock');
 const { invalidateCache } = require('./search');
 const { noteInsightsChange } = require('../services/searchInsights');
+const { slugFor, clearEmployerProgram } = require('../services/employers');
+const { programs } = require('../services/searchConfig');
 
 router.get('/:id', async (req, res) => {
     try {
         if (!mongoose.isObjectIdOrHexString(req.params.id)) return res.status(404).json({ error: 'Case not found' });
         for (const [program, Model] of Object.entries(models)) {
             const item = await Model.findById(req.params.id).lean().maxTimeMS(5000);
-            if (item) return res.set('Cache-Control', 'public, max-age=60').json({ ...item, _PROGRAM: program });
+            if (item) {
+                const key = item[programs[program].company] || item[programs[program].employer]?.toLowerCase();
+                return res.set('Cache-Control', 'public, max-age=60').json({ ...item, _PROGRAM: program, EMPLOYER_PROFILE_SLUG: key ? slugFor(key) : null });
+            }
         }
         res.status(404).json({ error: 'Case not found' });
     } catch (error) {
@@ -34,6 +39,7 @@ router.delete('/', authMiddleware, async (req, res) => {
         await mongoose.connection.db.collection('import_sources').updateMany({ type }, { $set: { status: 'cleared' } });
         const result = await Model.deleteMany({});
         await noteInsightsChange(mongoose.connection.db, type, { clear: true });
+        await clearEmployerProgram(mongoose.connection.db, type);
         invalidateCache();
         res.json({ success: true, deletedCount: result.deletedCount, message: `Successfully deleted ${result.deletedCount} ${type.toUpperCase()} cases` });
     } catch (error) {
