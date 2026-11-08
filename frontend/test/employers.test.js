@@ -21,4 +21,8 @@ test('exact employer selection and separate worksite/employer locations survive 
   const roundTrip = writeSearchState(filters, page, limit);
   assert.equal(roundTrip.get('employer'), filters.employer); assert.equal(roundTrip.get('worksite'), 'CA');
   assert.equal(roundTrip.get('location'), 'TX'); assert.equal(roundTrip.get('page'), '2');
+  const stored = ' Amazon.com Services LLC\t';
+  const exact = writeSearchState({ employer: stored }, 1, 24);
+  assert.equal(exact.get('employer'), stored, 'source spacing must survive profile-to-case URLs');
+  assert.equal(readSearchState(exact, 'h1b').filters.employer, stored);
 });

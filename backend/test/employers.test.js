@@ -28,4 +28,5 @@ test('exact reported names do not broaden into prefixes and worksite branches ke
     assert.equal(spec.branches[0].$and.at(-1)._WORKSITE_CITY_LOWER.$regex, '^ca');
     assert(spec.branches[0].$and.some(condition => condition.$or));
     assert.throws(() => buildSearch('pwd', { worksite: ['$ne'] }), error => error.status === 400);
+    assert.equal(buildSearch('h1b', { employer: ' Amazon.com Services LLC\t' }).query.$and[0].EMPLOYER_NAME_LOWER, ' amazon.com services llc\t');
 });

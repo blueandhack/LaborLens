@@ -19,7 +19,7 @@ function text(query, field) {
     const value = query[field];
     if (value === undefined) return '';
     if (typeof value !== 'string' || value.length > (field === 'employer' ? 512 : 160)) throw badRequest(`Invalid ${field}`);
-    return value.trim();
+    return field === 'employer' ? value : value.trim();
 }
 
 // Enumerate short ASCII identifiers so each expression has an indexable prefix.
