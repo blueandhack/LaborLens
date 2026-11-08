@@ -23,7 +23,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: insights
-            image: ghcr.io/blueandhack/laborlens-backend:913d612d75ebccec0086ed7fb839d2f45f0d1f5f
+            image: ghcr.io/blueandhack/laborlens-backend:fefcaff29e78ebbdff57a5379ba0778a6ca394ae
             imagePullPolicy: Always
             command: ["node", "scripts/refresh-insights.js"]
             env:
@@ -70,7 +70,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: importer
-            image: ghcr.io/blueandhack/laborlens-backend:913d612d75ebccec0086ed7fb839d2f45f0d1f5f
+            image: ghcr.io/blueandhack/laborlens-backend:fefcaff29e78ebbdff57a5379ba0778a6ca394ae
             imagePullPolicy: Always
             command: ["node", "scripts/auto-import.js", "--max-files=6"]
             env:
@@ -127,7 +127,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: importer
-            image: ghcr.io/blueandhack/laborlens-backend:913d612d75ebccec0086ed7fb839d2f45f0d1f5f
+            image: ghcr.io/blueandhack/laborlens-backend:fefcaff29e78ebbdff57a5379ba0778a6ca394ae
             imagePullPolicy: Always
             command: ["node", "scripts/auto-import.js", "--from-year=2008", "--max-files=2", "--backfill", "--programs=pwd,perm,h1b"]
             env:
