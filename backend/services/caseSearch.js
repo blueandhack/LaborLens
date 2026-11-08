@@ -3,6 +3,7 @@ const { BoundedCache } = require('./boundedCache');
 
 const counts = new BoundedCache();
 const QUERY_MS = 10000;
+let activeCounts = 0;
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const badRequest = message => Object.assign(new Error(message), { status: 400 });
 
@@ -103,7 +104,11 @@ function metadataStages(spec, query, hint, withDate = false, extraFields = []) {
     // read. MongoDB otherwise fetches whole disclosures to evaluate those filters,
     // even when every required value is present in the covering index.
     for (const field of fields) projection[field] = { $ifNull: [`$${field}`, null] };
-    return [{ $match: leading.length ? { $and: leading } : {} }, { $project: projection }, { $match: query }];
+    const residual = (query.$and || [query]).filter(condition => !leading.includes(condition));
+    // The index already applied leading predicates. Re-evaluating their regexes
+    // after projection is costly for states/titles matching millions of cases.
+    return [{ $match: leading.length ? { $and: leading } : {} }, { $project: projection },
+        { $match: residual.length ? { $and: residual } : {} }];
 }
 
 async function locationPage(collection, spec, signal) {
@@ -127,13 +132,12 @@ async function locationPage(collection, spec, signal) {
     return rows.slice(spec.skip, end);
 }
 
-async function searchCases(Model, program, input, { signal } = {}) {
-    signal?.throwIfAborted();
-    const spec = buildSearch(program, input);
-    const { config, query, hint, page, limit } = spec;
+const countKey = (program, spec) => JSON.stringify([program, spec.filters]);
+
+async function totalFor(Model, program, spec) {
+    const { query, hint } = spec;
     const collection = Model.collection;
     const hasFilters = Object.keys(query).length > 0;
-    const countKey = JSON.stringify([program, spec.filters]);
     const count = async (query, hint) => {
         const condition = query.$and?.length === 1 && query.$and[0];
         if (!hint || condition && !condition.$or && !Object.values(condition)[0].$in) {
@@ -143,45 +147,78 @@ async function searchCases(Model, program, input, { signal } = {}) {
             { hint, maxTimeMS: QUERY_MS }).toArray();
         return rows[0]?.total || 0;
     };
-    const total = counts.get(countKey, async () => {
-        if (spec.branches) {
-            const [city, state, overlap] = await Promise.all([
-                count(spec.branches[0], indexNames.city), count(spec.branches[1], indexNames.state),
-                count(spec.intersection, indexNames.city),
-            ]);
-            return city + state - overlap;
-        }
-        return hasFilters ? count(query, hint) : collection.estimatedDocumentCount({ maxTimeMS: QUERY_MS });
+    return counts.get(countKey(program, spec), async () => {
+        // Coalesced counts may finish after their browser disconnects, allowing
+        // another page to reuse the answer. Bound that work independently of
+        // case retrieval; there is no queue of expensive count scans.
+        if (activeCounts >= 2) throw Object.assign(new Error('Total counts are busy. Try again shortly.'), { status: 503 });
+        activeCounts++;
+        try {
+            if (spec.branches) {
+                const [city, state, overlap] = await Promise.allSettled([
+                    count(spec.branches[0], indexNames.city), count(spec.branches[1], indexNames.state),
+                    count(spec.intersection, indexNames.city),
+                ]);
+                // Keep the concurrency slot until every branch has stopped.
+                for (const result of [city, state, overlap]) if (result.status === 'rejected') throw result.reason;
+                return city.value + state.value - overlap.value;
+            }
+            return await (hasFilters ? count(query, hint) : collection.estimatedDocumentCount({ maxTimeMS: QUERY_MS }));
+        } finally { activeCounts--; }
     });
+}
+
+async function countCases(Model, program, input, { signal } = {}) {
+    signal?.throwIfAborted();
+    const totalCount = await totalFor(Model, program, buildSearch(program, input));
+    signal?.throwIfAborted();
+    return { totalCount };
+}
+
+async function searchCases(Model, program, input, { signal } = {}) {
+    signal?.throwIfAborted();
+    if (input.count !== undefined && !['deferred', 'exact'].includes(input.count)) throw badRequest('Invalid count mode');
+    const spec = buildSearch(program, input);
+    const { config, query, hint, page, limit } = spec;
+    const collection = Model.collection;
+    const hasFilters = Object.keys(query).length > 0;
+    const deferred = input.count === 'deferred';
     // Sorting only IDs + indexed sort values avoids fetching thousands of large
     // disclosure documents. Fetch the small projected page after sorting.
-    const totalCount = await total;
+    const totalCount = deferred ? counts.peek(countKey(program, spec)) ?? null : await totalFor(Model, program, spec);
     signal?.throwIfAborted();
+    // One extra ID answers whether Next is available without an exact total.
+    const selection = deferred ? { ...spec, limit: limit + 1 } : spec;
     let ids;
-    if (!totalCount || spec.skip >= totalCount) ids = [];
+    if (totalCount !== null && (!totalCount || spec.skip >= totalCount)) ids = [];
     else {
         // Common filters usually match recent records. Stream a covered date-first
         // index and stop at a page instead of sorting hundreds of thousands of IDs.
         // A short trial budget protects rare/historical queries; those fall back
         // to their selective prefix index.
-        if (hasFilters && totalCount >= 1000 && spec.skip + spec.limit <= 2000 && !spec.filters.receivedYear) {
+        if (hasFilters && (totalCount === null || totalCount >= 1000) && spec.skip + selection.limit <= 2000 && !spec.filters.receivedYear) {
             const stages = metadataStages(spec, query, indexNames.recent, true);
             stages[1].$project[config.date] = 1;
             try {
                 // The bounded window also fences MongoDB's optimizer: without
                 // this stage it moves sort after computed filters and scans the
                 // entire recent index before returning the first page.
-                const window = Math.min(20000, Math.max(5000, (spec.skip + limit) * 100));
+                const window = Math.min(20000, Math.max(5000, (spec.skip + selection.limit) * 100));
                 ids = await collection.aggregate([stages[0], { $sort: spec.sort }, { $limit: window }, stages[1], stages[2],
-                    { $skip: spec.skip }, { $limit: limit }, { $project: { _id: 1, [config.date]: 1 } }],
+                    { $skip: spec.skip }, { $limit: selection.limit }, { $project: { _id: 1, [config.date]: 1 } }],
                 { hint: indexNames.recent, maxTimeMS: 500, signal }).toArray();
-                if (ids.length < Math.min(limit, totalCount - spec.skip)) ids = undefined;
+                if (ids.length < (totalCount === null ? selection.limit : Math.min(selection.limit, totalCount - spec.skip))) ids = undefined;
             } catch (error) {
                 if (error.code !== 50 || signal?.aborted) throw error;
             }
         }
-        if (!ids) ids = await (spec.branches ? locationPage(collection, spec, signal) : pageIds(collection, query, spec, signal, hint));
+        if (!ids) ids = await (spec.branches ? locationPage(collection, selection, signal) : pageIds(collection, query, selection, signal, hint));
     }
+    const hasNextPage = deferred ? ids.length > limit : spec.skip + ids.length < totalCount;
+    // A complete first page smaller than the limit is already an exact count.
+    // This also avoids a second request for empty and very specific searches.
+    const knownTotal = deferred && spec.skip === 0 && !hasNextPage ? ids.length : totalCount;
+    ids = ids.slice(0, limit);
     const projection = Object.fromEntries(config.fields.map(field => [field, 1]));
     const rows = ids.length ? await collection.find({ _id: { $in: ids.map(row => row._id) } },
         { projection, maxTimeMS: QUERY_MS, signal }).toArray() : [];
@@ -200,7 +237,8 @@ async function searchCases(Model, program, input, { signal } = {}) {
                 PWD_RECEIVED_DATE: match.RECEIVED_DATE, PWD_EXPIRATION_DATE: match.PWD_WAGE_EXPIRATION_DATE });
         }
     }
-    return { cases, totalPages: Math.ceil(totalCount / limit), currentPage: page, totalCount };
+    return { cases, totalPages: knownTotal === null ? null : Math.ceil(knownTotal / limit), currentPage: page, totalCount: knownTotal,
+        ...(deferred ? { hasNextPage } : {}) };
 }
 
-module.exports = { buildSearch, insensitivePrefix, searchCases, metadataStages, invalidateCounts: () => counts.clear() };
+module.exports = { buildSearch, insensitivePrefix, searchCases, countCases, metadataStages, invalidateCounts: () => counts.clear() };

@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
-const { searchCases, buildSearch, invalidateCounts } = require('../services/caseSearch');
+const { searchCases, countCases, buildSearch, invalidateCounts } = require('../services/caseSearch');
 const { programs, searchIndexes } = require('../services/searchConfig');
 
 test('covered search preserves matches, paging, dates and PWD links', { skip: !process.env.MONGO_TEST_URI }, async t => {
@@ -53,6 +53,28 @@ test('covered search preserves matches, paging, dates and PWD links', { skip: !p
             }
         }
     });
+    await t.test('deferred results preserve order, overlapping locations, next-page state and separate counts', async () => {
+        for (const [program, config] of Object.entries(programs)) {
+            for (const input of [{}, { company: 'google' }, { jobTitle: 'software' }, { location: 'cA' },
+                { company: 'google', jobTitle: 'soft', location: 'ca' }, { location: 'san', receivedYear: '2023' },
+                { caseNumber: 'p-0000' }, { [config.year]: '2025' }, { receivedYear: '2023' },
+                { company: 'absent' }, { company: 'unique' }, { location: 'a', page: '2', limit: '12' },
+                { company: 'google', page: '42', limit: '24' }, { company: 'google', page: '100', limit: '24' }]) {
+                invalidateCounts();
+                const spec = buildSearch(program, input);
+                const expected = await models[program].collection.find(spec.query).sort(spec.sort)
+                    .skip(spec.skip).limit(spec.limit + 1).toArray();
+                const actual = await searchCases(models[program], program, { ...input, count: 'deferred' });
+                assert.deepEqual(actual.cases.map(row => String(row._id)), expected.slice(0, spec.limit).map(row => String(row._id)), `${program} ${JSON.stringify(input)}`);
+                assert.equal(actual.hasNextPage, expected.length > spec.limit);
+                assert.equal(actual.totalCount, spec.skip === 0 && expected.length <= spec.limit ? expected.length : null,
+                    'only a complete first page can establish the total without counting');
+                const { totalCount } = await countCases(models[program], program, input);
+                assert.equal(totalCount, await models[program].collection.countDocuments(spec.query));
+                assert.equal((await searchCases(models[program], program, { ...input, count: 'deferred' })).totalCount, totalCount);
+            }
+        }
+    });
     await t.test('employer and title selection use only indexes and fetch just one page afterward', async () => {
         for (const program of ['pwd', 'perm']) {
             const config = programs[program];
@@ -69,16 +91,16 @@ test('covered search preserves matches, paging, dates and PWD links', { skip: !p
     await t.test('combined and overlapping location filters never fetch whole matching disclosures', async () => {
         await connection.db.command({ profile: 2 });
         try {
-            for (const program of ['pwd', 'perm']) for (const input of [
+            for (const program of ['pwd', 'perm', 'h1b']) for (const input of [
                 { company: 'google', jobTitle: 'software', location: 'ca', receivedYear: '2023' },
                 { jobTitle: 'software', location: 'ca' }, { location: 'ca' },
-            ]) {
+            ]) for (const count of [undefined, 'deferred']) {
                 invalidateCounts();
-                await searchCases(models[program], program, input);
+                await searchCases(models[program], program, { ...input, count });
             }
         } finally { await connection.db.command({ profile: 0 }); }
         const reads = await connection.db.collection('system.profile').find({
-            ns: { $in: [connection.name + '.cases', connection.name + '.permcases'] },
+            ns: { $in: Object.values(programs).map(config => connection.name + '.' + config.collection) },
             $or: [{ 'command.find': { $exists: true } }, { 'command.aggregate': { $exists: true } }],
         }).toArray();
         assert.ok(reads.length > 10);
@@ -131,6 +153,11 @@ test('covered search preserves matches, paging, dates and PWD links', { skip: !p
             const expected = await collection.find({ EMPLOYER_NAME_LOWER: /^google/ })
                 .sort({ DETERMINATION_DATE: -1, _id: 1 }).limit(20).toArray();
             assert.deepEqual(result.cases.map(row => String(row._id)), expected.map(row => String(row._id)));
+            invalidateCounts();
+            const deferred = await searchCases(models.pwd, 'pwd', { company: 'google', count: 'deferred' });
+            assert.equal(deferred.cases.length, 20);
+            assert.equal(deferred.hasNextPage, true);
+            assert.deepEqual(deferred.cases.map(row => String(row._id)), expected.map(row => String(row._id)), 'an incomplete trial must also fall back without a total');
         } finally { await collection.deleteMany({ _PERF_WINDOW_FIXTURE: true }); }
     });
 });

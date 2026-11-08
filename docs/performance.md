@@ -1,6 +1,18 @@
 # Search performance
 
-Search keeps literal, case-insensitive prefixes for employers, titles, locations and case numbers. Date filters use recorded calendar dates. Results are newest first, with a stable document-ID tie break so equal-date records do not jump between pages.
+Search uses case-insensitive prefixes for employers, titles, locations and case numbers. Employer names tolerate punctuation and spacing differences. Date filters use recorded calendar dates. Results are newest first, with a stable document-ID tie break so equal-date records do not jump between pages.
+
+## Results before totals
+
+The search UI requests `count=deferred` on all three program endpoints. Case selection does not start or await an expensive total-count query. It reads at most one extra ID to establish `hasNextPage`, then fetches only the requested page of disclosure summaries. A cached total can be returned immediately. A complete first page with no extra ID establishes its own total, including zero, without another count request.
+
+Deferred responses include `cases`, `currentPage`, `hasNextPage`, and nullable `totalCount` / `totalPages`. A missing total means unknown, never zero. The UI shows the displayed record range and “Counting total… You can browse now.” Next/Previous work while counting; the final page disables Next using the extra-ID result. Empty first pages and pages outside the available results have distinct recovery states.
+
+After records arrive, the UI requests `/api/search/count`, `/api/search/perm/count`, or `/api/search/h1b/count` with the same filters. These return `{ totalCount }`. Filtered totals are exact for their database read, while unfiltered totals retain the existing fast `estimatedDocumentCount` behavior. Totals use the existing 30-second cache and are not a transactional snapshot with the records during imports. The API without `count=deferred` retains its original response and total-count behavior for existing clients.
+
+The total request survives page, page-size, and layout changes for the same filters. Changing filters cancels the obsolete browser request and prevents its response from replacing the current total. A failed total displays an independent “Retry total” action and leaves case records and pagination available. At most two distinct total computations can run per backend process; identical filters coalesce, and excess requests fail promptly rather than queueing additional scans. Shared database counts may continue after a browser disconnects, within their database time limits, so another page can reuse them. Case selection remains cancellable.
+
+Covered metadata queries avoid re-evaluating leading regex predicates after those predicates already ran on the index. This reduces repeated work for broad title/state filters without changing prefix or city/state overlap semantics. No new indexes or database migration are needed for this change.
 
 ## Query and memory design
 
@@ -21,7 +33,7 @@ The frontend uses native fetch and loads admin/detail code on demand, with a rec
 
 ## Measurements
 
-Representative backend measurements against more than 4.2 million production cases, while historical imports were running:
+Earlier backend measurements against more than 4.2 million production cases, while historical imports were running (before H-1B and deferred totals):
 
 | Search | Before | Optimized first count | Repeated within count-cache lifetime |
 | --- | ---: | ---: | ---: |
@@ -54,5 +66,7 @@ node scripts/search-indexes.js --check --prune-obsolete
 The cleanup preserves unique, TTL, sparse, partial and hidden indexes, and unrelated indexes. Do not roll back to the old search image after pruning without rebuilding its former hinted indexes. Database documents are not modified by index migration.
 
 Run the backend suite with `MONGO_TEST_URI` pointing to a test MongoDB 9 server. Each integration test creates and removes its own uniquely named database. Tests check filter semantics, case-insensitive identifier/state prefixes, overlapping location counts, page ordering, related PWD dates, cancellation and the older-record fallback. Profiler assertions verify that normal combined queries fetch only the displayed disclosure page.
+
+Deferred-total regression tests also verify that cases return while a count is blocked, only one extra ID is used for Next, final/empty/outside pages remain distinct, simultaneous count work is bounded and coalesced, and separate count endpoints preserve the existing filter semantics. Browser checks exercise delayed/failed totals, retry, stale responses, pagination during counting, and responsive states from 320 to 3440 pixels for PWD, PERM, and H-1B.
 
 References: [MongoDB prefix regex indexes](https://www.mongodb.com/docs/manual/reference/operator/query/regex/), [MongoDB index sorting](https://www.mongodb.com/docs/manual/tutorial/sort-results-with-indexes/), [driver cancellation](https://www.mongodb.com/docs/drivers/node/current/crud/query/cursor/), [Traefik compression](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/compress/).

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const models = require('../models/programModels');
 const { getAvailableYears } = require('../services/searchYears');
-const { searchCases, invalidateCounts } = require('../services/caseSearch');
+const { searchCases, countCases, invalidateCounts } = require('../services/caseSearch');
 const { programs } = require('../services/searchConfig');
 const { BoundedCache } = require('../services/boundedCache');
 const { getSearchInsights, invalidateInsights } = require('../services/searchInsights');
@@ -28,20 +28,21 @@ function insightsHandler(Model, program) {
     };
 }
 
-function searchHandler(Model, program) {
+function searchHandler(Model, program, countOnly = false) {
     return async (req, res) => {
         const controller = new AbortController();
         const disconnect = () => { if (!res.writableEnded) controller.abort(); };
         res.once('close', disconnect);
         try {
-            const result = await searchCases(Model, program, req.query, { signal: controller.signal });
+            const result = await (countOnly ? countCases : searchCases)(Model, program, req.query, { signal: controller.signal });
             // Public records only. Brief browser caching makes back navigation cheap.
             if (!controller.signal.aborted) res.set('Cache-Control', 'public, max-age=15').json(result);
         } catch (error) {
             if (controller.signal.aborted) return;
             const status = error.status || (error.code === 50 || error.name === 'MongoWaitQueueTimeoutError' ? 503 : 500);
             if (status >= 500) console.error(`${program.toUpperCase()} search failed:`, error.message);
-            res.status(status).json({ error: status === 400 ? error.message : status === 503
+            res.status(status).set('Cache-Control', 'no-store').json({ error: status === 400 ? error.message : countOnly
+                ? 'The total could not be counted. Your case results are still available.' : status === 503
                 ? 'This search is taking too long. Add a company, date, or case number to narrow it.'
                 : 'An error occurred while searching' });
         } finally { res.removeListener('close', disconnect); }
@@ -64,6 +65,7 @@ function yearsHandler(Model, program) {
 for (const [program, Model] of Object.entries(models)) {
     const prefix = program === 'pwd' ? '' : '/' + program;
     router.get(prefix || '/', searchHandler(Model, program));
+    router.get(prefix + '/count', searchHandler(Model, program, true));
     router.get(prefix + '/years', yearsHandler(Model, program));
     router.get(prefix + '/insights', insightsHandler(Model, program));
 }

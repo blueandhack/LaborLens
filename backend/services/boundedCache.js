@@ -14,6 +14,16 @@ class BoundedCache {
         this.pending.clear();
     }
 
+    peek(key) {
+        const entry = this.values.get(key);
+        if (!entry) return undefined;
+        if (entry.expires <= Date.now()) {
+            this.values.delete(key);
+            return undefined;
+        }
+        return entry.value;
+    }
+
     async get(key, load) {
         const entry = this.values.get(key);
         if (entry && entry.expires > Date.now()) {

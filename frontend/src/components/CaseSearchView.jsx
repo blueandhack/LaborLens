@@ -211,6 +211,8 @@ export default function CaseSearchView({ program }) {
   const [years, setYears] = useState([]);
   const [yearsError, setYearsError] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [countRetry, setCountRetry] = useState(0);
+  const [countResponse, setCountResponse] = useState({ key: null, totalCount: null, error: null });
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [response, setResponse] = useState({
     key: null,
@@ -230,9 +232,14 @@ export default function CaseSearchView({ program }) {
   apiParams.set("limit", String(limit));
   const query = apiParams.toString();
   const requestKey = `${endpoint}?${query}&retry=${retry}`;
+  const countQuery = writeSearchState(filters, 1, 24).toString();
+  const countKey = `${endpoint}?${countQuery}&retry=${retry}`;
   const loading = response.key !== requestKey;
   const error = !loading && response.error;
   const data = !loading && !error ? response.data : null;
+  // Keep an in-flight total across page/layout changes, but discard it when
+  // filters change. A total must never delay or replace visible case results.
+  const countEligible = response.countKey === countKey && Boolean(response.data) && response.data.totalCount == null;
   const viewParam = params.get("view");
   const view = ["table", "cards"].includes(viewParam)
     ? viewParam
@@ -269,12 +276,12 @@ export default function CaseSearchView({ program }) {
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
-    getJSON(`${endpoint}?${query}`, {
+    getJSON(`${endpoint}?${query}&count=deferred`, {
         signal: controller.signal,
       })
       .then((result) => {
         if (current)
-          setResponse({ key: requestKey, data: result, error: null });
+          setResponse({ key: requestKey, countKey, data: result, error: null });
       })
       .catch((failure) => {
         if (current && !controller.signal.aborted)
@@ -291,7 +298,21 @@ export default function CaseSearchView({ program }) {
       current = false;
       controller.abort();
     };
-  }, [endpoint, query, requestKey]);
+  }, [endpoint, query, requestKey, countKey]);
+
+  useEffect(() => {
+    if (!countEligible) return;
+    const controller = new AbortController();
+    getJSON(`${endpoint}/count${countQuery ? `?${countQuery}` : ""}`, { signal: controller.signal })
+      .then((result) => {
+        if (!controller.signal.aborted) setCountResponse({ key: countKey, totalCount: result.totalCount, error: null });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCountResponse({ key: countKey, totalCount: null,
+          error: "Total unavailable. You can still browse these results." });
+      });
+    return () => controller.abort();
+  }, [endpoint, countQuery, countKey, countEligible, countRetry]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -344,9 +365,11 @@ export default function CaseSearchView({ program }) {
     update(filters, next);
     requestAnimationFrame(scrollToResults);
   };
-  const count = data?.totalCount || 0;
-  const totalPages = Math.max(1, data?.totalPages || 1);
+  const count = data?.totalCount ?? (countResponse.key === countKey ? countResponse.totalCount : null);
+  const countError = count === null && countResponse.key === countKey && countResponse.error;
+  const totalPages = count === null ? null : Math.max(1, Math.ceil(count / limit));
   const currentPage = data?.currentPage || page;
+  const hasNextPage = data?.hasNextPage ?? (totalPages !== null && currentPage < totalPages);
 
   return (
     <section
@@ -455,17 +478,26 @@ export default function CaseSearchView({ program }) {
               ? "Searching cases…"
               : error
                 ? "Results unavailable"
-                : `${count.toLocaleString()} ${config.label} cases`}
+                : `${count === null ? "" : `${count.toLocaleString()} `}${config.label} cases`}
           </h3>
           {data && (
             <p>
-              {count && data.cases.length
-                ? `${((currentPage - 1) * limit + 1).toLocaleString()}–${Math.min(currentPage * limit, count).toLocaleString()} shown`
-                : count
+              {data.cases.length
+                ? `${((currentPage - 1) * limit + 1).toLocaleString()}–${((currentPage - 1) * limit + data.cases.length).toLocaleString()} shown`
+                : currentPage > 1
                   ? "Page outside available results"
                   : "No matching records"}
               <span aria-hidden="true"> · </span>Newest{" "}
               {config.events} first
+            </p>
+          )}
+          {data && count === null && (
+            <p className="result-count-status">
+              {countError || "Counting total… You can browse now."}
+              {countError && <> <button type="button" className="text-button" onClick={() => {
+                setCountResponse({ key: null, totalCount: null, error: null });
+                setCountRetry((value) => value + 1);
+              }}>Retry total</button></>}
             </p>
           )}
         </div>
@@ -556,7 +588,7 @@ export default function CaseSearchView({ program }) {
               Try again
             </button>
           </div>
-        ) : !count ? (
+        ) : !data.cases.length && currentPage === 1 ? (
           <div className="search-state">
             <FiSearch aria-hidden="true" size={28} />
             <h3>No cases match this search</h3>
@@ -588,7 +620,7 @@ export default function CaseSearchView({ program }) {
           <CaseResults records={data.cases} program={program} view={view} />
         )}
       </div>
-      {data && count > 0 && (
+      {data && (data.cases.length > 0 || currentPage > 1) && (
         <nav className="pagination" aria-label="Results pages">
           <button
             className="btn btn-secondary"
@@ -599,13 +631,13 @@ export default function CaseSearchView({ program }) {
             Previous
           </button>
           <span className="page-info">
-            Page <strong>{currentPage.toLocaleString()}</strong> of{" "}
-            {totalPages.toLocaleString()}
+            Page <strong>{currentPage.toLocaleString()}</strong>
+            {totalPages !== null && <> of {totalPages.toLocaleString()}</>}
           </span>
           <button
             className="btn btn-secondary"
             onClick={() => changePage(currentPage + 1)}
-            disabled={currentPage >= totalPages}
+            disabled={!hasNextPage}
           >
             Next
             <FiArrowRight aria-hidden="true" />
