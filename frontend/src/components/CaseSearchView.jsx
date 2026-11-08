@@ -266,9 +266,15 @@ export default function CaseSearchView({ program }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    getJSON('/api/employers/status', { signal: controller.signal }).then(data => setWorksites(data.worksites || {})).catch(() => {});
-    return () => controller.abort();
-  }, []);
+    let timer;
+    const load = () => getJSON('/api/employers/status', { signal: controller.signal }).then(data => {
+      if (controller.signal.aborted) return;
+      setWorksites(data.worksites || {});
+      if (!data.worksites?.[program]?.ready) timer = setTimeout(load, 15000);
+    }).catch(() => { if (!controller.signal.aborted) timer = setTimeout(load, 30000); });
+    load();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [program]);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1280px)");

@@ -127,8 +127,10 @@ async function getProfile(db, models, slug, { refresh = true } = {}) {
     const employer = await db.collection('employers').findOne({ _id: slug.slice(-24) }, { maxTimeMS: 1000 });
     if (!employer) return null;
     const snapshot = await db.collection('employer_profiles').findOne({ _id: employer._id, version: VERSION }, { maxTimeMS: 1000 });
-    const ready = Boolean(snapshot && Object.entries(employer.programs).every(([program, info]) => !info.count || snapshot.summaries[program]));
-    if (refresh && (!ready || Date.now() - snapshot.updatedAt.getTime() > 24 * 60 * 60 * 1000)) {
+    const complete = Boolean(snapshot && Object.entries(employer.programs).every(([program, info]) => !info.count || snapshot.summaries[program]));
+    const directory = await db.collection('discovery_state').findOne({ _id: 'employers' }, { projection: { ready: 1 }, maxTimeMS: 1000 });
+    const ready = Boolean(complete && directory?.ready);
+    if (refresh && (!complete || Date.now() - snapshot.updatedAt.getTime() > 24 * 60 * 60 * 1000)) {
         const request = await db.collection('employer_profile_requests').findOneAndUpdate({ _id: employer._id }, { $setOnInsert: { requestedAt: new Date() } }, { upsert: true, returnDocument: 'after' });
         if (!activeProfile && (!request.retryAfter || request.retryAfter <= new Date())) {
             activeProfile = employer._id;

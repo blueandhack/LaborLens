@@ -111,6 +111,11 @@ test('employer directory, profiles and indexed worksite search preserve identity
             const alias = await fetch(base + '/employers/another-name--' + slug.slice(-24), { redirect: 'manual' }); assert.equal(alias.status, 301); assert.equal(alias.headers.get('location'), '/employers/' + slug);
             assert.equal((await fetch(base + '/employers/missing--' + '0'.repeat(24))).status, 404);
             assert.equal((await fetch(base + '/api/employers?q=a&q=b')).status, 400);
+            await connection.db.collection('discovery_state').updateOne({ _id: 'employers' }, { $set: { ready: false, building: true } });
+            const pending = await fetch(base + '/employers/missing--' + '0'.repeat(24));
+            assert.equal(pending.status, 503); assert.equal(pending.headers.get('retry-after'), '30');
+            assert.equal((await getProfile(connection.db, models, slug, { refresh: false })).ready, false, 'an incomplete initial directory cannot publish a partial profile as complete');
+            await connection.db.collection('discovery_state').updateOne({ _id: 'employers' }, { $set: { ready: true, building: false } });
         } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
     });
 });

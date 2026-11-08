@@ -11,6 +11,8 @@ async function renderDocument(url, profile, employers) {
 }
 function createEmployerRoutes({ db, models, render = renderDocument }) {
     const api = express.Router(), pages = express.Router();
+    const preparing = async slug => slug.length <= 110 && /^[a-z0-9-]+--[a-f0-9]{24}$/.test(slug)
+        && !(await db().collection('discovery_state').findOne({ _id: 'employers' }, { projection: { ready: 1 }, maxTimeMS: 1000 }))?.ready;
     api.get('/status', async (_req, res, next) => {
         try {
             const [directory, worksites] = await Promise.all([db().collection('discovery_state').findOne({ _id: 'employers' }), db().collection('discovery_state').findOne({ _id: 'worksites' })]);
@@ -27,7 +29,10 @@ function createEmployerRoutes({ db, models, render = renderDocument }) {
     api.get('/:slug', async (req, res, next) => {
         try {
             const profile = await getProfile(db(), models, req.params.slug);
-            if (!profile) return res.status(404).set('Cache-Control', 'no-store').json({ error: 'Employer profile not found.' });
+            if (!profile) {
+                if (await preparing(req.params.slug)) return res.status(503).set('Cache-Control', 'no-store').set('Retry-After', '30').json({ error: 'Employer directory is being prepared. Please try again shortly.' });
+                return res.status(404).set('Cache-Control', 'no-store').json({ error: 'Employer profile not found.' });
+            }
             res.set('Cache-Control', profile.ready ? 'public, max-age=60' : 'no-store').json(profile);
         } catch (error) { next(error); }
     });
@@ -50,6 +55,8 @@ function createEmployerRoutes({ db, models, render = renderDocument }) {
     pages.get('/:slug', async (req, res, next) => {
         try {
             const profile = await getProfile(db(), models, req.params.slug);
+            if (!profile && await preparing(req.params.slug)) return res.status(503).set('Cache-Control', 'no-store').set('Retry-After', '30')
+                .set('X-Robots-Tag', 'noindex, follow').type('html').send(await render('/employers', null, []));
             if (profile && profile.slug !== req.params.slug) return res.redirect(301, '/employers/' + profile.slug);
             res.status(profile ? 200 : 404).set('Cache-Control', profile?.ready ? 'public, max-age=60' : 'no-store')
                 .set('X-Robots-Tag', profile?.ready ? 'index, follow' : 'noindex, follow').type('html')
