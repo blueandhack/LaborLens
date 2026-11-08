@@ -73,6 +73,7 @@ test('employer directory, profiles and indexed worksite search preserve identity
         await refreshDirectory(connection.db, models);
         const matches = await suggestions(connection.db, 'Synthropic INC');
         assert.equal(matches.length, 2); assert.notEqual(matches[0].id, matches[1].id);
+        assert.equal(matches[0].name, 'Synthropic, Inc.', 'the substantial filing history should precede minor spelling variants');
         assert.equal(matches.find(row => row.name === 'Synthropic, Inc.').programs.h1b.count, 30);
         assert.equal(matches.find(row => row.name === 'Synthropic INC').programs.h1b.count, 2);
         const plan = await connection.db.collection('employers').find({ searchKey: /^synthropic/ }).sort({ searchKey: 1, _id: 1 }).limit(8).explain('executionStats');

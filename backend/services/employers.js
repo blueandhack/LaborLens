@@ -21,8 +21,12 @@ async function suggestions(db, input) {
     if (prefix.length < 2) return [];
     // A bounded directory lookup, never a DISTINCT over millions of filings.
     const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return (await db.collection('employers').find({ searchKey: { $regex: '^' + escaped } },
-        { maxTimeMS: 1000 }).sort({ searchKey: 1, _id: 1 }).limit(8).toArray()).map(publicEmployer);
+    const candidates = await db.collection('employers').find({ searchKey: { $regex: '^' + escaped } },
+        { maxTimeMS: 1000 }).sort({ searchKey: 1, _id: 1 }).limit(32).toArray();
+    const volume = row => Object.values(row.programs || {}).reduce((total, info) => total + info.count, 0);
+    // Prefer substantive filing histories over tiny spelling variants, while
+    // retaining distinct reported names and a bounded prefix-index read.
+    return candidates.sort((a, b) => volume(b) - volume(a) || a.name.localeCompare(b.name)).slice(0, 8).map(publicEmployer);
 }
 
 async function refreshDirectory(db, models, { signal, onProgress = () => {} } = {}) {

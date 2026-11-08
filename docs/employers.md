@@ -6,7 +6,7 @@
 
 The identity key is the existing lowercase employer-name search field. Its SHA-256 prefix creates a stable 24-character ID; a readable slug accompanies the ID. Punctuation and whitespace variants are not automatically merged, nor are subsidiaries or renamed businesses. Identical reported names can still identify different legal entities. Profiles explicitly describe reported-name grouping and link similar spellings separately; they do not verify corporate identity or ownership.
 
-Directory name suggestions normalize punctuation for discovery, but selecting a suggestion submits `employer=<exact key>`. Editing the employer input clears that exact selection and restores the existing punctuation-tolerant prefix search. The autocomplete is debounced, cancellable, keyboard-accessible, limited to eight indexed directory results, and remains optional when suggestions cannot load.
+Directory name suggestions normalize punctuation for discovery, but selecting a suggestion submits `employer=<exact key>`. Editing the employer input clears that exact selection and restores the existing punctuation-tolerant prefix search. The autocomplete is debounced, cancellable, keyboard-accessible, limited to eight suggestions ranked by filing volume within a bounded set of thirty-two indexed prefix candidates, and remains optional when suggestions cannot load.
 
 Counts describe imported applications, not workers, visa approvals, current vacancies, or sponsorship commitments. H-1B calendar-year history uses the last recorded action, which can be a later withdrawal. Wage minima/maxima are reported ranges rather than typical salaries; pay periods remain separate. A missing date, location, or wage is not inferred. Profiles show snapshot dates and coverage limitations.
 
