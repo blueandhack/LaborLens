@@ -7,6 +7,145 @@ const QUERY_MS = 10000;
 let activeCounts = 0;
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const badRequest = message => Object.assign(new Error(message), { status: 400 });
+// Date range predicates retain covered index reads; $type can force MongoDB
+// to fetch full disclosures to check whether an indexed value came from an array.
+const dateRange = () => ({ $gte: new Date(-8640000000000000), $lte: new Date(8640000000000000) });
+const sortProjection = spec => Object.fromEntries(Object.keys(spec.sort).map(field => [field, 1]));
+function compareRows(a, b, sort) {
+    for (const [field, direction] of Object.entries(sort)) {
+        const first = field === '_id' ? String(a[field]) : a[field]?.getTime() ?? null;
+        const second = field === '_id' ? String(b[field]) : b[field]?.getTime() ?? null;
+        const order = first == null ? (second == null ? 0 : -1) : second == null ? 1 : first < second ? -1 : first > second ? 1 : 0;
+        if (order) return direction * order;
+    }
+    return 0;
+}
+
+function constrained(spec, ...conditions) {
+    const append = query => ({ $and: [...(query.$and || (Object.keys(query).length ? [query] : [])), ...conditions] });
+    return { ...spec, query: append(spec.query), branches: spec.branches?.map(append),
+        intersection: spec.intersection && append(spec.intersection) };
+}
+
+async function selectionCount(collection, spec, signal) {
+    const count = async (query, hint) => {
+        const rows = await collection.aggregate([...metadataStages(spec, query, hint), { $count: 'total' }],
+            { hint, maxTimeMS: QUERY_MS, signal }).toArray();
+        return rows[0]?.total || 0;
+    };
+    if (!spec.branches) return count(spec.query, spec.hint);
+    const [city, state, overlap] = await Promise.all([count(spec.branches[0], spec.branchHints[0]),
+        count(spec.branches[1], spec.branchHints[1]), count(spec.intersection, spec.branchHints[0])]);
+    return city + state - overlap;
+}
+
+async function appendUndated(collection, spec, rows, datedCount, missing, signal) {
+    if (rows.length >= spec.limit) return rows;
+    const skip = rows.length || !spec.skip ? 0 : Math.max(0, spec.skip - await datedCount());
+    const rest = { ...missing, skip, limit: spec.limit - rows.length, sort: { _id: 1 }, sortField: '_id', forceMetadata: true };
+    return rows.concat(await selectIds(collection, rest, null, signal));
+}
+
+async function certificationIds(collection, spec, signal) {
+    // DOL defines ORIGINAL_CERT_DATE for Certified-Withdrawn applications.
+    // A currently Certified application's determination is its certification.
+    // Never substitute a withdrawal/denial action for an absent certification.
+    const certified = /^\s*certified\s*$/i;
+    const certificateHint = spec.filters.employer || spec.filters.company ? indexNames.certificationCompany
+        : spec.filters.jobTitle ? indexNames.certificationTitle : spec.filters.caseNumber.length >= 10 ? 'CASE_NUMBER_1' : indexNames.certification;
+    const current = constrained({ ...spec, sortKey: 'event_' + (spec.direction === 1 ? 'asc' : 'desc') },
+        { CASE_STATUS: certified }, { DECISION_DATE: dateRange() });
+    if (certificateHint === 'CASE_NUMBER_1') current.skipTrial = true;
+    if (spec.filters.worksite && [indexNames.certificationCompany, indexNames.certificationTitle, 'CASE_NUMBER_1'].includes(certificateHint)) {
+        // Select rare employers before their worksite: a missing CA match must
+        // not require scanning millions of California applications.
+        current.hint = certificateHint; current.branches = null; current.intersection = null; current.skipTrial = true;
+    }
+    if (!current.hint || current.hint === indexNames.received) current.hint = spec.filters.worksite ? indexNames.worksiteRecent : indexNames.recent;
+    const original = constrained({ ...spec, branches: null, intersection: null, hint: certificateHint,
+        sort: { ORIGINAL_CERT_DATE: spec.direction, _id: -spec.direction }, sortField: 'ORIGINAL_CERT_DATE',
+        recentHint: certificateHint === indexNames.certification ? indexNames.certification : undefined,
+        leadingFields: ['ORIGINAL_CERT_DATE'], forceMetadata: true },
+    { ORIGINAL_CERT_DATE: dateRange() }, { CASE_STATUS: { $not: certified } });
+    const end = spec.skip + spec.limit;
+    let rows;
+    if (end <= 2000) {
+        const [a, b] = await Promise.all([selectIds(collection, { ...original, skip: 0, limit: end }, null, signal),
+            selectIds(collection, { ...current, skip: 0, limit: end }, null, signal)]);
+        rows = [...a.map(row => ({ ...row, _certificationSort: row.ORIGINAL_CERT_DATE })),
+            ...b.map(row => ({ ...row, _certificationSort: row.DECISION_DATE }))]
+            .sort((a, b) => compareRows(a, b, { _certificationSort: spec.direction, _id: -spec.direction })).slice(spec.skip, end);
+    } else if (!spec.filters.worksite || !(spec.filters.company || spec.filters.employer || spec.filters.jobTitle)) {
+        // Fence the ordered index scans before computed filters. MongoDB can
+        // otherwise move a sort past those filters and scan the whole history.
+        const deadline = Date.now() + QUERY_MS;
+        const remaining = () => {
+            signal?.throwIfAborted();
+            const ms = deadline - Date.now();
+            if (ms < 1) throw Object.assign(new Error('Sorting timed out. Narrow the search and try again.'), { status: 503 });
+            return ms;
+        };
+        const bounds = {};
+        let window = Math.max(5000, Math.min(200000, end * 2));
+        while (true) {
+            const stream = (branch, name) => {
+                const [match, projection, residual] = metadataStages(branch, branch.query, branch.hint, true);
+                return [match, { $sort: branch.sort }, { $limit: window }, projection, residual, { $limit: end },
+                    { $project: { _id: 1, _certificationSort: '$' + branch.sortField, _branch: { $literal: name } } }];
+            };
+            const [result] = await collection.aggregate([...stream(original, 'original'),
+                { $unionWith: { coll: spec.config.collection, pipeline: stream(current, 'current') } },
+                { $sort: { _certificationSort: spec.direction, _id: -spec.direction } },
+                { $facet: { page: [{ $skip: spec.skip }, { $limit: spec.limit }], counts: [{ $group: { _id: '$_branch', count: { $sum: 1 } } }] } },
+            ], { hint: certificateHint, maxTimeMS: remaining(), allowDiskUse: true, signal }).toArray();
+            const counts = Object.fromEntries(result.counts.map(row => [row._id, row.count]));
+            let complete = true;
+            for (const [name, branch] of [['original', original], ['current', current]]) {
+                if ((counts[name] || 0) >= end) continue;
+                if (bounds[name] === undefined) {
+                    const leading = metadataStages(branch, branch.query, branch.hint)[0].$match;
+                    bounds[name] = await collection.countDocuments(leading, { hint: branch.hint, maxTimeMS: remaining(), signal });
+                }
+                if (window < bounds[name]) complete = false;
+            }
+            if (complete) { rows = result.page; break; }
+            window = Math.min(Number.MAX_SAFE_INTEGER, window * 2);
+        }
+    } else {
+        // Combined prefix/worksite queries use their covering prefix index;
+        // every matching disclosure stays outside application memory.
+        rows = await collection.aggregate([
+            ...metadataStages(spec, spec.query, certificateHint, false, ['_id', 'CASE_STATUS', 'DECISION_DATE', 'ORIGINAL_CERT_DATE']),
+            { $project: { _id: 1, _certificationSort: { $cond: [
+                { $regexMatch: { input: { $ifNull: ['$CASE_STATUS', ''] }, regex: certified } }, '$DECISION_DATE', '$ORIGINAL_CERT_DATE',
+            ] } } }, { $match: { _certificationSort: dateRange() } },
+            { $sort: { _certificationSort: spec.direction, _id: -spec.direction } }, { $skip: spec.skip }, { $limit: spec.limit },
+        ], { hint: certificateHint, maxTimeMS: QUERY_MS, allowDiskUse: true, signal }).toArray();
+    }
+    const undated = { $nor: [{ CASE_STATUS: certified, DECISION_DATE: dateRange() },
+        { CASE_STATUS: { $not: certified }, ORIGINAL_CERT_DATE: dateRange() }] };
+    let missing = constrained({ ...spec, branches: null, intersection: null, hint: certificateHint }, undated);
+    if (certificateHint === indexNames.certification && !rows.length && !spec.skip) {
+        // Empty/sparse location and case-number searches should establish that
+        // absence through their prefix index, rather than scan all history.
+        if (spec.filters.worksite || spec.filters.location) missing = constrained(spec, undated);
+        else if (spec.filters.caseNumber) missing.hint = 'CASE_NUMBER_1';
+    }
+    return appendUndated(collection, spec, rows, async () => {
+        const [a, b] = await Promise.all([selectionCount(collection, original, signal), selectionCount(collection, current, signal)]);
+        return a + b;
+    }, missing, signal);
+}
+
+async function sortedIds(collection, spec, totalCount, signal) {
+    if (totalCount === 0 || totalCount !== null && spec.skip >= totalCount) return [];
+    if (spec.sortKey.startsWith('certification_')) return certificationIds(collection, spec, signal);
+    if (spec.direction === -1) return selectIds(collection, spec, totalCount, signal);
+    const dated = constrained(spec, { [spec.sortField]: dateRange() });
+    const rows = await selectIds(collection, dated, null, signal);
+    return appendUndated(collection, spec, rows, () => selectionCount(collection, dated, signal),
+        constrained(spec, { [spec.sortField]: { $not: dateRange() } }), signal);
+}
 
 function employerPrefix(value) {
     const parts = value.toLowerCase().match(/[\p{L}\p{N}]+/gu);
@@ -39,6 +178,11 @@ function insensitivePrefix(value) {
 function buildSearch(program, input) {
     const config = programs[program];
     if (!config) throw badRequest('Invalid case program');
+    const sortKey = text(input, 'sort') || 'event_desc';
+    if (!['event_desc', 'event_asc', 'received_desc', 'received_asc', ...(program === 'h1b' ? ['certification_desc', 'certification_asc'] : [])].includes(sortKey)) throw badRequest('Invalid sort');
+    const direction = sortKey.endsWith('_asc') ? 1 : -1;
+    const sortField = sortKey.startsWith('received_') ? 'RECEIVED_DATE' : config.date;
+    const sort = { [sortField]: direction, ...(sortField !== config.date ? { [config.date]: direction } : {}), _id: -direction };
     const filters = Object.fromEntries(['company', 'employer', 'location', 'worksite', 'caseNumber', 'jobTitle', config.year, 'receivedYear']
         .map(field => [field, text(input, field)]));
     const page = input.page === undefined ? 1 : Number(text(input, 'page'));
@@ -50,7 +194,20 @@ function buildSearch(program, input) {
     if (filters.employer) conditions.push({ [config.company]: filters.employer.toLowerCase() });
     else if (filters.company) conditions.push({ [config.company]: employerPrefix(filters.company) });
     if (filters.jobTitle) conditions.push({ JOB_TITLE_LOWER: prefix(filters.jobTitle) });
-    if (filters.caseNumber) conditions.push({ CASE_NUMBER: insensitivePrefix(filters.caseNumber) });
+    if (filters.caseNumber) {
+        const match = insensitivePrefix(filters.caseNumber);
+        if (match.$options) {
+            // Keep long, letter-heavy identifiers indexable without weakening
+            // their original Unicode/case-insensitive full-prefix match.
+            let prefix = '';
+            for (const char of filters.caseNumber) {
+                if (insensitivePrefix(prefix + char).$options) break;
+                prefix += char;
+            }
+            if (prefix) conditions.push({ CASE_NUMBER: insensitivePrefix(prefix) });
+        }
+        conditions.push({ CASE_NUMBER: match });
+    }
     const employerLocation = filters.location ? [
         { [config.city]: prefix(filters.location) }, { [config.state]: insensitivePrefix(filters.location) },
     ] : null;
@@ -73,23 +230,26 @@ function buildSearch(program, input) {
     else if (filters.caseNumber.length >= 10) hint = 'CASE_NUMBER_1';
     else if (filters.receivedYear) hint = indexNames.received;
     else if (!location) hint = indexNames.recent;
+    const worksitePrefix = program === 'h1b' && filters.worksite && (filters.employer || filters.company || filters.jobTitle);
+    if (worksitePrefix) hint = filters.employer || filters.company ? indexNames.certificationCompany : indexNames.certificationTitle;
+    if (sortField === 'RECEIVED_DATE' && !(filters.employer || filters.company || filters.jobTitle || filters.caseNumber || location)) hint = indexNames.received;
     return { config, query, filters, hint, page, limit, skip: (page - 1) * limit,
-        branches: location && (filters.worksite || !filters.company && !filters.employer && !filters.jobTitle && filters.caseNumber.length < 10)
+        branches: location && !worksitePrefix && (filters.worksite || !filters.company && !filters.employer && !filters.jobTitle && filters.caseNumber.length < 10)
             ? location.map(branch => ({ $and: [...conditions, branch] })) : null,
         branchHints: filters.worksite ? [indexNames.worksiteCity, indexNames.worksiteState] : [indexNames.city, indexNames.state],
         intersection: location ? { $and: [...conditions, ...location] } : null,
-        sort: { [config.date]: -1, _id: 1 } };
+        sort, sortKey, sortField, direction };
 }
 
 function pageIds(collection, query, spec, signal, hint, skip = spec.skip, limit = spec.limit) {
-    const complex = spec.filters.location || spec.filters.worksite || (spec.filters.company || spec.filters.employer) && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
+    const complex = spec.forceMetadata || spec.filters.location || spec.filters.worksite || (spec.filters.company || spec.filters.employer) && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
         || spec.filters.jobTitle && (spec.filters.receivedYear || spec.filters.caseNumber);
     if (complex && hint && hint !== 'CASE_NUMBER_1') {
         return collection.aggregate([...metadataStages(spec, query, hint, true), { $sort: spec.sort },
-            { $skip: skip }, { $limit: limit }, { $project: { _id: 1, [spec.config.date]: 1 } }],
+            { $skip: skip }, { $limit: limit }, { $project: sortProjection(spec) }],
         { hint, maxTimeMS: QUERY_MS, signal, allowDiskUse: true }).toArray();
     }
-    return collection.find(query, { projection: { _id: 1, [spec.config.date]: 1 },
+    return collection.find(query, { projection: sortProjection(spec),
         maxTimeMS: QUERY_MS, signal, allowDiskUse: true, ...(hint ? { hint } : {}) })
         .sort(spec.sort).skip(skip).limit(limit).toArray();
 }
@@ -98,7 +258,7 @@ function metadataStages(spec, query, hint, withDate = false, extraFields = []) {
     const fields = new Set(extraFields);
     function visit(value) {
         for (const [key, condition] of Object.entries(value)) {
-            if (key === '$and' || key === '$or') condition.forEach(visit);
+            if (key === '$and' || key === '$or' || key === '$nor') condition.forEach(visit);
             else if (!key.startsWith('$')) fields.add(key);
         }
     }
@@ -106,17 +266,26 @@ function metadataStages(spec, query, hint, withDate = false, extraFields = []) {
     const primary = ({ [indexNames.company]: spec.config.company, [indexNames.title]: 'JOB_TITLE_LOWER',
         [indexNames.city]: spec.config.city, [indexNames.state]: spec.config.state,
         [indexNames.worksiteCity]: '_WORKSITE_CITY_LOWER', [indexNames.worksiteState]: '_WORKSITE_STATE_LOWER',
-        [indexNames.received]: 'RECEIVED_DATE', [indexNames.recent]: spec.config.date, [indexNames.worksiteRecent]: spec.config.date, CASE_NUMBER_1: 'CASE_NUMBER' })[hint];
-    const leading = (query.$and || [query]).filter(condition => Object.hasOwn(condition, primary));
-    const projection = { _id: withDate ? 1 : 0, ...(withDate ? { [spec.config.date]: 1 } : {}) };
+        [indexNames.received]: 'RECEIVED_DATE', [indexNames.recent]: spec.config.date, [indexNames.worksiteRecent]: spec.config.date,
+        [indexNames.certification]: 'ORIGINAL_CERT_DATE', [indexNames.certificationCompany]: spec.config.company,
+        [indexNames.certificationTitle]: 'JOB_TITLE_LOWER', CASE_NUMBER_1: 'CASE_NUMBER' })[hint];
+    const leading = (query.$and || [query]).filter(condition => Object.hasOwn(condition, primary)
+        || spec.leadingFields?.some(field => Object.hasOwn(condition, field)));
+    // Prove the partial index's membership when adding a leading date range.
+    // Otherwise MongoDB can keep the date predicate as a FETCH filter and read
+    // every full disclosure, despite all requested values being indexed.
+    const indexMatch = hint === indexNames.worksiteRecent && leading.length ? [...leading,
+        { $or: [{ _WORKSITE_CITY_LOWER: { $gt: '' } }, { _WORKSITE_STATE_LOWER: { $gt: '' } }] }] : leading;
+    const projection = withDate ? sortProjection(spec) : { _id: 0 };
     // A computed projection keeps residual OR/regex filters above the index-only
     // read. MongoDB otherwise fetches whole disclosures to evaluate those filters,
     // even when every required value is present in the covering index.
     for (const field of fields) projection[field] = { $ifNull: [`$${field}`, null] };
+    if (withDate) Object.assign(projection, sortProjection(spec));
     const residual = (query.$and || [query]).filter(condition => !leading.includes(condition));
     // The index already applied leading predicates. Re-evaluating their regexes
     // after projection is costly for states/titles matching millions of cases.
-    return [{ $match: leading.length ? { $and: leading } : {} }, { $project: projection },
+    return [{ $match: indexMatch.length ? { $and: indexMatch } : {} }, { $project: projection },
         { $match: residual.length ? { $and: residual } : {} }];
 }
 
@@ -128,16 +297,10 @@ async function locationPage(collection, spec, signal) {
     const pages = await Promise.all(spec.branches.map((query, index) =>
         pageIds(collection, query, spec, signal, spec.branchHints[index], 0, end)));
     const rows = [...new Map(pages.flat().map(row => [String(row._id), row])).values()];
-    // Older malformed date values retain MongoDB's BSON ordering via fallback.
-    if (rows.some(row => row[spec.config.date] != null && !(row[spec.config.date] instanceof Date))) {
+    if (rows.some(row => Object.keys(spec.sort).some(field => field !== '_id' && row[field] != null && !(row[field] instanceof Date)))) {
         return pageIds(collection, spec.query, spec, signal);
     }
-    rows.sort((a, b) => {
-        const first = a[spec.config.date], second = b[spec.config.date];
-        const order = first == null ? (second == null ? 0 : 1)
-            : second == null ? -1 : second.getTime() - first.getTime();
-        return order || String(a._id).localeCompare(String(b._id));
-    });
+    rows.sort((a, b) => compareRows(a, b, spec.sort));
     return rows.slice(spec.skip, end);
 }
 
@@ -184,20 +347,10 @@ async function countCases(Model, program, input, { signal } = {}) {
     return { totalCount };
 }
 
-async function searchCases(Model, program, input, { signal } = {}) {
-    signal?.throwIfAborted();
-    if (input.count !== undefined && !['deferred', 'exact'].includes(input.count)) throw badRequest('Invalid count mode');
-    const spec = buildSearch(program, input);
-    const { config, query, hint, page, limit } = spec;
-    const collection = Model.collection;
+async function selectIds(collection, selection, totalCount, signal) {
+    const spec = selection;
+    const { config, query, hint } = spec;
     const hasFilters = Object.keys(query).length > 0;
-    const deferred = input.count === 'deferred';
-    // Sorting only IDs + indexed sort values avoids fetching thousands of large
-    // disclosure documents. Fetch the small projected page after sorting.
-    const totalCount = deferred ? counts.peek(countKey(program, spec)) ?? null : await totalFor(Model, program, spec);
-    signal?.throwIfAborted();
-    // One extra ID answers whether Next is available without an exact total.
-    const selection = deferred ? { ...spec, limit: limit + 1 } : spec;
     let ids;
     if (totalCount !== null && (!totalCount || spec.skip >= totalCount)) ids = [];
     else {
@@ -205,17 +358,16 @@ async function searchCases(Model, program, input, { signal } = {}) {
         // index and stop at a page instead of sorting hundreds of thousands of IDs.
         // A short trial budget protects rare/historical queries; those fall back
         // to their selective prefix index.
-        if (hasFilters && (totalCount === null || totalCount >= 1000) && spec.skip + selection.limit <= 2000 && !spec.filters.receivedYear) {
-            const recentHint = spec.filters.worksite ? indexNames.worksiteRecent : indexNames.recent;
+        if (!spec.skipTrial && (spec.sortField === config.date || spec.recentHint) && hasFilters && (totalCount === null || totalCount >= 1000) && spec.skip + selection.limit <= 2000 && !spec.filters.receivedYear) {
+            const recentHint = spec.recentHint || (spec.filters.worksite ? indexNames.worksiteRecent : indexNames.recent);
             const stages = metadataStages(spec, query, recentHint, true);
-            stages[1].$project[config.date] = 1;
             try {
                 // The bounded window also fences MongoDB's optimizer: without
                 // this stage it moves sort after computed filters and scans the
                 // entire recent index before returning the first page.
                 const window = Math.min(20000, Math.max(5000, (spec.skip + selection.limit) * 100));
                 ids = await collection.aggregate([stages[0], { $sort: spec.sort }, { $limit: window }, stages[1], stages[2],
-                    { $skip: spec.skip }, { $limit: selection.limit }, { $project: { _id: 1, [config.date]: 1 } }],
+                    { $skip: spec.skip }, { $limit: selection.limit }, { $project: sortProjection(spec) }],
                 { hint: recentHint, maxTimeMS: 500, signal }).toArray();
                 if (ids.length < (totalCount === null ? selection.limit : Math.min(selection.limit, totalCount - spec.skip))) ids = undefined;
             } catch (error) {
@@ -224,6 +376,23 @@ async function searchCases(Model, program, input, { signal } = {}) {
         }
         if (!ids) ids = await (spec.branches ? locationPage(collection, selection, signal) : pageIds(collection, query, selection, signal, hint));
     }
+    return ids;
+}
+
+async function searchCases(Model, program, input, { signal } = {}) {
+    signal?.throwIfAborted();
+    if (input.count !== undefined && !['deferred', 'exact'].includes(input.count)) throw badRequest('Invalid count mode');
+    const spec = buildSearch(program, input);
+    const { config, page, limit } = spec;
+    const collection = Model.collection;
+    const deferred = input.count === 'deferred';
+    // Sorting only IDs + indexed sort values avoids fetching thousands of large
+    // disclosure documents. Fetch the small projected page after sorting.
+    const totalCount = deferred ? counts.peek(countKey(program, spec)) ?? null : await totalFor(Model, program, spec);
+    signal?.throwIfAborted();
+    // One extra ID answers whether Next is available without an exact total.
+    const selection = deferred ? { ...spec, limit: limit + 1 } : spec;
+    let ids = await sortedIds(collection, selection, totalCount, signal);
     const hasNextPage = deferred ? ids.length > limit : spec.skip + ids.length < totalCount;
     // A complete first page smaller than the limit is already an exact count.
     // This also avoids a second request for empty and very specific searches.

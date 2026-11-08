@@ -6,7 +6,7 @@ const { BoundedCache } = require('../services/boundedCache');
 test('search bounds page size and rejects malformed filters instead of unbounded queries', () => {
     for (const input of [{ limit: '0' }, { limit: '10000' }, { page: '-1' }, { page: '1e100' },
         { company: ['$ne'] }, { company: { $ne: '' } }, { company: 'a'.repeat(161) },
-        { receivedYear: '2026junk' }, { determinationYear: '0' }]) {
+        { receivedYear: '2026junk' }, { determinationYear: '0' }, { sort: ['event_desc'] }, { sort: 'wage' }, { sort: 'certification_desc' }]) {
         assert.throws(() => buildSearch('pwd', input), error => error.status === 400);
     }
     assert.equal(buildSearch('pwd', { page: '3', limit: '48' }).skip, 96);

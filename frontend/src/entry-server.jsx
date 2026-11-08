@@ -10,7 +10,8 @@ export function render(path, initial = {}) {
 }
 
 export function renderEmployerDocument(path, profile, template, employers) {
-  const metadata = profile ? getEmployerSEO(profile) : getPageSEO(path);
+  const location = new URL(path, 'https://laborlens.fyi');
+  const metadata = profile ? getEmployerSEO(profile) : getPageSEO(location.pathname, location.search);
   const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   const json = value => JSON.stringify(value).replace(/</g, '\\u003c');
   const initial = { employer: profile || null, ...(employers ? { employers } : {}) };

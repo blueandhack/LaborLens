@@ -24,6 +24,8 @@ const programs = {
 };
 
 const indexNames = {
+    certification: 'search_certification_v1',
+    certificationCompany: 'search_certification_company_v1', certificationTitle: 'search_certification_title_v1',
     recent: 'search_recent_v4', company: 'search_company_v3', title: 'search_title_v3',
     city: 'search_city_v3', state: 'search_state_v3', received: 'search_received_v3',
     worksiteCity: 'search_worksite_city_v1', worksiteState: 'search_worksite_state_v1',
@@ -40,6 +42,12 @@ function searchIndexes(program) {
         return key;
     }
     return [
+        ...(program === 'h1b' ? [[indexNames.certificationCompany, config.company], [indexNames.certificationTitle, 'JOB_TITLE_LOWER']].map(([name, field]) => ({
+            name, key: { [field]: 1, ORIGINAL_CERT_DATE: -1, _id: 1,
+                ...Object.fromEntries([...filters.filter(key => key !== field), 'DECISION_DATE', '_WORKSITE_CITY_LOWER', '_WORKSITE_STATE_LOWER', 'CASE_STATUS'].map(key => [key, 1])) },
+        })) : []),
+        ...(program === 'h1b' ? [{ name: indexNames.certification, key: { ORIGINAL_CERT_DATE: -1, _id: 1,
+            ...Object.fromEntries([...filters, 'DECISION_DATE', '_WORKSITE_CITY_LOWER', '_WORKSITE_STATE_LOWER', 'CASE_STATUS'].map(field => [field, 1])) } }] : []),
         { name: 'discovery_version_v1', key: { _DISCOVERY_VERSION: 1, _id: 1 } },
         { name: indexNames.worksiteRecent, key: { ...sort, ...Object.fromEntries(filters.map(field => [field, 1])), _WORKSITE_CITY_LOWER: 1, _WORKSITE_STATE_LOWER: 1, CASE_STATUS: 1 },
             partialFilterExpression: { $or: [{ _WORKSITE_CITY_LOWER: { $gt: '' } }, { _WORKSITE_STATE_LOWER: { $gt: '' } }] } },

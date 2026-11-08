@@ -113,6 +113,11 @@ test('employer directory, profiles and indexed worksite search preserve identity
         const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
         try {
             const base = `http://127.0.0.1:${server.address().port}`;
+            const directory = await fetch(base + '/api/employers?directory=1&sort=name_desc&page=1');
+            assert.equal(directory.status, 200); assert.equal((await directory.json()).sort, 'name_desc');
+            assert.equal((await fetch(base + '/api/employers?directory=1&sort=unrecognized')).status, 400);
+            const trailing = await fetch(base + '/employers/?sort=name_asc&page=2', { redirect: 'manual' });
+            assert.equal(trailing.status, 301); assert.equal(trailing.headers.get('location'), '/employers?sort=name_asc&page=2');
             const slug = slugFor('synthropic, inc.');
             const response = await fetch(base + '/api/employers/' + slug); assert.equal(response.status, 200); assert.equal((await response.json()).ready, true);
             const page = await fetch(base + '/employers/' + slug); assert.equal(page.status, 200); assert.match(await page.text(), /Synthropic/);

@@ -1,3 +1,4 @@
+import { caseSortOptions, readCaseSort } from '../utils/sorting';
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { getJSON } from "../utils/api";
 import { Link, useSearchParams, useLocation } from "react-router-dom";
@@ -209,6 +210,9 @@ export default function CaseSearchView({ program }) {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const { filters, page, limit } = readSearchState(params, program);
+  const sort = readCaseSort(params, program);
+  const sortOptions = caseSortOptions(program);
+  const sortLabel = sortOptions.find(option => option.value === sort).label;
   const [years, setYears] = useState([]);
   const [yearsError, setYearsError] = useState(false);
   const [worksites, setWorksites] = useState({});
@@ -229,7 +233,7 @@ export default function CaseSearchView({ program }) {
   const filtersPanel = useRef(null);
   const config = programs[program];
   const endpoint = config.endpoint;
-  const apiParams = writeSearchState(filters, page, limit);
+  const apiParams = writeSearchState(filters, page, limit, undefined, sort);
   apiParams.set("page", String(page));
   apiParams.set("limit", String(limit));
   const query = apiParams.toString();
@@ -349,8 +353,9 @@ export default function CaseSearchView({ program }) {
     nextLimit = limit,
     nextView = viewParam,
     replace = false,
+    nextSort = sort,
   ) =>
-    setParams(writeSearchState(nextFilters, nextPage, nextLimit, nextView), {
+    setParams(writeSearchState(nextFilters, nextPage, nextLimit, nextView, nextSort), {
       replace,
     });
   const changeView = (next) => {
@@ -504,8 +509,7 @@ export default function CaseSearchView({ program }) {
                 : currentPage > 1
                   ? "Page outside available results"
                   : "No matching records"}
-              <span aria-hidden="true"> · </span>Newest{" "}
-              {config.events} first
+              <span aria-hidden="true"> · </span>{sortLabel}
             </p>
           )}
           {data && count === null && (
@@ -519,6 +523,12 @@ export default function CaseSearchView({ program }) {
           )}
         </div>
         <div className="result-controls">
+          <label className="result-sort">Sort by
+            <select className="search-input" aria-label="Sort cases" value={sort}
+              onChange={event => update(filters, 1, limit, viewParam, false, event.target.value)}>
+              {sortOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
           <div className="view-switch" role="group" aria-label="Results layout">
             <button
               type="button"
@@ -566,6 +576,7 @@ export default function CaseSearchView({ program }) {
           </button>
         </div>
       </div>
+      {program === 'h1b' && sort.startsWith('certification_') && <p className="sort-explanation">Certification uses the determination date for Certified cases and the reported original certification date for other statuses. Missing certification dates appear last; withdrawal dates are not substituted.</p>}
       {insightsOpen && (
         <div id="search-insights">
           <Suspense fallback={<p className="inline-notice" role="status">Loading insights…</p>}>
@@ -634,7 +645,7 @@ export default function CaseSearchView({ program }) {
             </button>
           </div>
         ) : (
-          <CaseResults records={data.cases} program={program} view={view} />
+          <CaseResults records={data.cases} program={program} view={view} sort={sort} sortLabel={sortLabel} />
         )}
       </div>
       {data && (data.cases.length > 0 || currentPage > 1) && (

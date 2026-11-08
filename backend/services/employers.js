@@ -13,6 +13,30 @@ async function ensureEmployerIndexes(db) {
     await db.collection('employers').createIndex({ searchKey: 1, _id: 1 });
     await db.collection('employers').createIndex({ featured: 1, featuredRank: 1 });
     await db.collection('employers').createIndex({ 'programs.h1b.count': -1, _id: 1 });
+    for (const program of ['h1b', 'perm', 'pwd']) await db.collection('employers').createIndex(
+        { [`programs.${program}.count`]: -1, searchKey: 1, _id: 1 }, { name: `directory_${program}_v1` });
+}
+
+async function listEmployers(db, input = {}) {
+    const invalid = () => Object.assign(new Error('Invalid employer directory sort, query, or page'), { status: 400 });
+    const sort = input.sort === undefined ? 'h1b_desc' : input.sort;
+    const q = input.q === undefined ? '' : input.q;
+    const page = input.page === undefined ? 1 : Number(input.page);
+    const limit = 24;
+    if (!['h1b_desc', 'perm_desc', 'pwd_desc', 'name_asc', 'name_desc'].includes(sort) || typeof q !== 'string' || q.length > 160 ||
+        input.page !== undefined && typeof input.page !== 'string' || !Number.isSafeInteger(page) || page < 1 || page > 100000) throw invalid();
+    const prefix = searchKey(q), query = prefix ? { searchKey: { $regex: '^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') } } : {};
+    const program = sort.split('_')[0];
+    const order = sort.startsWith('name_') ? { searchKey: sort === 'name_asc' ? 1 : -1, _id: sort === 'name_asc' ? 1 : -1 }
+        : { [`programs.${program}.count`]: -1, searchKey: 1, _id: 1 };
+    const projection = Object.fromEntries(Object.keys(order).map(field => [field, 1]));
+    const hint = sort.startsWith('name_') ? { searchKey: 1, _id: 1 } : `directory_${program}_v1`;
+    const ids = await db.collection('employers').find(query, { projection, hint, maxTimeMS: 5000 })
+        .sort(order).skip((page - 1) * limit).limit(limit + 1).toArray();
+    const selected = ids.slice(0, limit);
+    const rows = await db.collection('employers').find({ _id: { $in: selected.map(row => row._id) } }, { maxTimeMS: 1000 }).toArray();
+    const byId = new Map(rows.map(row => [row._id, row]));
+    return { employers: selected.filter(row => byId.has(row._id)).map(row => publicEmployer(byId.get(row._id))), page, limit, hasNextPage: ids.length > limit, sort, query: q.trim() };
 }
 
 async function suggestions(db, input) {
@@ -178,4 +202,4 @@ async function refreshFeatured(db, models, { signal, maxProfiles = 20, onProgres
         if (employer) await computeProfile(db, models, employer, { signal, maxTimeMS: 120000 });
     }
 }
-module.exports = { idFor, slugFor, searchKey, publicEmployer, ensureEmployerIndexes, suggestions, refreshDirectory, profilePipeline, computeProfile, getProfile, refreshFeatured, clearEmployerProgram };
+module.exports = { idFor, slugFor, searchKey, publicEmployer, ensureEmployerIndexes, listEmployers, suggestions, refreshDirectory, profilePipeline, computeProfile, getProfile, refreshFeatured, clearEmployerProgram };

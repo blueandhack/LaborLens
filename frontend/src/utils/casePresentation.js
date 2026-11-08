@@ -1,5 +1,10 @@
 import { formatWageRange } from "./wage.js";
 
+export function certificationDate(record) {
+  const value = /^\s*certified\s*$/i.test(record.CASE_STATUS || '') ? record.DECISION_DATE : record.ORIGINAL_CERT_DATE;
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(T|$)/.test(value) && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
 export function getStatusClass(status) {
   const value = String(status || "").toLowerCase();
   if (value.includes("denied")) return "denied";

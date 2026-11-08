@@ -5,7 +5,7 @@ const { promisify } = require('node:util');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const mongoose = require('mongoose');
-const { programs } = require('../services/searchConfig');
+const { programs, searchIndexes } = require('../services/searchConfig');
 
 test('index migration bootstraps empty program collections before their first import', { skip: !process.env.MONGO_TEST_URI }, async t => {
     const uri = new URL(process.env.MONGO_TEST_URI);
@@ -17,9 +17,9 @@ test('index migration bootstraps empty program collections before their first im
     const script = path.join(__dirname, '../scripts/search-indexes.js');
     await run(process.execPath, [script], options);
     await run(process.execPath, [script, '--check'], options);
-    for (const config of Object.values(programs)) {
+    for (const [program, config] of Object.entries(programs)) {
         const indexes = await connection.db.collection(config.collection).indexes();
-        assert.equal(indexes.length, 12);
+        assert.equal(indexes.length, searchIndexes(program).length + 2);
         assert.equal(indexes.find(index => index.name === 'CASE_NUMBER_1').unique, true);
         assert.equal(await connection.db.collection(config.collection).countDocuments(), 0);
     }

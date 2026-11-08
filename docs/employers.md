@@ -31,7 +31,7 @@ The daily `laborlens-employer-refresh` CronJob runs on skycat with a 512 MiB Nod
 
 The importer derives `_WORKSITE_CITY_LOWER`, `_WORKSITE_STATE_LOWER`, and `_DISCOVERY_VERSION` from reported canonical fields and known archive aliases. Worksite metadata never falls back to the employer's address. The resumable migration reads small batches, uses the same Unicode case-folding as the importer, groups equal derived locations into writes, and preserves source values and timestamps. Concurrent new imports with fresh metadata win over a migration batch.
 
-Each program gains a normalization-progress index and three partial covering worksite indexes (city, state, recent date). There are twelve indexes per program collection after migration, including the original unique case-number index. The bounded recent-index trial preserves fast first pages for common worksite filters; incomplete trials fall back without truncating older matches. City/state overlaps are deduplicated for results, counts, and insights. No existing indexes are pruned in this release.
+Each program gains a normalization-progress index and three partial covering worksite indexes (city, state, recent date). Worksite preparation brings each program to twelve indexes, including the original unique case-number index. The separate certification-sort migration adds three H-1B indexes (fifteen H-1B indexes in total). The bounded recent-index trial preserves fast first pages for common worksite filters; incomplete trials fall back without truncating older matches. City/state overlaps are deduplicated for results, counts, and insights. No existing indexes are pruned in this release.
 
 Worksite search is enabled per program only after normalization and all required indexes finish. `GET /api/employers/status` exposes readiness. During preparation the worksite control is disabled; employer search remains available. The daily refresh catches any older unnormalized records.
 
@@ -46,3 +46,9 @@ Completed featured profiles appear in `/employers/sitemap.xml`; robots.txt adver
 MongoDB integration tests compare exact names, worksite/employer filters, overlapping branches, pagination, separate counts and insights. Profiler assertions check that normal worksite selections/counts use covered metadata and fetch only displayed disclosures. Tests also verify stable IDs, distinct punctuation variants, wage-period separation, history, source provenance, HTTP contracts, redirects, and missing pages.
 
 Browser verification uses a separate local database and real APIs/SSR. It exercises directory and search autocomplete, keyboard selection, exact-name browsing, employer/worksite combinations, profile-to-case return navigation, responsive layouts from 320 to 3440 pixels, both themes, JavaScript-disabled profile content, and real 404s. Production verification should repeat representative public flows after the initial refresh completes.
+
+## Directory ordering
+
+The directory now browses the full reported-name collection in pages of 24. Its default is most imported H-1B applications; alternatives are PERM volume, PWD volume, and normalized name A–Z/Z–A. Counts include all imported years and all case statuses. Equal volumes use normalized name and then stable ID. Sorting and prefix search apply before pagination, and their URL parameters survive browser navigation. Autocomplete retains its separate bounded suggestions endpoint.
+
+Directory sort indexes cover the selected program count, normalized search name and stable ID; only the displayed employers are then fetched. The profile sitemap still includes completed featured summaries. Additional employer summaries prepare on demand.

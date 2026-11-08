@@ -3,7 +3,7 @@ import { presentCase } from './casePresentation.js';
 
 export const SITE_ORIGIN = 'https://laborlens.fyi';
 export const PUBLIC_PATHS = ['/', '/h1b', '/perm', '/employers', '/data', '/privacy/', '/terms/'];
-export const SEARCH_RESULT_KEYS = ['company', 'employer', 'jobTitle', 'location', 'worksite', 'caseNumber', 'determinationYear', 'decisionYear', 'receivedYear', 'page'];
+export const SEARCH_RESULT_KEYS = ['company', 'employer', 'jobTitle', 'location', 'worksite', 'caseNumber', 'determinationYear', 'decisionYear', 'receivedYear', 'page', 'sort'];
 const searchPrograms = { '/': 'pwd', '/perm': 'perm', '/h1b': 'h1b' };
 const descriptions = {
   pwd: 'Search public DOL prevailing wage determinations by employer, job title, location, and case number. View reported wage rates and original disclosure sources.',
@@ -15,7 +15,7 @@ export function getPageSEO(pathname, search = '') {
   const path = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
   const program = searchPrograms[path];
   const params = new URLSearchParams(search);
-  const filtered = Boolean(program && SEARCH_RESULT_KEYS.some(key => params.get(key)));
+  const filtered = Boolean(program && SEARCH_RESULT_KEYS.some(key => params.get(key)) || path === '/employers' && ['q', 'sort', 'page'].some(key => params.get(key)));
   const title = program ? `${program === 'h1b' ? 'H1B Salary Database & LCA Search' : program === 'perm' ? 'PERM Database & Employer Case Search' : 'Prevailing Wage Determination Search'} | LaborLens`
     : path === '/employers' ? 'Employer H1B, PERM & Wage Profiles | LaborLens' : path === '/data' ? 'DOL Data Sources & Methodology | LaborLens'
       : ['/admin/data', '/import'].includes(path) ? 'Administration | LaborLens'

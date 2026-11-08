@@ -138,3 +138,6 @@
   .employer-finder input { font-size: 16px; }
   .employer-coverage-note { margin-top: 30px; }
 }
+.employer-directory-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; min-width: 0; max-width: 100%; }
+.employer-directory-heading > div > p { color: var(--text-secondary); font-size: 12px; line-height: 1.7; margin-top: 10px; }
+@media (max-width: 540px) { .employer-directory-controls, .employer-directory-controls .result-sort { width: 100%; } }

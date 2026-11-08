@@ -31,12 +31,13 @@ export function readSearchState(params, program) {
   };
 }
 
-export function writeSearchState(filters, page, limit, view) {
+export function writeSearchState(filters, page, limit, view, sort) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters))
     if (String(value).trim()) params.set(key, key === 'employer' ? String(value) : String(value).trim());
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_LIMIT) params.set("limit", String(limit));
   if (["table", "cards"].includes(view)) params.set("view", view);
+  if (sort) params.set('sort', sort);
   return params;
 }

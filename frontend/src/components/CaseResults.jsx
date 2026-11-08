@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { FiArrowUpRight, FiMapPin } from "react-icons/fi";
 import { programs } from "../utils/programs";
-import { presentCase, formatCaseDate } from "../utils/casePresentation";
+import { presentCase, formatCaseDate, certificationDate } from "../utils/casePresentation";
 
 export function StatusBadge({ status, statusClass }) {
   return (
@@ -9,11 +9,13 @@ export function StatusBadge({ status, statusClass }) {
   );
 }
 
-export default function CaseResults({ records, program, view }) {
+export default function CaseResults({ records, program, view, sort = "event_desc", sortLabel }) {
   const location = useLocation();
   const from = location.pathname + location.search;
   const perm = program !== "pwd";
-  const dateLabel = programs[program].dateLabel;
+  const certificationSort = sort.startsWith("certification_");
+  const dateLabel = certificationSort ? "Certification date" : programs[program].dateLabel;
+  const displayedDate = (record, data) => certificationSort ? certificationDate(record) : data.eventDate;
   const wageLabel = programs[program].wageLabel;
   if (view === "table")
     return (
@@ -30,8 +32,7 @@ export default function CaseResults({ records, program, view }) {
         >
           <table className="case-table">
             <caption className="sr-only">
-              {programs[program].label} cases, newest{" "}
-              {programs[program].events} first. Open a case for its
+              {programs[program].label} cases, {sortLabel || "newest " + programs[program].events + " first"}. Open a case for its
               complete disclosure.
             </caption>
             <colgroup>
@@ -50,8 +51,8 @@ export default function CaseResults({ records, program, view }) {
                 <th scope="col">Employer location</th>
                 <th scope="col">{wageLabel}</th>
                 <th scope="col">Case status</th>
-                <th scope="col">{programs[program].receivedLabel}</th>
-                <th scope="col">{dateLabel}</th>
+                <th scope="col" aria-sort={sort.startsWith("received_") ? (sort.endsWith("_asc") ? "ascending" : "descending") : undefined}>{programs[program].receivedLabel}</th>
+                <th scope="col" aria-sort={!sort.startsWith("received_") ? (sort.endsWith("_asc") ? "ascending" : "descending") : undefined}>{dateLabel}</th>
               </tr>
             </thead>
             <tbody>
@@ -123,8 +124,9 @@ export default function CaseResults({ records, program, view }) {
                       {formatCaseDate(record.RECEIVED_DATE)}
                     </td>
                     <td className="date-cell">
-                      {formatCaseDate(data.eventDate)}
-                      {data.originalCertificationDate && <span className="cell-secondary">Originally certified {formatCaseDate(data.originalCertificationDate)}</span>}
+                      {formatCaseDate(displayedDate(record, data))}
+                      {certificationSort && record.DECISION_DATE && record.DECISION_DATE !== certificationDate(record) && <span className="cell-secondary">Last action {formatCaseDate(record.DECISION_DATE)}</span>}
+                      {!certificationSort && data.originalCertificationDate && <span className="cell-secondary">Originally certified {formatCaseDate(data.originalCertificationDate)}</span>}
                       {data.elapsed !== null && (
                         <span className="cell-secondary">
                           {data.elapsed.toLocaleString()} days after receipt
@@ -185,9 +187,10 @@ export default function CaseResults({ records, program, view }) {
                 </div>
                 <div>
                   <dt>{dateLabel}</dt>
-                  <dd>{formatCaseDate(data.eventDate)}</dd>
+                  <dd>{formatCaseDate(displayedDate(record, data))}</dd>
                 </div>
-                {data.originalCertificationDate && <div><dt>Original certification</dt><dd>{formatCaseDate(data.originalCertificationDate)}</dd></div>}
+                {!certificationSort && data.originalCertificationDate && <div><dt>Original certification</dt><dd>{formatCaseDate(data.originalCertificationDate)}</dd></div>}
+                {certificationSort && record.DECISION_DATE !== certificationDate(record) && <div><dt>Last action</dt><dd>{formatCaseDate(record.DECISION_DATE)}</dd></div>}
                 {data.elapsed !== null && (
                   <div>
                     <dt>Receipt to {perm ? "decision" : "determination"}</dt>

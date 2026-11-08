@@ -20,13 +20,13 @@ test('worksites use reported primary locations, preserve source fields and never
     assert.deepEqual(worksite({ PRIMARY_WORKSITE_CITY: '', WORKSITE_CITY: 'Boston', WORKSITE_STATE: 'MA' }, 'pwd'), { city: 'Boston', state: 'MA' });
     assert.deepEqual(worksite({ JOB_INFO_WORK_CITY: 'Denver', JOB_INFO_WORK_STATE: 'CO' }, 'perm'), { city: 'Denver', state: 'CO' });
 });
-test('exact reported names do not broaden into prefixes and worksite branches keep all other filters', () => {
+test('exact reported names do not broaden into prefixes and worksite queries keep all other filters', () => {
     const spec = buildSearch('h1b', { employer: 'Synthropic, Inc.', company: 'Synthropic', location: 'TX', worksite: 'CA', jobTitle: 'Engineer' });
     assert.equal(spec.query.$and[0].EMPLOYER_NAME_LOWER, 'synthropic, inc.');
-    assert.deepEqual(spec.branchHints, ['search_worksite_city_v1', 'search_worksite_state_v1']);
-    assert.equal(spec.branches.length, 2);
-    assert.equal(spec.branches[0].$and.at(-1)._WORKSITE_CITY_LOWER.$regex, '^ca');
-    assert(spec.branches[0].$and.some(condition => condition.$or));
+    const locations = spec.query.$and.filter(condition => condition.$or).flatMap(condition => condition.$or);
+    assert(locations.some(condition => condition._WORKSITE_CITY_LOWER?.$regex === '^ca'));
+    assert(locations.some(condition => condition.EMPLOYER_CITY_LOWER?.$regex === '^tx'));
+    assert(spec.query.$and.some(condition => condition.JOB_TITLE_LOWER?.$regex === '^engineer'));
     assert.throws(() => buildSearch('pwd', { worksite: ['$ne'] }), error => error.status === 400);
     assert.equal(buildSearch('h1b', { employer: ' Amazon.com Services LLC\t' }).query.$and[0].EMPLOYER_NAME_LOWER, ' amazon.com services llc\t');
 });

@@ -2,7 +2,7 @@ const express = require('express');
 const { readFile } = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
-const { getProfile, suggestions, publicEmployer } = require('../services/employers');
+const { getProfile, suggestions, publicEmployer, listEmployers } = require('../services/employers');
 let renderer;
 async function renderDocument(url, profile, employers) {
     renderer ||= import(pathToFileURL(path.resolve(__dirname, '../../frontend/dist-ssr/entry-server.js')).href);
@@ -21,6 +21,7 @@ function createEmployerRoutes({ db, models, render = renderDocument }) {
     });
     api.get('/', async (req, res, next) => {
         try {
+            if (req.query.directory === '1') return res.set('Cache-Control', 'public, max-age=30').json(await listEmployers(db(), req.query));
             const employers = req.query.q !== undefined ? await suggestions(db(), req.query.q)
                 : (await db().collection('employers').find({ featured: true }, { maxTimeMS: 1000 }).sort({ featuredRank: 1 }).limit(20).toArray()).map(publicEmployer);
             res.set('Cache-Control', 'public, max-age=30').json({ employers });
@@ -37,10 +38,10 @@ function createEmployerRoutes({ db, models, render = renderDocument }) {
         } catch (error) { next(error); }
     });
     pages.get('/', async (req, res, next) => {
-        if (req.originalUrl.split('?')[0].endsWith('/')) return res.redirect(301, '/employers');
+        if (req.originalUrl.split('?')[0].endsWith('/')) return res.redirect(301, '/employers' + (req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''));
         try {
-            const employers = (await db().collection('employers').find({ featured: true }).sort({ featuredRank: 1 }).limit(20).toArray()).map(publicEmployer);
-            res.type('html').set('Cache-Control', 'public, max-age=60').send(await render('/employers', null, employers));
+            const directory = await listEmployers(db(), req.query);
+            res.type('html').set('Cache-Control', 'public, max-age=60').send(await render(req.originalUrl, null, directory));
         } catch (error) { next(error); }
     });
     pages.get('/sitemap.xml', async (_req, res, next) => {
