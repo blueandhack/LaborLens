@@ -119,7 +119,9 @@ async function refreshGlobalInsights(Model, program, { force = false, signal } =
     const state = await stateCollection.findOne({ _id: program });
     if (!force && state.snapshot?.schemaVersion === SCHEMA_VERSION && state.snapshot.revision === state.revision
             && Date.now() - Date.parse(state.snapshot.generatedAt) < DAY_MS) return { program, unchanged: true };
-    const snapshot = { ...await computeInsights(Model, program, {}, { maxTimeMS: 60000, signal }), revision: state.revision };
+    // Full-history H-1B snapshots run off-request; public live insights retain
+    // their five-second deadline and read existing snapshots while this runs.
+    const snapshot = { ...await computeInsights(Model, program, {}, { maxTimeMS: program === 'h1b' ? 180000 : 60000, signal }), revision: state.revision };
     // Atomic revision check prevents a late refresh from resurrecting a snapshot
     // after an administrator clears data or another import changes the revision.
     const result = await stateCollection.updateOne({ _id: program, revision: state.revision }, { $set: { snapshot } });
