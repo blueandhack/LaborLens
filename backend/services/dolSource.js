@@ -2,6 +2,7 @@ const fs = require('fs');
 const { Readable, Transform } = require('stream');
 const { pipeline } = require('stream/promises');
 const { createHash } = require('crypto');
+const { releaseMode, requiredReleases } = require('./releaseCoverage');
 
 const PERFORMANCE_URL = 'https://www.dol.gov/agencies/eta/foreign-labor/performance';
 const USER_AGENT = 'LaborLens/1.0 (DOL public disclosure importer)';
@@ -19,6 +20,8 @@ function dolURL(value, base = PERFORMANCE_URL) {
 function discoverDatasets(html, { fromYear, programs = ['pwd', 'perm'], allReleases = false } = {}) {
     if (!programs.length || programs.some(type => !['pwd', 'perm', 'h1b'].includes(type))) throw new Error('Invalid disclosure programs');
     const datasets = new Map();
+    const latestStart = html.indexOf('Latest Quarterly Updates');
+    const historicalStart = html.indexOf('Historical Case Disclosure Data', Math.max(0, latestStart));
     for (const match of html.matchAll(/\bhref\s*=\s*["']([^"']+)["']/gi)) {
         let url;
         try { url = dolURL(match[1].replace(/&amp;/gi, '&')); } catch { continue; }
@@ -27,7 +30,10 @@ function discoverDatasets(html, { fromYear, programs = ['pwd', 'perm'], allRelea
         if (!name) continue;
         const type = /^(?:LCA|H-?1B|ICERT_LCA)$/i.test(name[1]) ? 'h1b' : name[1].toUpperCase() === 'PERM' ? 'perm' : 'pwd';
         const year = Number(name[2]) + (name[2].length === 2 ? 2000 : 0);
-        datasets.set(url, { url, filename, type, fiscalYear: year, quarter: Number(name[3] || 4) });
+        const file = { url, filename, type, fiscalYear: year, quarter: Number(name[3] || 4) };
+        const currentCumulative = latestStart >= 0 && historicalStart > latestStart && match.index > latestStart && match.index < historicalStart;
+        file.coverageMode = name[3] && currentCumulative ? 'cumulative' : releaseMode(file);
+        datasets.set(url, file);
     }
     if (allReleases) return [...datasets.values()].filter(file => programs.includes(file.type) && (fromYear === undefined || file.fiscalYear >= fromYear))
         .sort((a, b) => b.fiscalYear - a.fiscalYear || b.quarter - a.quarter || a.filename.localeCompare(b.filename));
@@ -37,12 +43,11 @@ function discoverDatasets(html, { fromYear, programs = ['pwd', 'perm'], allRelea
         if (!files.length) throw new Error(`DOL page contains no supported ${type.toUpperCase()} disclosure files`);
         const years = fromYear === undefined ? [Math.max(...files.map(file => file.fiscalYear))]
             : [...new Set(files.map(file => file.fiscalYear))].filter(year => year >= fromYear).sort((a, b) => b - a);
-        // Quarterly files are cumulative. Keep all form variants in the latest
-        // release, but exclude superseded quarters and worksite/appendix files.
+        // Current cumulative releases can supersede snapshots. Historical LCA
+        // quarters are independent and all are required to cover a full year.
         for (const year of years) {
-            const quarter = Math.max(...files.filter(file => file.fiscalYear === year).map(file => file.quarter));
-            selected.push(...files.filter(file => file.fiscalYear === year && file.quarter === quarter)
-                .sort((a, b) => a.filename.localeCompare(b.filename)));
+            selected.push(...requiredReleases(files.filter(file => file.fiscalYear === year))
+                .sort((a, b) => a.quarter - b.quarter || a.filename.localeCompare(b.filename)));
         }
     }
     return selected;

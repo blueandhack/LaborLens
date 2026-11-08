@@ -1,4 +1,5 @@
 const TYPES = ['h1b', 'pwd', 'perm'];
+const { coverageRange, releaseMode, requiredReleases } = require('./releaseCoverage');
 const PROCESSING = new Set(['downloading', 'validating', 'importing']);
 const ATTENTION = new Set(['error', 'interrupted', 'blocked']);
 const period = file => /_Q[1-4](?:_|\.xlsx$)/i.test(file.filename || '') ? 'quarterly' : 'annual';
@@ -34,23 +35,26 @@ function summarizeGroup(files, version) {
 }
 
 function quarterCoverage(files, targets, q, version, inventoryKnown) {
-    const direct = files.filter(file => file.quarter === q && file.period === 'quarterly');
+    const candidates = files.filter(file => file.quarter === q && file.period === 'quarterly');
+    const direct = candidates.some(file => file.required) ? candidates.filter(file => file.required) : candidates;
     if (direct.length) {
         const summary = summarizeGroup(direct, version);
         if (summary.state === 'imported') return { quarter: q, state: 'imported', label: 'Imported', fileUrls: direct.map(file => file.url), directUrls: direct.map(file => file.url) };
     }
-    const covering = files.filter(file => file.quarter >= q && (file.quarter > q || file.period === 'annual'));
+    const covers = file => { const range = coverageRange(file); return range.start <= q && range.end >= q; };
+    const covering = files.filter(file => covers(file) && (file.quarter > q || file.period === 'annual'));
     // A group can contain independent legacy files or form variants. Never
     // call a quarter covered because only one file in that release is done.
-    const releases = [...new Set(covering.map(file => file.quarter))].sort((a, b) => b - a);
+    const key = file => `${releaseMode(file)}:${file.quarter}`;
+    const releases = [...new Set(covering.sort((a, b) => b.quarter - a.quarter).map(key))];
     for (const release of releases) {
-        const group = files.filter(file => file.quarter === release);
+        const group = covering.filter(file => key(file) === release);
         if (group.length && group.every(file => complete(file, version))) {
-            return { quarter: q, state: 'covered', label: 'Covered', viaQuarter: release,
+            return { quarter: q, state: 'covered', label: 'Covered', viaQuarter: group[0].quarter,
                 viaAnnual: group.every(file => file.period === 'annual'), fileUrls: group.map(file => file.url), directUrls: direct.map(file => file.url) };
         }
     }
-    const planned = targets.filter(file => file.quarter >= q);
+    const planned = targets.filter(covers);
     const group = planned.length ? planned : direct;
     if (!group.length) return { quarter: q, state: inventoryKnown ? 'unavailable' : 'unknown', label: inventoryKnown ? 'Not listed' : 'Unknown', fileUrls: [], directUrls: [] };
     const summary = summarizeGroup(group, version);
@@ -71,13 +75,11 @@ function buildImportCoverage({ catalog, sources = [], active = null, validationV
     const years = [...all.values()].map(file => file.fiscalYear);
     const fromYear = years.length ? Math.min(catalog?.fromYear || Infinity, ...years) : catalog?.fromYear || null;
     const toYear = years.length ? Math.max(...years) : null;
-    const inventory = [...(catalog?.releases || []), ...(catalog?.datasets || [])];
-    const latest = new Map();
-    for (const file of inventory) {
-        const key = `${file.type}:${file.fiscalYear}`;
-        latest.set(key, Math.max(latest.get(key) || 0, quarter(file)));
-    }
-    const targetUrls = new Set(inventory.filter(file => quarter(file) === latest.get(`${file.type}:${file.fiscalYear}`)).map(file => file.url));
+    const inventory = [...(catalog?.datasets || []), ...(catalog?.releases || [])];
+    const publication = new Map();
+    for (const file of inventory) publication.set(file.url, { ...publication.get(file.url), ...file });
+    for (const file of all.values()) file.coverageMode = releaseMode({ ...file, coverageMode: publication.get(file.url)?.coverageMode ?? file.coverageMode });
+    const targetUrls = new Set(requiredReleases([...publication.values()]).map(file => file.url));
     const programs = TYPES.map(type => {
         const files = [...all.values()].filter(file => file.type === type).map(file => ({ ...file, required: targetUrls.has(file.url) }));
         const targets = files.filter(file => file.required);
@@ -98,7 +100,7 @@ function buildImportCoverage({ catalog, sources = [], active = null, validationV
             state: current.length ? 'active' : attention.length ? 'attention' : inventoryKnown && imported.length === targets.length ? 'complete' : 'waiting',
             current: current.map(file => ({ url: file.url, filename: file.filename, fiscalYear: file.fiscalYear, quarter: file.quarter, period: file.period, ...fileProgress(file) })),
             // Detailed reports are fetched only on demand; keep polling small.
-            files: files.map(file => ({ url: file.url, filename: file.filename, fiscalYear: file.fiscalYear, quarter: file.quarter, period: file.period,
+            files: files.map(file => ({ url: file.url, filename: file.filename, fiscalYear: file.fiscalYear, quarter: file.quarter, period: file.period, coverageMode: file.coverageMode,
                 required: file.required, sourceId: file._id || null, status: complete(file, validationVersion) ? 'done' : file.status === 'done' ? 'revalidation' : file.status || 'pending',
                 progress: file.progress, validationProgress: file.validationProgress, completedAt: file.completedAt,
                 checkedAt: file.checkedAt, error: file.error, canViewReport: Boolean(file.validation) })), years: rows };

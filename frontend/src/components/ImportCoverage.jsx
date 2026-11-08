@@ -84,7 +84,7 @@ export default function ImportCoverage({ progress, sources }) {
         </div>
         <div className="coverage-active-files">{programs.flatMap(program => program.current.map(file => <CurrentFile key={file.url} type={program.type} file={file} onSelect={() => { setView(program.type); setYear('all'); select(program.type, file.fiscalYear, file.quarter, `coverage-current-${program.type}`); }} />))}</div>
         <div className="coverage-grid-heading"><div><h3>Year & quarter coverage</h3><p className="admin-help">Each cell opens the release status and validation details.</p></div><div className="coverage-grid-controls"><label><span id="coverage-view-label">Program</span><select aria-labelledby="coverage-view-label" value={view} onChange={event => { setView(event.target.value); setSelection(null); setOpenReport(null); }}>{programs.map(program => <option value={program.type} key={program.type}>{programLabel(program.type)}</option>)}<option value="all">All programs</option></select></label><label><span id="coverage-year-label">Fiscal year</span><select aria-labelledby="coverage-year-label" value={year} onChange={event => { setYear(event.target.value); setSelection(null); setOpenReport(null); }}><option value="all">All years</option>{allYears.map(value => <option value={value} key={value}>{value}</option>)}</select></label></div></div>
-        <p className="coverage-explainer"><strong>Imported</strong> means the quarter’s file was imported directly. <strong>Covered</strong> means a later cumulative or annual release includes that quarter. Earlier snapshot files do not need a separate import.</p>
+        <p className="coverage-explainer"><strong>Imported</strong> means the quarter’s file was imported directly. <strong>Covered</strong> means an imported cumulative or annual release includes that quarter. Separate historical H-1B quarters each require their own import.</p>
         <div className="coverage-legend" aria-label="Coverage legend">{['imported', 'covered', 'active', 'pending', 'partial', 'attention', 'unavailable', 'unknown'].map(state => <span key={state}><i className={`coverage-key ${state}`} aria-hidden="true" />{CELL_LABEL[state]}</span>)}</div>
         {!progress.publishedQuarterInventory && <p className="admin-help">Showing known import targets. Separate quarterly snapshot availability will appear after the next archive inventory refresh.</p>}
         {selection && cell && <section className="coverage-detail" aria-labelledby="coverage-detail-heading">
@@ -110,7 +110,7 @@ export default function ImportCoverage({ progress, sources }) {
                 </section>)}
             </article>)}
         </div>
-        <p className="admin-help coverage-table-note">Fiscal years follow DOL disclosure releases. Required-release counts use the latest cumulative release per year, including all independent files or form variants. “Covered” describes data coverage; it does not count as a separately imported quarterly file.</p>
+        <p className="admin-help coverage-table-note">Fiscal years follow DOL disclosure releases. Required-release counts include every independent quarter, annual file, or form variant needed for coverage. “Covered” does not count as a separately imported quarterly file.</p>
         <p className="admin-help">DOL archive inventory checked {formatImportDate(progress.inventoryCheckedAt)}.</p>
     </section>;
 }

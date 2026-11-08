@@ -16,11 +16,25 @@ test('search bounds page size and rejects malformed filters instead of unbounded
     assert.equal(specific.branches, null);
 });
 
-test('literal prefixes escape regex metacharacters and dates retain calendar semantics', () => {
+test('employer prefixes tolerate punctuation and dates retain calendar semantics', () => {
     const spec = buildSearch('perm', { company: ' A.B+ ', decisionYear: '2025' });
-    assert.equal(spec.query.$and[0].EMP_BUSINESS_NAME_LOWER.$regex, '^a\\.b\\+');
+    assert.equal(spec.query.$and[0].EMP_BUSINESS_NAME_LOWER.$regex, '^a[^\\p{L}\\p{N}]*b');
     assert.deepEqual(spec.query.$and[1].DECISION_DATE, { $gte: new Date('2025-01-01'), $lt: new Date('2026-01-01') });
     assert.deepEqual(spec.sort, { DECISION_DATE: -1, _id: 1 });
+});
+
+test('employer matching handles Synthropic punctuation variants without losing an indexed leading prefix', () => {
+    for (const query of ['Synthropic INC', 'Synthropic, Inc.', 'synthropic-inc']) {
+        const spec = buildSearch('h1b', { company: query });
+        const expression = spec.query.$and[0].EMPLOYER_NAME_LOWER.$regex;
+        assert(expression.startsWith('^synthropic'));
+        const pattern = new RegExp(expression, 'u');
+        for (const name of ['synthropic, inc.', 'synthropic inc', 'synthropic-inc']) assert(pattern.test(name));
+        assert.equal(pattern.test('another synthropic inc'), false);
+        assert.equal(spec.hint, 'search_company_v3');
+    }
+    assert.equal(buildSearch('h1b', { company: '.*' }).query.$and[0].EMPLOYER_NAME_LOWER.$regex, '^\\.\\*');
+    assert.equal(buildSearch('h1b', { jobTitle: 'C++' }).query.$and[0].JOB_TITLE_LOWER.$regex, '^c\\+\\+');
 });
 
 test('bounded count cache coalesces, evicts, expires and fences invalidated loads', async () => {

@@ -7,7 +7,7 @@ const build = (datasets, sources = [], releases = datasets, active = null) => bu
 const h1b = result => result.programs.find(program => program.type === 'h1b');
 
 test('later cumulative quarters cover earlier snapshots without claiming those files were imported', () => {
-    const files = [file(1), file(2), file(3), file(4)];
+    const files = [file(1), file(2), file(3), file(4, { coverageMode: 'cumulative' })];
     const program = h1b(build([files[3]], [done(files[3])], files));
     assert.equal(program.totalFiles, 1);
     assert.equal(program.percentage, 100);
@@ -34,7 +34,8 @@ test('both independent annual 2009 files must finish before annual coverage is c
 });
 
 test('Q3 never covers Q4 and unlisted years do not count as failed or queued files', () => {
-    const program = h1b(build([file(3)], [done(file(3))]));
+    const current = file(3, { coverageMode: 'cumulative' });
+    const program = h1b(build([current], [done(current)]));
     assert.equal(program.years[0].quarters[3].state, 'unavailable');
     assert.equal(program.attentionFiles, 0);
     assert.equal(program.pendingFiles, 0);
@@ -55,11 +56,30 @@ test('live row percentages use unique cases and expired or unrelated leases cann
 
 test('current published inventory advances targets beyond a stale selected catalog and rejects obsolete validation', () => {
     const program = h1b(build([file(3)], [done(file(3)), { ...file(4), status: 'done', validation: { version: 1 } }], [file(3), file(4)]));
-    assert.equal(program.totalFiles, 1);
-    assert.equal(program.completedFiles, 0);
-    assert.equal(program.percentage, 0);
+    assert.equal(program.totalFiles, 2);
+    assert.equal(program.completedFiles, 1);
+    assert.equal(program.percentage, 50);
     assert.equal(program.years[0].quarters[2].state, 'imported');
     assert.equal(program.years[0].quarters[3].state, 'pending');
+});
+
+test('historical Q4 alone never marks the missing Q1 to Q3 files as covered or complete', () => {
+    const files = [file(1), file(2), file(3), file(4)];
+    const program = h1b(build([files[3]], [done(files[3])], files));
+    assert.equal(program.totalFiles, 4);
+    assert.equal(program.completedFiles, 1);
+    assert.equal(program.percentage, 25);
+    assert.equal(program.pendingFiles, 3);
+    assert.equal(program.state, 'waiting');
+    assert.deepEqual(program.years[0].quarters.map(cell => cell.state), ['pending', 'pending', 'pending', 'imported']);
+    assert.ok(program.files.every(source => source.required));
+});
+
+test('fresh publication metadata overrides stale source coverage modes', () => {
+    const files = [file(1), file(2), file(3), file(4)];
+    const program = h1b(build([files[3]], [done({ ...files[3], coverageMode: 'cumulative' })], files.map(source => ({ ...source, coverageMode: 'quarterly' }))));
+    assert.equal(program.percentage, 25);
+    assert.equal(program.years[0].quarters[0].state, 'pending');
 });
 
 test('unknown program inventory is not presented as 100 percent complete', () => {

@@ -94,6 +94,24 @@ test('covered search preserves matches, paging, dates and PWD links', { skip: !p
         assert.equal(first.totalCount, 1000);
         assert.equal(first.totalPages, 84);
     });
+    await t.test('punctuation-tolerant employer lookup uses the existing covering index for every program', async () => {
+        for (const [program, config] of Object.entries(programs)) {
+            await models[program].collection.insertMany(['Synthropic, Inc.', 'Synthropic INC', 'Synthropic-Inc'].map((name, i) => ({
+                CASE_NUMBER: `synthropic-${i}`, [config.company]: name.toLowerCase(), [config.employer]: name,
+                [config.date]: new Date('2025-01-01'), JOB_TITLE: 'Chief Executive Officer',
+            })));
+            invalidateCounts();
+            const input = { company: 'Synthropic INC' };
+            const result = await searchCases(models[program], program, input);
+            assert.equal(result.totalCount, 3);
+            const spec = buildSearch(program, input);
+            const plan = await models[program].collection.find(spec.query, { projection: { _id: 1, [config.date]: 1 } })
+                .sort(spec.sort).hint(spec.hint).limit(20).explain('executionStats');
+            assert.equal(plan.executionStats.totalDocsExamined, 0);
+            assert.equal(plan.executionStats.nReturned, 3);
+            assert(plan.executionStats.totalKeysExamined < 20, 'a punctuation-tolerant lookup must retain a bounded employer-prefix index range');
+        }
+    });
     await t.test('aborted requests stop rather than continuing obsolete database work', async () => {
         const controller = new AbortController();
         controller.abort(new Error('Search replaced'));

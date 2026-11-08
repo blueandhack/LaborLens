@@ -9,7 +9,7 @@ const SOURCE_REVIEW_VERSION = 3;
 const { noteInsightsChange } = require('./searchInsights');
 
 async function runAutoImport(db, {
-    models, programs = Object.keys(models), force = false, signal, fromYear, maxFiles = Infinity, backfill = false,
+    models, programs = Object.keys(models), force = false, signal, fromYear, maxFiles = Infinity, backfill = false, priorityYear,
     discover = fetchDatasetInventory, download = downloadDataset, importFile = importWorkbook, auditFile = auditWorkbook,
     log = message => console.log(JSON.stringify({ time: new Date().toISOString(), ...message })),
 } = {}) {
@@ -30,7 +30,9 @@ async function runAutoImport(db, {
         const datasets = Array.isArray(discovered) ? discovered : discovered.datasets;
         const releases = Array.isArray(discovered) ? null : discovered.releases;
         const latest = Object.fromEntries(programs.map(type => [type, Math.max(...datasets.filter(file => file.type === type).map(sourceRank))]));
-        if (fromYear !== undefined) datasets.sort((a, b) => (backfill ? 1 : -1) * (sourceRank(a) - sourceRank(b)) || a.type.localeCompare(b.type));
+        if (fromYear !== undefined) datasets.sort((a, b) =>
+            Number(b.fiscalYear === priorityYear) - Number(a.fiscalYear === priorityYear)
+            || (backfill ? 1 : -1) * (sourceRank(a) - sourceRank(b)) || a.type.localeCompare(b.type));
         const unavailable = [];
         if (fromYear !== undefined) {
             for (const type of programs) {

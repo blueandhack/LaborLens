@@ -6,6 +6,13 @@ const QUERY_MS = 10000;
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const badRequest = message => Object.assign(new Error(message), { status: 400 });
 
+function employerPrefix(value) {
+    const parts = value.toLowerCase().match(/[\p{L}\p{N}]+/gu);
+    // Retain a literal leading prefix for the existing employer index. Treat
+    // punctuation/spacing between name parts alike without merging entities.
+    return { $regex: '^' + (parts ? parts.map(escapeRegex).join('[^\\p{L}\\p{N}]*') : escapeRegex(value.toLowerCase())) };
+}
+
 function text(query, field) {
     const value = query[field];
     if (value === undefined) return '';
@@ -38,7 +45,7 @@ function buildSearch(program, input) {
             !Number.isSafeInteger((page - 1) * limit)) throw badRequest('Invalid page or limit (maximum 100 cases per page)');
     const conditions = [];
     const prefix = value => ({ $regex: `^${escapeRegex(value.toLowerCase())}` });
-    if (filters.company) conditions.push({ [config.company]: prefix(filters.company) });
+    if (filters.company) conditions.push({ [config.company]: employerPrefix(filters.company) });
     if (filters.jobTitle) conditions.push({ JOB_TITLE_LOWER: prefix(filters.jobTitle) });
     if (filters.caseNumber) conditions.push({ CASE_NUMBER: insensitivePrefix(filters.caseNumber) });
     const location = filters.location ? [

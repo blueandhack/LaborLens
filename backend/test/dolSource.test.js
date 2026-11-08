@@ -92,3 +92,17 @@ test('coverage inventory includes superseded quarterly snapshots without changin
     assert.equal(inventory.filter(file => file.type === 'perm').length, 2, 'both form variants remain part of the release');
     assert.ok(inventory.every(file => !/Worksites|Record_Layout/.test(file.filename)));
 });
+
+test('historical H-1B Q4 does not supersede Q1 to Q3 while a current cumulative release can', () => {
+    const link = name => `<a href="/media/${name}">file</a>`;
+    const page = 'Latest Quarterly Updates' + link('LCA_Disclosure_Data_FY2026_Q3.xlsx') + 'Historical Case Disclosure Data'
+        + [2020, 2025].flatMap(year => [1, 2, 3, 4].map(q => link(`LCA_Disclosure_Data_FY${year}_Q${q}.xlsx`))).join('');
+    const targets = discoverDatasets(page, { programs: ['h1b'], fromYear: 2008 });
+    assert.equal(targets.length, 9);
+    assert.equal(targets.filter(file => file.fiscalYear === 2025).length, 4);
+    assert.equal(targets.find(file => file.fiscalYear === 2026).coverageMode, 'cumulative');
+    assert.ok(targets.filter(file => file.fiscalYear !== 2026).every(file => file.coverageMode === 'quarterly'));
+    // Without an explicit current-release declaration, quarter files are
+    // conservative independent targets rather than guessed cumulative data.
+    assert.equal(discoverDatasets([1, 2, 3].map(q => link(`LCA_Disclosure_Data_FY2026_Q${q}.xlsx`)).join(''), { programs: ['h1b'] }).length, 3);
+});

@@ -176,6 +176,19 @@ test('MongoDB import integration', { skip: !process.env.MONGO_TEST_URI }, async 
         assert.ok(after.datasets.some(file => file.type === 'pwd'));
     });
 
+    await t.test('a priority year repairs recent missing quarters first without discarding older inventory', async () => {
+        const archive = [2020, 2025].flatMap(year => [1, 2, 3].map(quarter => ({ type: 'perm', fiscalYear: year, quarter,
+            coverageMode: 'quarterly', filename: `priority-FY${year}-Q${quarter}.xlsx`, url: `https://www.dol.gov/priority-${year}-${quarter}.xlsx` })));
+        const result = await runAutoImport(db, { ...options, programs: ['perm'], fromYear: 2008, backfill: true,
+            priorityYear: 2025, maxFiles: 1, discover: async () => ({ datasets: archive, releases: archive }) });
+        assert.equal(result.results[0].fiscalYear, 2025);
+        assert.equal(result.results[0].quarter, 1);
+        assert.equal(result.results[0].outcome, 'imported');
+        const catalog = await db.collection('import_catalog').findOne({ _id: 'dol' });
+        assert.equal(catalog.datasets.filter(file => file.type === 'perm').length, 6);
+        assert.ok(catalog.datasets.some(file => file.fiscalYear === 2020));
+    });
+
     await t.test('sources requiring review retain the blocking report and do not download on every backfill retry', async () => {
         const dataset = { ...datasets[0], filename: 'review.xlsx', url: 'https://www.dol.gov/media/review.xlsx', fiscalYear: 2010 };
         const config = { ...options, programs: ['pwd'], fromYear: 2008, backfill: true, discover: async () => [dataset],

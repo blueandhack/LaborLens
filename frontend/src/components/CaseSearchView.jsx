@@ -197,7 +197,7 @@ function SearchFilters({
         </div>
       </div>
       <p className="search-hint">
-        Search by the beginning of a name, title, city, or case number. Combine
+        Search by the beginning of a name, title, city, or case number. Employer names tolerate punctuation and spacing differences. Combine
         fields to narrow your results.
       </p>
     </form>

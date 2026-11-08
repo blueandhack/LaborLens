@@ -7,12 +7,13 @@ const ExcelJS = require('exceljs');
 const { discoverDatasets } = require('../services/dolSource');
 const { auditWorkbook, importWorkbook } = require('../services/importWorkbook');
 
-test('H-1B discovery selects the newest cumulative LCA main file only, including DOL spelling variants', () => {
+test('H-1B discovery selects an explicitly published current cumulative file, including DOL spelling variants', () => {
     const names = ['LCA_Disclosure_Data_FY2026_Q2.xlsx', 'LCA_Dislclosure_Data_FY2026_Q3.xlsx',
         'LCA_Appendix_A_FY2026_Q3.xlsx', 'LCA_Worksites_FY2026_Q3.xlsx', 'LCA_Record_Layout_FY2026_Q3.pdf'];
-    const files = discoverDatasets(names.map(name => `<a href="/media/${name}">file</a>`).join(''), { programs: ['h1b'] });
+    const files = discoverDatasets('Latest Quarterly Updates' + names.map(name => `<a href="/media/${name}">file</a>`).join('') + 'Historical Case Disclosure Data', { programs: ['h1b'] });
     assert.equal(files.length, 1);
     assert.equal(files[0].type, 'h1b'); assert.equal(files[0].quarter, 3);
+    assert.equal(files[0].coverageMode, 'cumulative');
     assert.throws(() => discoverDatasets('', { programs: ['h1b'] }), /no supported H1B/);
     assert.throws(() => discoverDatasets('', { programs: ['other'] }), /Invalid disclosure programs/);
 });
@@ -82,11 +83,12 @@ test('H-1B archive discovery includes every annual naming scheme and both indepe
         'H-1B_Disclosure_Data_FY17.xlsx', 'H-1B_Disclosure_Data_FY2018_EOY.xlsx', 'H-1B_Disclosure_Data_FY2019.xlsx',
         'LCA_Disclosure_Data_FY2020_Q4.xlsx', 'LCA_Disclosure_Data_FY2020_Q2.xlsx', 'LCA_Worksites_FY2020_Q4.xlsx'];
     const files = discoverDatasets(names.map(name => `<a href="/media/${name}">file</a>`).join(''), { programs: ['h1b'], fromYear: 2008 });
-    assert.equal(files.length, 14);
+    assert.equal(files.length, 15);
     assert.equal(files.filter(file => file.fiscalYear === 2009).length, 2);
     assert.deepEqual([...new Set(files.map(file => file.fiscalYear))].sort(), Array.from({length:13}, (_, i) => 2008 + i).sort());
     assert.ok(files.every(file => file.type === 'h1b'));
-    assert.equal(files.find(file => file.fiscalYear === 2020).quarter, 4);
+    assert.deepEqual(files.filter(file => file.fiscalYear === 2020).map(file => file.quarter), [2, 4]);
+    assert.ok(files.filter(file => file.fiscalYear === 2020).every(file => file.coverageMode === 'quarterly'));
 });
 
 async function legacyFixture(t, headers, rows) {

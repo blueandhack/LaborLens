@@ -27,7 +27,7 @@ Run these in the backend environment with its private `MONGO_URI`. All files rec
 
 After normalization and preflight, H-1B uses native bulk upserts to avoid re-casting its wide disclosures through Mongoose. Creation/update timestamps are written explicitly, and replay preserves case IDs and creation times. A disposable 5,000-record benchmark took 4.84 seconds through schema casting versus 0.43 seconds with native writes; actual import time also includes parsing, network and index work. PWD/PERM retain their established write paths.
 
-Weekly automatic imports discover the newest cumulative release for PWD, PERM and H-1B. Quarterly files are cumulative, so superseded quarters and supplement files are excluded. The hourly archive job selects `--programs=pwd,perm,h1b` and resumes pending files from FY2008. Completed files are skipped and the shared import lease prevents overlapping writes. `--programs` accepts a comma-separated subset; the CLI defaults to all three programs.
+Weekly automatic imports discover the required release files for PWD, PERM and H-1B. Current updates explicitly identified as cumulative can supersede earlier snapshots. Historical FLAG-era H-1B quarters are independent: all published quarters are required, and Q4 alone cannot establish full-year coverage. Supplement files remain excluded from application counts. The hourly archive job selects `--programs=pwd,perm,h1b` and resumes pending files from FY2008. Completed files are skipped and the shared import lease prevents overlapping writes. `--programs` accepts a comma-separated subset; the CLI defaults to all three programs.
 
 After successful imports, H-1B's saved whole-dataset Insights overview refreshes. The daily refresh also includes all three programs. Filtered analytics retain their five-second budget and optional lazy loading. Database backups include the new collection automatically because they dump the application database.
 
@@ -41,8 +41,8 @@ Representative live HTTPS samples: whole-program overview 0.20 seconds; employer
 
 ## Legacy archive mappings and source gaps
 
-The official performance page currently links 20 H-1B/LCA annual-release files
-covering FY2008 through FY2026, including both FY2009 systems. Pre-2008 files
+The official performance page currently supplies 38 required H-1B/LCA release files
+covering FY2008 through FY2026, including all four quarters of FY2020–FY2025 and both FY2009 systems. Pre-2008 files
 were historically hosted on `flcdatacenter.com`; its old `CaseH1B.aspx` endpoint
 now redirects to a missing FLAG page. No earlier downloadable source has been
 verified, so the application does not claim pre-2008 coverage.
@@ -92,3 +92,32 @@ The full FY2010 read-only audit independently passed all 342,575 source rows:
 remain unreported, and one invalid optional end date is preserved as a source
 issue. This audit confirms import eligibility, not completed production loading
 of FY2010; consult file history for that file's actual import result.
+
+## Historical-quarter correction: Synthropic
+
+The Synthropic investigation exposed a discovery and reporting defect: the old
+selection assumed every Q4 file was cumulative and omitted Q1–Q3 for FY2020–FY2025.
+Twenty selected files completed, but eighteen independent quarterly files were
+never scheduled. The old 100% figure described that incomplete selection and
+must not be interpreted as full historical coverage.
+
+The official FY2025 Q1 workbook contains case `I-200-24340-520348`, employer
+`Synthropic, Inc.`, job `Chief Executive Officer`, and offered wage $250,000 per
+year. The workbook's recorded decision dates span October–December 2024. The
+FY2025 Q4 file contains 118,580 source rows with decisions exclusively from
+July–September 2025, independently confirming that it cannot cover Q1. This
+case was absent from production when the issue was diagnosed. Public employer
+matching also needed to tolerate the comma and period in the source name.
+
+Discovery now retains independent quarters, records the publication coverage
+mode, and treats current cumulative coverage as explicit metadata. Progress uses
+the same rules, so Q4 does not mark omitted H-1B quarters as covered. Employer
+search tolerates punctuation and whitespace while retaining a literal leading
+prefix on the existing covered index; original employer names are preserved.
+
+For a repair that front-loads FY2025 while preserving the complete historical
+catalog, run `node scripts/auto-import.js --programs=h1b --from-year=2008
+--backfill --priority-year=2025`. It skips completed files and uses the existing
+validation, idempotent upserts, newer-source protection, and shared import lease.
+Track individual file results in Administration; starting a repair does not
+establish that all missing quarters have completed.

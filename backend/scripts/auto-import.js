@@ -6,13 +6,15 @@ const { refreshGlobalInsights } = require('../services/searchInsights');
 
 async function main() {
     const args = process.argv.slice(2);
-    if (args.some(arg => !['--discover', '--force', '--backfill'].includes(arg) && !/^--(?:from-year|max-files)=\d+$/.test(arg) && !/^--programs=[a-z0-9,]+$/.test(arg))) {
-        throw new Error('Usage: node scripts/auto-import.js [--discover] [--force] [--from-year=2008] [--max-files=2] [--backfill] [--programs=pwd,perm,h1b]');
+    if (args.some(arg => !['--discover', '--force', '--backfill'].includes(arg) && !/^--(?:from-year|max-files|priority-year)=\d+$/.test(arg) && !/^--programs=[a-z0-9,]+$/.test(arg))) {
+        throw new Error('Usage: node scripts/auto-import.js [--discover] [--force] [--from-year=2008] [--max-files=2] [--backfill] [--priority-year=2025] [--programs=pwd,perm,h1b]');
     }
     const fromYear = args.find(arg => arg.startsWith('--from-year='))?.split('=')[1];
     const maxFiles = args.find(arg => arg.startsWith('--max-files='))?.split('=')[1];
+    const priorityYear = args.find(arg => arg.startsWith('--priority-year='))?.split('=')[1];
     if (fromYear !== undefined && (Number(fromYear) < 2008 || Number(fromYear) > new Date().getUTCFullYear() + 1)) throw new Error('from-year is outside the DOL archive range');
     if (maxFiles !== undefined && Number(maxFiles) < 1) throw new Error('max-files must be positive');
+    if (priorityYear !== undefined && (Number(priorityYear) < 2008 || Number(priorityYear) > new Date().getUTCFullYear() + 1 || fromYear === undefined)) throw new Error('priority-year requires an archive from-year and a valid fiscal year');
     const models = require('../models/programModels');
     const programs = (args.find(arg => arg.startsWith('--programs='))?.split('=')[1] || 'pwd,perm,h1b').split(',');
     if (programs.some(type => !Object.hasOwn(models, type)) || new Set(programs).size !== programs.length) throw new Error('Invalid programs');
@@ -32,6 +34,7 @@ async function main() {
             force: args.includes('--force'), signal: controller.signal,
             fromYear: fromYear === undefined ? undefined : Number(fromYear),
             maxFiles: maxFiles === undefined ? Infinity : Number(maxFiles), backfill: args.includes('--backfill'),
+            priorityYear: priorityYear === undefined ? undefined : Number(priorityYear),
         });
         for (const program of [...new Set(result.results.filter(row => row.outcome === 'imported').map(row => row.type))]) {
             try { console.log(JSON.stringify(await refreshGlobalInsights(models[program], program, { signal: controller.signal }))); }

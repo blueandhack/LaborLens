@@ -39,7 +39,9 @@ test('authenticated import status reports live program and quarterly coverage wi
     assert.equal(data.currentRun._id, 'active-run');
     const h1b = data.progress.programs.find(program => program.type === 'h1b');
     assert.equal(h1b.completedFiles, 1);
-    assert.equal(h1b.years.find(year => year.fiscalYear === 2021).quarters[0].state, 'covered');
+    assert.equal(h1b.totalFiles, 2);
+    assert.equal(h1b.percentage, 50);
+    assert.equal(h1b.years.find(year => year.fiscalYear === 2021).quarters[0].state, 'pending');
     assert.equal(h1b.years.find(year => year.fiscalYear === 2021).quarters[3].state, 'imported');
     const pwd = data.progress.programs.find(program => program.type === 'pwd');
     assert.equal(pwd.current[0].percentage, 25);
