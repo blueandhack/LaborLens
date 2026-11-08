@@ -1,5 +1,5 @@
 const { createHash } = require('crypto');
-const { addWorksite } = require('./worksites');
+const { addWorksite, fields: worksiteFields } = require('./worksites');
 const { resolveSourceCells } = require('./sourceCellResolutions');
 const { readWorkbookRows } = require('./xlsxRows');
 const { ALIASES, DATE_FIELDS, NUMBER_FIELDS, buildLayout, normalizeHeader, normalizeRecord, excelDateToJSDate, isMissing, eventTime } = require('./dolLayout');
@@ -144,7 +144,8 @@ async function importWorkbook(filePath, {
         ensureActive();
         let existing = new Map();
         if (historical) {
-            const projection = Object.fromEntries([...canonical, ...Object.values(ALIASES[type]).flat(), ...Object.values(lowerFields), 'CASE_NUMBER', '_DOL_SOURCE'].map(field => [field, 1]));
+            const projection = Object.fromEntries([...canonical, ...Object.values(ALIASES[type]).flat(), ...Object.values(lowerFields),
+                ...worksiteFields[type].city, ...worksiteFields[type].state, 'CASE_NUMBER', '_DOL_SOURCE'].map(field => [field, 1]));
             const found = await Model.find({ CASE_NUMBER: { $in: batch.map(record => record.CASE_NUMBER) } }, projection).lean();
             existing = new Map(found.map(record => [record.CASE_NUMBER, record]));
         }

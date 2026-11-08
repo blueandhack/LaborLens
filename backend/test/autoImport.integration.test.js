@@ -119,7 +119,8 @@ test('MongoDB import integration', { skip: !process.env.MONGO_TEST_URI }, async 
 
     await t.test('historical records protect newer cases and safely supplement untracked records', async () => {
         const source = { type: 'perm', fiscalYear: 2008, quarter: 4, filename: 'PERM_FY2008.xlsx', url: 'https://www.dol.gov/media/PERM_FY2008.xlsx' };
-        await models.perm.create({ CASE_NUMBER: 'untracked', EMP_BUSINESS_NAME: 'Current employer', JOB_TITLE: 'Current title', DECISION_DATE: new Date('2026-01-01') });
+        await models.perm.create({ CASE_NUMBER: 'untracked', EMP_BUSINESS_NAME: 'Current employer', JOB_TITLE: 'Current title', DECISION_DATE: new Date('2026-01-01'),
+            JOB_INFO_WORK_CITY: 'Montréal', JOB_INFO_WORK_STATE: 'QC' });
         const book = new ExcelJS.Workbook();
         const sheet = book.addWorksheet('Cases');
         sheet.addRows([
@@ -141,6 +142,9 @@ test('MongoDB import integration', { skip: !process.env.MONGO_TEST_URI }, async 
         assert.equal(kept.JOB_OPP_WAGE_FROM, 15);
         assert.equal(kept.DECISION_DATE.getUTCFullYear(), 2026);
         assert.equal(kept._DOL_SOURCE, undefined);
+        assert.equal(kept.JOB_INFO_WORK_CITY, 'Montréal');
+        assert.equal(kept._WORKSITE_CITY_LOWER, 'montréal');
+        assert.equal(kept._WORKSITE_STATE_LOWER, 'qc');
         assert.equal((await models.perm.findOne({ CASE_NUMBER: 'historic-new' }))._DOL_SOURCE.fiscalYear, 2008);
         // A later archive supersedes an older tracked archive; replaying the
         // older archive afterwards must not regress it.
