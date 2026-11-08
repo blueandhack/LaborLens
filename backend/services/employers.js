@@ -161,17 +161,19 @@ async function refreshFeatured(db, models, { signal, maxProfiles = 20, onProgres
     const top = await db.collection('employers').find({ 'programs.h1b.count': { $gt: 0 } }).sort({ 'programs.h1b.count': -1, _id: 1 }).limit(maxProfiles).toArray();
     const synthropic = await db.collection('employers').find({ searchKey: 'synthropic inc' }).limit(3).toArray();
     const unique = new Map([...synthropic, ...top].map(row => [row._id, row]));
+    const attempted = new Set();
     let rank = 0;
     for (const employer of unique.values()) {
         if (rank >= maxProfiles) break;
         signal?.throwIfAborted();
+        attempted.add(employer._id);
         try { await computeProfile(db, models, employer, { signal, maxTimeMS: 120000 }); }
         catch (error) { signal?.throwIfAborted(); await onProgress({ event: 'profile-failed', employer: employer.name, error: error.message }); continue; }
         await db.collection('employers').updateOne({ _id: employer._id }, { $set: { featured: true, featuredRank: rank++ } });
         await onProgress({ event: 'profile', employer: employer.name, completed: rank });
     }
     for (const request of requested) {
-        if (unique.has(request._id)) continue;
+        if (attempted.has(request._id)) continue;
         const employer = await db.collection('employers').findOne({ _id: request._id });
         if (employer) await computeProfile(db, models, employer, { signal, maxTimeMS: 120000 });
     }

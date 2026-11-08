@@ -5,7 +5,7 @@ const express = require('express');
 const { randomUUID } = require('node:crypto');
 const { programs, searchIndexes } = require('../services/searchConfig');
 const { addWorksite, normalizeWorksites } = require('../services/worksites');
-const { refreshDirectory, suggestions, computeProfile, getProfile, slugFor } = require('../services/employers');
+const { refreshDirectory, suggestions, computeProfile, getProfile, slugFor, refreshFeatured } = require('../services/employers');
 const { searchCases, countCases, buildSearch, invalidateCounts } = require('../services/caseSearch');
 const { computeInsights } = require('../services/searchInsights');
 const { createEmployerRoutes } = require('../routes/employers');
@@ -98,6 +98,14 @@ test('employer directory, profiles and indexed worksite search preserve identity
         const before = (await suggestions(connection.db, 'Synthropic')).map(row => row.id).sort();
         await refreshDirectory(connection.db, models);
         assert.deepEqual((await suggestions(connection.db, 'Synthropic')).map(row => row.id).sort(), before, 'refresh must preserve profile URLs');
+    });
+    await t.test('requested profiles outside the featured cap are still materialized', async () => {
+        const variants = await connection.db.collection('employers').find({ searchKey: 'synthropic inc' }).limit(3).toArray();
+        assert.equal(variants.length, 2);
+        await connection.db.collection('employer_profiles').deleteMany({});
+        await connection.db.collection('employer_profile_requests').insertOne({ _id: variants[1]._id, requestedAt: new Date() });
+        await refreshFeatured(connection.db, models, { maxProfiles: 1 });
+        assert(await connection.db.collection('employer_profiles').findOne({ _id: variants[1]._id }), 'a candidate skipped by the featured limit still needs its requested summary');
     });
     await t.test('public API, canonical redirects and real missing-page status work together', async () => {
         const app = express(), routes = createEmployerRoutes({ db: () => connection.db, models, render: (url, profile) => `<html><title>${profile?.name || url}</title></html>` });
