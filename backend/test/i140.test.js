@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ExcelJS = require('exceljs');
-const { categoryOf, parseQuarterly, parseCohorts, parseAwaiting, latestLinks, downloadLatest } = require('../services/i140');
+const { categoryOf, parseQuarterly, parseCohorts, parseAwaiting, mergeCohortHistory, latestLinks, downloadLatest } = require('../services/i140');
 
 const book = async sheets => {
     const workbook = new ExcelJS.Workbook();
@@ -86,10 +86,38 @@ test('the latest workbooks are found on the data page; earlier years use their f
     const fetcher = async url => {
         requested.push(url.split('/').pop());
         if (url.endsWith('immigration-and-citizenship-data')) return new Response(html);
-        if (url.endsWith('i140_fy2024_q4_v1.xlsx')) return new Response('', { status: 404 }); // FY2024 is published without "_v1".
+        // FY2024 is published without "_v1"; FY2022 and FY2023 only as CSV.
+        if (/i140_fy2024_q4_v1\.xlsx|i140_fy202[23]_q4(_v1)?\.xlsx/.test(url)) return new Response('', { status: 404 });
         return new Response('xlsx');
     };
     const files = await downloadLatest({ fetcher });
-    assert.deepEqual(files.quarterly.map(file => file.url.split('/').pop()), ['i140_fy2024_q4.xlsx', 'i140_fy2025_q4_v1.xlsx', 'i140_fy2026_q3_v2.xlsx']);
+    assert.deepEqual(files.quarterly.map(file => file.url.split('/').pop()),
+        ['I140_FY22_Q4_RADP.csv', 'i140_fy23_q4_radp.csv', 'i140_fy2024_q4.xlsx', 'i140_fy2025_q4_v1.xlsx', 'i140_fy2026_q3_v2.xlsx']);
     assert.ok(requested.includes('i140_fy2024_q4_v1.xlsx'));
+    assert.deepEqual(files.cohortHistory.map(file => file.url.split('/').pop()), ['I140_rec_by_class_country_FY2022_Q3_Q4.csv', 'I140_rec_by_class_country_FY2021_Q3_Q4.csv']);
 });
+
+test('older CSV releases: quarter labels over one column, and a block per country merged into earlier filing years', async () => {
+    const quarterly = await parseQuarterly(Buffer.from(['\uFEFF,,,,,,,,,,,,,,,,,,,,', 'Form I-140 Immigrant Petition for Alien Worker', 'Fiscal Year 2022 (Q1-Q4)',
+        ',,          1st Quarter,,,,          2nd Quarter,,,,3rd Quarter,,,,4th Quarter,,,,Fiscal Year Total,,',
+        ',Received1,Approved2,Denied3,Pending4,Received1,Approved2,Denied3,Pending4,Received1,Approved2,Denied3,Pending4,Received1,Approved2,Denied3,Pending4,Received1,Approved2,Denied3,Pending4',
+        'TOTAL," 42,526 "," 38,527 "," 1,470 "," 101,567 ",1,2,3,4,5,6,7,8,9,10,11,12,99,99,99,99', 'Table Key:'].join('\n')), 'I140_FY22_Q4_RADP.csv');
+    assert.deepEqual(parsed(quarterly), [[1, { received: 42526, approved: 38527, denied: 1470, pending: 101567 }], [2, { received: 1, approved: 2, denied: 3, pending: 4 }], [3, { received: 5, approved: 6, denied: 7, pending: 8 }], [4, { received: 9, approved: 10, denied: 11, pending: 12 }]]);
+
+    const block = (country, years, eb3) => [`Number of Form I-140 Petitions Received and Current Status for ${country}`, `Fiscal Years ${years[0]} to ${years.at(-1)}`,
+        `Petitions by Employment Preference,${years.join(',')},TOTAL`, `TOTAL,${years.map(() => 10).join(',')},99`, `Approved,${years.map(() => 8).join(',')},99`, `Denied,${years.map(() => 2).join(',')},99`,
+        'Second Preference (EB2)', `Total Petitions,${years.map(() => 4).join(',')}`, `Approved,${years.map(() => 3).join(',')}`, `Denied,${years.map(() => 1).join(',')}`,
+        'Approvals by Category', `Professionals with Advanced Degrees (E21)2,${years.map(() => 3).join(',')}`,
+        'Third Preference (EB3)', `Approved,${years.map(() => eb3).join(',')}`, 'Other and Unknown,1,1,1', 'Approved,40,40,40', 'Reference(s):'];
+    const older = await parseCohorts(Buffer.from([...block('the Philippines', [2011, 2012, 2013], 5), ...block('All Countries', [2011, 2012, 2013], 7)].join('\n')), 'old.csv');
+    assert.deepEqual(older.countries.map(country => country.name), ['Philippines', 'All countries']);
+    assert.deepEqual(older.countries[1].categories.eb3.approved, [7, 7, 7], '"Other and Unknown" rows are not counted as EB-3');
+    const current = { countries: [{ name: 'All countries', years: [2014], categories: { all: { total: [20], approved: [15], denied: [5] }, eb2: { approved: [6] }, eb3: { approved: [9] } }, approvals: { eb2a: [5], niw: [1] } }] };
+    mergeCohortHistory(current, [{ ...older, source: { name: 'I140_rec_by_class_country_FY2021_Q3_Q4.csv' } }]);
+    const [all] = current.countries;
+    assert.deepEqual(all.years, [2011, 2012, 2013, 2014]);
+    assert.deepEqual(all.categories.eb3.approved, [7, 7, 7, 9]);
+    assert.deepEqual(all.approvals.niw, [null, null, null, 1], 'older reports counted NIW within E21: unknown, not zero');
+    assert.deepEqual(current.history, [{ year: 2011, sources: ['I140_rec_by_class_country_FY2021_Q3_Q4.csv'] }, { year: 2012, sources: ['I140_rec_by_class_country_FY2021_Q3_Q4.csv'] }, { year: 2013, sources: ['I140_rec_by_class_country_FY2021_Q3_Q4.csv'] }]);
+});
+const parsed = result => result.quarters.map(quarter => [quarter.quarter, quarter.categories.all]);

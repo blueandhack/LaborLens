@@ -119,7 +119,7 @@ export default function I140View() {
 
     <section className="uscis-trends i140-cohorts" aria-labelledby="i140-cohorts">
       <header className="i140-section-head"><div><h2 id="i140-cohorts" className="i140-section-title">What happened to petitions filed each year</h2>
-        <p className="uscis-note">Every petition filed in a fiscal year, by its status today ({data.cohorts.asOf?.replace(/^(\d{4}) (\d{4})/, 'FY$1–FY$2')}). {level !== category ? `USCIS reports this for each preference level, so this shows all of ${data.categories.find(item => item.code === level)?.label}.` : ''}</p></div>
+        <p className="uscis-note">Every petition filed in a fiscal year, by its status today (FY{country.years[0]}–FY{country.years.at(-1)}).{country.older?.length > 0 && ` ${country.older.map(item => `FY${item.year}`).join(' and ')} come from earlier USCIS reports (${[...new Set(country.older.map(item => item.source?.match(/FY(\d{4})/i)?.[1]).filter(Boolean))].map(year => `FY${year}`).join(', ')}) and show their status then; nearly all had been decided.`} {level !== category ? `USCIS reports this for each preference level, so this shows all of ${data.categories.find(item => item.code === level)?.label}.` : ''}</p></div>
         <label htmlFor="i140-country">Country of birth<select id="i140-country" className="search-input" value={country.name} onChange={event => update({ country: event.target.value === countries[0].name ? '' : event.target.value })}>
           {countries.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label></header>
       <Legend series={OUTCOMES} extra={<li><i className="stat-swatch is-incomplete" aria-hidden="true" /><span>* Still being decided <small>(over 10% pending)</small></span></li>} />

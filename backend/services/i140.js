@@ -6,10 +6,16 @@
 //   i140_rec_by_class_country petitions by fiscal year filed and their current status
 //   eb_i140_i360_i526_performancedata  approved petitions awaiting a visa, by country
 const ExcelJS = require('exceljs');
+const { parseCsv, decodeText } = require('./uscisH1b');
 
 const DATA_PAGE = 'https://www.uscis.gov/tools/reports-and-studies/immigration-and-citizenship-data';
 const FILE_BASE = 'https://www.uscis.gov/sites/default/files/document/data/';
-const FIRST_QUARTERLY_YEAR = 2024; // Earlier years are published as PDFs.
+const FIRST_QUARTERLY_YEAR = 2022; // Earlier years are published only as PDFs.
+// Full-year files from before the current workbook names (CSV, one file per sheet).
+const OLDER_QUARTERLY = { 2022: ['I140_FY22_Q4_RADP.csv'], 2023: ['i140_fy23_q4_radp.csv'] };
+// Earlier reports by fiscal year filed, newest first: they add FY2013 and FY2012.
+const COHORT_HISTORY = ['https://www.uscis.gov/sites/default/files/document/data/I140_rec_by_class_country_FY2022_Q3_Q4.csv',
+    'https://www.uscis.gov/sites/default/files/document/reports/I140_rec_by_class_country_FY2021_Q3_Q4.csv'];
 const DOC_ID = 'latest';
 const COLLECTION = 'uscis_i140';
 
@@ -56,22 +62,32 @@ const rowsOf = sheet => {
     return rows;
 };
 const isEnd = label => /^(table key|notes?|references|source)\b/i.test(label);
-async function workbook(buffer) { const book = new ExcelJS.Workbook(); await book.xlsx.load(buffer); return book; }
+// A workbook's sheets as rows; an older CSV release is a single sheet.
+async function sheetsOf(buffer) {
+    if (buffer[0] === 0x50 && buffer[1] === 0x4b) {
+        const book = new ExcelJS.Workbook(); await book.xlsx.load(buffer);
+        return book.worksheets.map(sheet => ({ name: sheet.name, rows: rowsOf(sheet) }));
+    }
+    return [{ name: '', rows: parseCsv(decodeText(buffer)) }];
+}
+const countryName = value => value.trim().replace(/^the\s+/i, '').replace(/^all countries$/i, 'All countries');
 const invalid = (message, name) => Object.assign(new Error(`${name || 'I-140 file'}: ${message}`), { status: 400 });
 
 // Quarterly workbook: the summary by quarter, and the latest quarter's state and country tables.
 async function parseQuarterly(buffer, name) {
-    const book = await workbook(buffer);
-    const sheet = book.worksheets.find(item => /summary/i.test(item.name)) || book.worksheets[0];
-    const rows = rowsOf(sheet);
+    const sheets = await sheetsOf(buffer);
+    const { rows } = sheets.find(item => /summary/i.test(item.name)) || sheets[0];
     const fiscalYear = Number(rows.slice(0, 4).map(row => text(row[0])).join(' ').match(/Fiscal Year (\d{4})/i)?.[1]);
     if (!fiscalYear) throw invalid('fiscal year not found', name);
     const headerIndex = rows.findIndex(row => row.some(cell => /^received/i.test(text(cell))));
     if (headerIndex < 1) throw invalid('Received/Approved/Denied/Pending columns not found', name);
+    // Each quarter is a Received/Approved/Denied/Pending group; the fifth group is the fiscal year total.
+    // (Quarter labels can sit over any column of their group, so groups are counted instead.)
+    let group = 0;
     const columns = rows[headerIndex].map((cell, index) => {
         const measure = text(cell).match(/^(received|approved|denied|pending)/i)?.[1]?.toLowerCase();
-        const quarter = Number(text(rows[headerIndex - 1][index]).match(/^(\d)(st|nd|rd|th) quarter/i)?.[1]);
-        return measure && quarter ? { index, measure, quarter } : null;
+        if (measure === 'received') group++;
+        return measure && group >= 1 && group <= 4 ? { index, measure, quarter: group } : null;
     }).filter(Boolean);
     const quarters = new Map();
     for (const row of rows.slice(headerIndex + 1)) {
@@ -90,9 +106,9 @@ async function parseQuarterly(buffer, name) {
         .map(([quarter, categories]) => ({ fiscalYear, quarter, categories })).sort((a, b) => a.quarter - b.quarter);
     if (!reported.length || !reported[0].categories.all) throw invalid('no reported quarters', name);
     const breakdown = (pattern, label) => {
-        const found = book.worksheets.find(item => pattern.test(item.name));
+        const found = sheets.find(item => pattern.test(item.name));
         if (!found) return null;
-        const table = rowsOf(found);
+        const table = found.rows;
         // The header is the row above the total (some sheets merge the label cell across two header rows).
         const head = table.findIndex(row => /^(grand )?total$/i.test(text(row[0]))) - 1;
         if (head < 0 || !new RegExp('^beneficiary ' + label, 'i').test(text(table[head][0]))) return null;
@@ -114,19 +130,26 @@ async function parseQuarterly(buffer, name) {
         countries: { receipts: breakdown(/rec.*cob/i, 'country'), approvals: breakdown(/app.*cob/i, 'country') } } };
 }
 
-// Petitions by fiscal year filed and their current status, per country sheet.
+// Petitions by fiscal year filed and their current status: a sheet per country,
+// or (older CSV releases) a block per country titled "...Current Status for India".
 async function parseCohorts(buffer, name) {
-    const book = await workbook(buffer);
+    const blocks = [];
+    for (const sheet of await sheetsOf(buffer)) {
+        if (sheet.name) { blocks.push({ country: countryName(sheet.name.replace(/\s*(FY\s*)?\d{2,4}\s*$/i, '')), rows: sheet.rows }); continue; }
+        for (const row of sheet.rows) {
+            const title = text(row[0]).match(/current status for (.+)$/i);
+            if (title) blocks.push({ country: countryName(title[1]), rows: [] });
+            blocks.at(-1)?.rows.push(row);
+        }
+    }
     let asOf = null;
     const countries = [];
-    for (const sheet of book.worksheets) {
-        const rows = rowsOf(sheet);
+    for (const { country, rows } of blocks) {
         const title = rows.slice(0, 4).map(row => text(row[0])).join(' ');
         asOf ||= title.match(/(\d{4}) to (\d{4})(?: \((Q\d)\))?/i)?.slice(1).join(' ') || null;
         const headIndex = rows.findIndex(row => row.slice(1).filter(cell => /^\d{4}$/.test(text(cell))).length >= 3);
         if (headIndex < 0) continue;
         const years = rows[headIndex].map((cell, index) => /^\d{4}$/.test(text(cell)) ? { index, year: Number(text(cell)) } : null).filter(Boolean);
-        const country = sheet.name.replace(/\s*(FY\s*)?\d{2,4}\s*$/i, '').trim().replace(/^all countries$/i, 'All countries');
         const categories = {}, approvals = {};
         let section = 'all', byCategory = false;
         for (const row of rows.slice(headIndex + 1)) {
@@ -139,18 +162,52 @@ async function parseCohorts(buffer, name) {
             if (['eb1', 'eb2', 'eb3'].includes(code)) { section = code; byCategory = false; continue; }
             if (byCategory && code && code !== 'all') { approvals[code] = values(); continue; }
             const measure = /^(total|total petitions)$/i.test(label) ? 'total' : /^approved/i.test(label) ? 'approved' : /^denied/i.test(label) ? 'denied' : /^pending/i.test(label) ? 'pending' : null;
-            if (measure) (categories[section] ||= {})[measure] = values();
+            if (measure) { if (section) (categories[section] ||= {})[measure] = values(); continue; }
+            // Another heading (older reports have "Other and Unknown"): its rows belong to no preference.
+            if (!code) { section = null; byCategory = false; }
         }
-        if (categories.all?.total) countries.push({ name: country, years: years.map(year => year.year), categories, approvals });
+        if (categories.all?.total && !countries.some(item => item.name === country)) countries.push({ name: country, years: years.map(year => year.year), categories, approvals });
     }
     if (!countries.length) throw invalid('no country sheets with fiscal-year columns', name);
     return { asOf, countries };
 }
 
+// Adds filing years the current report no longer includes from earlier reports
+// (newest first). Those years show their status as of that report.
+function mergeCohortHistory(current, history) {
+    const added = new Map();
+    for (const country of current.countries) {
+        const older = [];
+        const years = new Map(country.years.map((year, index) => [year, index]));
+        const columns = [...country.years.map(year => ({ year, from: country, index: years.get(year) }))];
+        for (const snapshot of history) {
+            const match = snapshot.countries.find(item => item.name === country.name);
+            if (!match) continue;
+            match.years.forEach((year, index) => {
+                if (columns.some(column => column.year === year)) return;
+                columns.push({ year, from: match, index });
+                older.push({ year, source: snapshot.source?.name || null });
+                if (!added.has(year)) added.set(year, new Set());
+                added.get(year).add(snapshot.source?.name || null);
+            });
+        }
+        columns.sort((a, b) => a.year - b.year);
+        // A category an earlier report did not break out (it counted NIW within E21) is unknown, not zero.
+        const pick = series => columns.map(column => series(column.from)?.[column.index] ?? null);
+        country.years = columns.map(column => column.year);
+        for (const [section, measures] of Object.entries(country.categories)) {
+            for (const measure of Object.keys(measures)) measures[measure] = pick(from => from.categories[section]?.[measure]);
+        }
+        for (const code of Object.keys(country.approvals)) country.approvals[code] = pick(from => from.approvals[code]);
+        country.older = older.sort((a, b) => a.year - b.year);
+    }
+    current.history = [...added].sort((a, b) => a[0] - b[0]).map(([year, sources]) => ({ year, sources: [...sources] }));
+    return current;
+}
+
 // Approved petitions awaiting visa availability, by country and preference.
 async function parseAwaiting(buffer, name) {
-    const book = await workbook(buffer);
-    const rows = rowsOf(book.worksheets[0]);
+    const [{ rows }] = await sheetsOf(buffer);
     const asOf = rows.slice(0, 4).map(row => text(row[0])).join(' ').match(/As of ([A-Za-z]+ \d{4})/i)?.[1] || null;
     const headIndex = rows.findIndex(row => /^country/i.test(text(row[0])));
     if (headIndex < 0) throw invalid('country column not found', name);
@@ -197,7 +254,7 @@ async function downloadLatest({ fetcher = fetch, log = () => {} } = {}) {
     const files = { quarterly: [], cohorts: null, awaiting: null };
     for (let year = FIRST_QUARTERLY_YEAR; year < links.quarterly.fiscalYear; year++) {
         let found = null;
-        for (const name of [`i140_fy${year}_q4_v1.xlsx`, `i140_fy${year}_q4.xlsx`]) {
+        for (const name of [`i140_fy${year}_q4_v1.xlsx`, `i140_fy${year}_q4.xlsx`, ...(OLDER_QUARTERLY[year] || [])]) {
             try { found = { url: FILE_BASE + name, buffer: await fetchBuffer(FILE_BASE + name, fetcher) }; break; } catch (error) { if (error.status !== 404) throw error; }
         }
         if (found) files.quarterly.push(found); else log({ event: 'i140-missing-year', fiscalYear: year });
@@ -205,6 +262,10 @@ async function downloadLatest({ fetcher = fetch, log = () => {} } = {}) {
     files.quarterly.push({ url: links.quarterly.url, buffer: await fetchBuffer(links.quarterly.url, fetcher) });
     files.cohorts = { url: links.cohorts.url, buffer: await fetchBuffer(links.cohorts.url, fetcher) };
     files.awaiting = { url: links.awaiting.url, buffer: await fetchBuffer(links.awaiting.url, fetcher) };
+    files.cohortHistory = [];
+    for (const url of COHORT_HISTORY) {
+        try { files.cohortHistory.push({ url, buffer: await fetchBuffer(url, fetcher) }); } catch (error) { if (error.status !== 404) throw error; log({ event: 'i140-missing-history', url }); }
+    }
     return files;
 }
 
@@ -218,9 +279,10 @@ async function importI140(db, files) {
         _id: DOC_ID,
         quarters: quarterly.flatMap(file => file.quarters),
         latest: current.latest,
-        cohorts: { ...(await parseCohorts(files.cohorts.buffer, name(files.cohorts))), source: { name: name(files.cohorts), url: files.cohorts.url || null } },
+        cohorts: mergeCohortHistory({ ...(await parseCohorts(files.cohorts.buffer, name(files.cohorts))), source: { name: name(files.cohorts), url: files.cohorts.url || null } },
+            await Promise.all((files.cohortHistory || []).map(async file => ({ ...(await parseCohorts(file.buffer, name(file))), source: { name: name(file), url: file.url || null } })))),
         awaiting: { ...(await parseAwaiting(files.awaiting.buffer, name(files.awaiting))), source: { name: name(files.awaiting), url: files.awaiting.url || null } },
-        sources: quarterly.map(file => file.source),
+        sources: [...quarterly.map(file => file.source), ...(files.cohortHistory || []).map(file => ({ name: name(file), url: file.url || null }))],
         importedAt: new Date(),
     };
     await db.collection(COLLECTION).replaceOne({ _id: DOC_ID }, snapshot, { upsert: true });
@@ -243,5 +305,5 @@ async function getI140Status(db) {
         sources: [...snapshot.sources, snapshot.cohorts.source, snapshot.awaiting.source] } : null;
 }
 
-module.exports = { CATEGORIES, categoryOf, parseQuarterly, parseCohorts, parseAwaiting, latestLinks, downloadLatest, importI140, getI140, getI140Status,
+module.exports = { CATEGORIES, categoryOf, parseQuarterly, parseCohorts, mergeCohortHistory, parseAwaiting, latestLinks, downloadLatest, importI140, getI140, getI140Status,
     clearI140Cache: () => { cached = null; } };

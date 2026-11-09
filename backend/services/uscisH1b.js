@@ -478,6 +478,6 @@ async function getUscisStatus(db) {
     return { ...(info || { years: [] }), job: state?.job || null };
 }
 
-module.exports = { ROWS, EMPLOYERS, STATE_ID, OFFICIAL_URL, OFFICIAL_YEARS, PARTIAL_YEARS, INDUSTRIES, industryOf, expanded,
+module.exports = { parseCsv: records, decodeText: decode, ROWS, EMPLOYERS, STATE_ID, OFFICIAL_URL, OFFICIAL_YEARS, PARTIAL_YEARS, INDUSTRIES, industryOf, expanded,
     parseUscisFile, parseUscisStream, HUB_CSV_URL, importUscisRows, recomputeUscisTotals, rebuildUscisEmployers, linkUscisEmployers, ensureUscisIndexes,
     getUscisOverview, listUscisEmployers, uscisForIdentity, getUscisStatus, clearUscisCache: () => cache.clear() };
