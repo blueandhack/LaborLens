@@ -76,7 +76,7 @@ function UscisData({ uscis, onImported }) {
     finally { setSending(false); }
   };
   return <section className="site-status-card" aria-labelledby="site-uscis-heading">
-    <header><div><h4 id="site-uscis-heading">USCIS H-1B decisions</h4><p className="admin-help">Petition approvals and denials behind <Link to="/h1b-approvals">/h1b-approvals</Link> and employer profiles. Petitioner names are re-linked to employers nightly.</p></div>
+    <header><div><h4 id="site-uscis-heading">USCIS H-1B decisions</h4><p className="admin-help">Petition approvals and denials behind <Link to="/h1b-approvals">/h1b-approvals</Link> and employer profiles. The current and previous fiscal years are re-downloaded from the hub monthly (the 3rd, 5:30 AM Pacific), and petitioner names are re-linked to employers nightly.</p></div>
       <Pill tone={job?.state === 'importing' ? 'active' : job?.state === 'failed' ? 'error' : years.length ? 'success' : 'warning'}>{job?.state === 'importing' ? 'Importing' : job?.state === 'failed' ? 'Last import failed' : years.length ? 'Ready' : 'Not imported'}</Pill></header>
     {job?.state === 'importing' && <p className="site-status-event" role="status">{job.phase || 'Importing'}: {job.file} · started {formatImportDate(job.startedAt)}</p>}
     {job?.state === 'failed' && <p className="import-notice error">{job.file}: {job.error}</p>}

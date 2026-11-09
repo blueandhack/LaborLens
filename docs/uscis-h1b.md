@@ -34,9 +34,16 @@ new-concurrent petitions are 90% initial. After a mapping change, run
 ```bash
 node scripts/import-uscis-h1b.js --official            # download and import the archived FY2009–2023 files
 node scripts/import-uscis-h1b.js --hub 2023 2024 2025 2026   # stream fiscal years from the hub
+node scripts/import-uscis-h1b.js --hub-recent         # the current and previous fiscal years, skipping unchanged downloads
 node scripts/import-uscis-h1b.js export.csv [...]       # hub exports (CSV, or the UTF-16 tab-separated crosstab)
 node scripts/import-uscis-h1b.js --relink              # re-link petitioner names to employers only
 ```
+
+The CronJob `laborlens-uscis-h1b-refresh` (`k8s/auto-import.yaml`) runs `--hub-recent` on the
+3rd of each month at 5:30 AM Pacific. A year whose download has the same SHA-256 as the last
+import is skipped. Early in a fiscal year the newest year may not be published yet; the hub then
+returns another year's rows, and that year is skipped. If nothing changed, the employer summary
+is not rebuilt.
 
 Administrators can also upload a hub export under **Administration → Site data → USCIS H-1B
 decisions**. Uploads go to disk and are parsed as a stream: the long CSV, the wide CSV, or the

@@ -11,7 +11,7 @@ const ZSTD = { wiredTiger: { configString: 'block_compressor=zstd' } };
 const OFFICIAL_URL = year => `https://www.uscis.gov/sites/default/files/document/data/h1b_datahubexport-${year}.csv`;
 const OFFICIAL_YEARS = Array.from({ length: 15 }, (_, i) => 2009 + i);
 // The hub's public crosstab as CSV, one fiscal year at a time (its field name ends in three spaces).
-const HUB_CSV_URL = year => `https://bigdataanalyticspub-sb.uscis.dhs.gov/views/H1BEmployerDataHub-Final/H1BPublic.csv?${encodeURIComponent('Fiscal Year   ')}=${year}`;
+const HUB_CSV_URL = year => `${process.env.USCIS_HUB_CSV || 'https://bigdataanalyticspub-sb.uscis.dhs.gov/views/H1BEmployerDataHub-Final/H1BPublic.csv'}?${encodeURIComponent('Fiscal Year   ')}=${year}`;
 // The archived FY2023 file was published before the year ended: it has about a
 // quarter of FY2022's initial approvals.
 const PARTIAL_YEARS = { 2023: 'The archived FY2023 file covers only part of the fiscal year.' };

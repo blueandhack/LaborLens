@@ -193,3 +193,46 @@ spec:
               limits:
                 cpu: "1"
                 memory: 256Mi
+---
+# USCIS updates the H-1B Employer Data Hub quarterly. Monthly, re-download the current and previous
+# fiscal years (about 100 MB each); a year whose download is unchanged is skipped.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: laborlens-uscis-h1b-refresh
+  namespace: laborlens
+spec:
+  schedule: "30 5 3 * *"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      ttlSecondsAfterFinished: 604800
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          nodeSelector:
+            kubernetes.io/hostname: skycat
+          containers:
+          - name: uscis-h1b
+            image: ghcr.io/blueandhack/laborlens-backend:a24ae8351afeacc1cc4185f8a2cbcbb9467034c6
+            imagePullPolicy: Always
+            command: ["node", "scripts/import-uscis-h1b.js", "--hub-recent"]
+            env:
+            - name: MONGO_URI
+              value: "mongodb://laborlens-mongodb:27017/pwd_cases"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=512"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: "1"
+                memory: 768Mi
