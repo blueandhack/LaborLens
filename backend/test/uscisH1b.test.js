@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseUscisFile, industryOf, expanded } = require('../services/uscisH1b');
+const { Readable } = require('node:stream');
+const { parseUscisFile, parseUscisStream, industryOf, expanded } = require('../services/uscisH1b');
 
 test('archived Data Hub files (initial and continuing totals) parse', () => {
     const csv = '﻿"Fiscal Year",Employer,"Initial Approval","Initial Denial","Continuing Approval","Continuing Denial",NAICS,"Tax ID",State,City,ZIP\r\n'
@@ -44,4 +45,25 @@ test('industries group two-digit NAICS sectors; abbreviations expand', () => {
     assert.equal(industryOf('00'), '99');
     assert.equal(expanded('cisco syss inc'), 'cisco systems inc');
     assert.equal(expanded('univ of washington'), 'university of washington');
+});
+
+test('the hub\'s long CSV (one line per petition type) becomes one row per petitioner, from a file or a stream', async () => {
+    const types = ['New Employment', 'Continuation', 'Change with Same Employer', 'New Concurrent', 'Change of Employer', 'Amended'];
+    const lines = ['\uFEFFEmployer (Petitioner) Name,Fiscal Year   ,Industry (NAICS) Code,Measure Names,Petitioner City,Petitioner State,Petitioner Zip Code,Tax ID,Line by line,Measure Values'];
+    types.forEach((type, i) => {
+        lines.push(`"ACME, INC.",2025,31-33 - Manufacturing,${type} Approval,AUSTIN,TX,78701,0209,1,"${i === 0 ? '1,200' : i}"`);
+        lines.push(`"ACME, INC.",2025,31-33 - Manufacturing,${type} Denial,AUSTIN,TX,78701,0209,1,${i === 4 ? 3 : 0}`);
+        lines.push(`,2025,,${type} Approval,,,,,2,0`, `,2025,,${type} Denial,,,,,2,0`); // A row without decisions.
+    });
+    const csv = lines.join('\r\n') + '\r\n';
+    for (const parsed of [parseUscisFile(Buffer.from(csv)), await parseUscisStream(Readable.from([csv.slice(0, 500), csv.slice(500)]))]) {
+        assert.equal(parsed.format, 'petition-types');
+        assert.equal(parsed.rows.length, 1, 'rows without decisions are dropped');
+        const [row] = parsed.rows;
+        assert.equal(row.employer, 'ACME, INC.');
+        assert.equal(row.industry, '31-33');
+        assert.deepEqual(row.categories.newEmployment, { approvals: 1200, denials: 0 });
+        assert.deepEqual([row.initialApprovals, row.initialDenials, row.continuingApprovals, row.continuingDenials], [1200 + 3 + 4, 3, 1 + 2 + 5, 0]);
+    }
+    assert.throws(() => parseUscisFile(Buffer.from(lines[0] + '\nACME,2025,54,Mystery Approval,A,TX,1,1,1,1\n')), /Line 2: Unknown measure "Mystery Approval"/);
 });

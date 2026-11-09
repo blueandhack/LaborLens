@@ -10,6 +10,8 @@ const ROWS = 'uscis_h1b', EMPLOYERS = 'uscis_h1b_employers', STATE_ID = 'uscis_h
 const ZSTD = { wiredTiger: { configString: 'block_compressor=zstd' } };
 const OFFICIAL_URL = year => `https://www.uscis.gov/sites/default/files/document/data/h1b_datahubexport-${year}.csv`;
 const OFFICIAL_YEARS = Array.from({ length: 15 }, (_, i) => 2009 + i);
+// The hub's public crosstab as CSV, one fiscal year at a time (its field name ends in three spaces).
+const HUB_CSV_URL = year => `https://bigdataanalyticspub-sb.uscis.dhs.gov/views/H1BEmployerDataHub-Final/H1BPublic.csv?${encodeURIComponent('Fiscal Year   ')}=${year}`;
 // The archived FY2023 file was published before the year ended: it has about a
 // quarter of FY2022's initial approvals.
 const PARTIAL_YEARS = { 2023: 'The archived FY2023 file covers only part of the fiscal year.' };
@@ -47,10 +49,10 @@ function decode(buffer) {
     return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
+const delimiterOf = line => (line.match(/\t/g) || []).length > (line.match(/,/g) || []).length ? '\t' : ',';
+
 // Comma- or tab-separated (Tableau crosstab exports use tabs), with quoted fields.
-function records(text) {
-    const firstLine = text.slice(0, text.search(/\r?\n|$/));
-    const delimiter = (firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length ? '\t' : ',';
+function records(text, delimiter = delimiterOf(text.slice(0, text.search(/\r?\n|$/)))) {
     const rows = []; let row = [], field = '', quoted = false;
     for (let i = 0; i < text.length; i++) {
         const char = text[i];
@@ -76,49 +78,114 @@ const count = value => {
     return Math.round(number);
 };
 const text = value => String(value ?? '').trim().replace(/\s+/g, ' ');
+const fail = message => Object.assign(new Error(message), { status: 400 });
 
-function parseUscisFile(buffer) {
-    const [head = [], ...body] = records(decode(buffer));
+// Three layouts: archived files (initial/continuing columns), hub crosstabs (a
+// column per petition type), and the hub's long CSV (one line per petition type,
+// with "Measure Names" and "Measure Values").
+function layoutOf(head) {
     const columns = head.map(header);
     const find = names => columns.findIndex(name => names.includes(name));
     const at = Object.fromEntries(Object.entries(FIELDS).map(([field, names]) => [field, find(names)]));
     const legacy = Object.fromEntries(Object.entries(LEGACY).map(([field, name]) => [field, find([name])]));
     const categories = Object.fromEntries(Object.entries(CATEGORIES).map(([field, name]) => [field, [find([name + ' approval']), find([name + ' denial'])]]));
-    const hasLegacy = Object.values(legacy).every(index => index >= 0);
-    const hasCategories = Object.values(categories).every(([approval, denial]) => approval >= 0 && denial >= 0);
+    const measure = find(['measure names']), value = find(['measure values']);
+    const format = measure >= 0 && value >= 0 ? 'long' : Object.values(categories).every(([approval, denial]) => approval >= 0 && denial >= 0) ? 'wide'
+        : Object.values(legacy).every(index => index >= 0) ? 'legacy' : null;
     const missing = [...['fiscalYear', 'employer'].filter(field => at[field] < 0).map(field => FIELDS[field][0]),
-        ...(!hasLegacy && !hasCategories ? ['initial/continuing approval and denial counts (or the six petition-type counts)'] : [])];
-    if (missing.length) throw Object.assign(new Error(`Not a USCIS H-1B Employer Data Hub export: missing ${missing.join(', ')}.`), { status: 400 });
+        ...(!format ? ['initial/continuing approval and denial counts (or the six petition-type counts)'] : [])];
+    if (missing.length) throw fail(`Not a USCIS H-1B Employer Data Hub export: missing ${missing.join(', ')}.`);
+    // In the long layout, every column except the measure name and value identifies a row.
+    return { at, legacy, categories, format, measure, value, keyColumns: columns.map((_, index) => index).filter(index => index !== measure && index !== value) };
+}
 
-    const rows = [];
-    body.forEach((values, index) => {
-        const line = index + 2;
-        try {
-            const fiscalYear = Number(text(values[at.fiscalYear]).replace(/^FY\s*/i, ''));
-            if (!Number.isInteger(fiscalYear) || fiscalYear < 2000 || fiscalYear > 2100) {
-                if (!text(values[at.fiscalYear]) || /total/i.test(values.join(' '))) return; // Blank and grand-total lines.
-                throw new Error(`Invalid fiscal year "${values[at.fiscalYear]}"`);
-            }
-            const employer = text(values[at.employer]);
-            const naics = (text(values[at.naics]).match(/^\d{2}/) || ['99'])[0];
-            const zip = text(values[at.zip]).match(/^\d{3,5}/)?.[0];
-            const key = employer ? nameKey(employer) : null;
-            const row = { fiscalYear, employer, nameKey: key, groupKey: key ? expanded(key) : null, searchKey: employer ? searchKey(employer) : null,
-                naics, industry: industryOf(naics), taxId: at.taxId >= 0 ? text(values[at.taxId]) || null : null,
-                state: at.state >= 0 ? text(values[at.state]).toUpperCase() || null : null, city: at.city >= 0 ? text(values[at.city]).toUpperCase() || null : null,
-                zip: zip ? zip.padStart(5, '0') : null };
-            if (hasCategories) {
-                row.categories = Object.fromEntries(Object.entries(categories).map(([field, [approval, denial]]) => [field, { approvals: count(values[approval]), denials: count(values[denial]) }]));
-                const sum = (fields, key) => fields.reduce((total, field) => total + row.categories[field][key], 0);
-                const continuing = Object.keys(CATEGORIES).filter(field => !INITIAL.includes(field));
-                Object.assign(row, { initialApprovals: sum(INITIAL, 'approvals'), initialDenials: sum(INITIAL, 'denials'),
-                    continuingApprovals: sum(continuing, 'approvals'), continuingDenials: sum(continuing, 'denials') });
-            } else for (const [field, index] of Object.entries(legacy)) row[field] = count(values[index]);
-            rows.push(row);
-        } catch (error) { throw Object.assign(new Error(`Line ${line}: ${error.message}`), { status: 400 }); }
-    });
-    if (!rows.length) throw Object.assign(new Error('The file has no data rows.'), { status: 400 });
-    return { rows, format: hasCategories ? 'petition-types' : 'initial-continuing' };
+// The petitioner fields of a line, or null for blank and grand-total lines.
+function baseRow(values, at) {
+    const fiscalYear = Number(text(values[at.fiscalYear]).replace(/^FY\s*/i, ''));
+    if (!Number.isInteger(fiscalYear) || fiscalYear < 2000 || fiscalYear > 2100) {
+        if (!text(values[at.fiscalYear]) || /total/i.test(values.join(' '))) return null;
+        throw new Error(`Invalid fiscal year "${values[at.fiscalYear]}"`);
+    }
+    const employer = text(values[at.employer]);
+    const naics = (text(values[at.naics]).match(/^\d{2}/) || ['99'])[0];
+    const zip = text(values[at.zip]).match(/^\d{3,5}/)?.[0];
+    const key = employer ? nameKey(employer) : null;
+    return { fiscalYear, employer, nameKey: key, groupKey: key ? expanded(key) : null, searchKey: employer ? searchKey(employer) : null,
+        naics, industry: industryOf(naics), taxId: at.taxId >= 0 ? text(values[at.taxId]) || null : null,
+        state: at.state >= 0 ? text(values[at.state]).toUpperCase() || null : null, city: at.city >= 0 ? text(values[at.city]).toUpperCase() || null : null,
+        zip: zip ? zip.padStart(5, '0') : null };
+}
+
+const MEASURES = new Map(Object.entries(CATEGORIES).flatMap(([field, name]) => [[name + ' approval', [field, 'approvals']], [name + ' denial', [field, 'denials']]]));
+const CONTINUING = Object.keys(CATEGORIES).filter(field => !INITIAL.includes(field));
+function withTotals(row) {
+    const sum = (fields, key) => fields.reduce((total, field) => total + row.categories[field][key], 0);
+    return Object.assign(row, { initialApprovals: sum(INITIAL, 'approvals'), initialDenials: sum(INITIAL, 'denials'),
+        continuingApprovals: sum(CONTINUING, 'approvals'), continuingDenials: sum(CONTINUING, 'denials') });
+}
+const decisions = row => row.initialApprovals + row.initialDenials + row.continuingApprovals + row.continuingDenials;
+
+// Accepts records one at a time (the header first); rows without decisions are dropped.
+function createRowParser() {
+    let layout = null, line = 1;
+    const rows = [], groups = new Map();
+    return {
+        push(values) {
+            if (!layout) { layout = layoutOf(values); return; }
+            line++;
+            try {
+                if (layout.format === 'long') {
+                    const key = layout.keyColumns.map(index => values[index] ?? '').join('\u0001');
+                    let row = groups.get(key);
+                    if (row === undefined) {
+                        const base = baseRow(values, layout.at);
+                        row = base && Object.assign(base, { categories: Object.fromEntries(Object.keys(CATEGORIES).map(field => [field, { approvals: 0, denials: 0 }])) });
+                        groups.set(key, row);
+                    }
+                    if (!row) return;
+                    const target = MEASURES.get(header(values[layout.measure]));
+                    if (!target) throw new Error(`Unknown measure "${values[layout.measure]}"`);
+                    row.categories[target[0]][target[1]] += count(values[layout.value]);
+                    return;
+                }
+                const row = baseRow(values, layout.at);
+                if (!row) return;
+                if (layout.format === 'wide') {
+                    row.categories = Object.fromEntries(Object.entries(layout.categories).map(([field, [approval, denial]]) => [field, { approvals: count(values[approval]), denials: count(values[denial]) }]));
+                    withTotals(row);
+                } else for (const [field, index] of Object.entries(layout.legacy)) row[field] = count(values[index]);
+                if (decisions(row) > 0) rows.push(row);
+            } catch (error) { throw fail(`Line ${line}: ${error.message}`); }
+        },
+        finish() {
+            if (!layout) throw fail('The file is empty.');
+            for (const row of groups.values()) if (row && decisions(withTotals(row)) > 0) rows.push(row);
+            if (!rows.length) throw fail('The file has no data rows.');
+            return { rows, format: layout.format === 'legacy' ? 'initial-continuing' : 'petition-types' };
+        },
+    };
+}
+
+function parseUscisFile(buffer) {
+    const parser = createRowParser();
+    for (const values of records(decode(buffer))) parser.push(values);
+    return parser.finish();
+}
+
+// The same, line by line from a UTF-8 stream: hub exports are about 100 MB a year.
+async function parseUscisStream(stream) {
+    const readline = require('node:readline');
+    const parser = createRowParser();
+    let delimiter = null, pending = '';
+    for await (let line of readline.createInterface({ input: stream, crlfDelay: Infinity })) {
+        if (delimiter === null) { line = line.replace(/^\uFEFF/, ''); delimiter = delimiterOf(line); }
+        pending = pending ? pending + '\n' + line : line;
+        if ((pending.match(/"/g) || []).length % 2) continue; // A quoted field continues on the next line.
+        for (const values of records(pending, delimiter)) parser.push(values);
+        pending = '';
+    }
+    if (pending) for (const values of records(pending, delimiter)) parser.push(values);
+    return parser.finish();
 }
 
 // ---------------------------------------------------------------- Import
@@ -158,8 +225,8 @@ async function importUscisRows(db, rows, { source = null, allowSmaller = false, 
     for (const [fiscalYear, yearRows] of [...byYear].sort((a, b) => a[0] - b[0])) {
         for (let i = 0; i < yearRows.length; i += 5000) await collection.insertMany(yearRows.slice(i, i + 5000).map(row => ({ ...row, importId })), { ordered: false });
         await collection.deleteMany({ fiscalYear, importId: { $ne: importId } });
-        years[fiscalYear] = { rows: yearRows.length, ...totalsOf(yearRows), partial: Boolean(source?.official && PARTIAL_YEARS[fiscalYear]),
-            note: source?.official ? PARTIAL_YEARS[fiscalYear] || null : null, source, importedAt: new Date() };
+        years[fiscalYear] = { rows: yearRows.length, ...totalsOf(yearRows), partial: Boolean(source?.archived && PARTIAL_YEARS[fiscalYear]),
+            note: source?.archived ? PARTIAL_YEARS[fiscalYear] || null : null, source, importedAt: new Date() };
         await onProgress({ event: 'uscis-year', fiscalYear, rows: yearRows.length });
     }
     await db.collection('discovery_state').updateOne({ _id: STATE_ID }, { $set: Object.fromEntries(Object.entries(years).map(([year, value]) => [`years.${year}`, value])) }, { upsert: true });
@@ -396,5 +463,5 @@ async function getUscisStatus(db) {
 }
 
 module.exports = { ROWS, EMPLOYERS, STATE_ID, OFFICIAL_URL, OFFICIAL_YEARS, PARTIAL_YEARS, INDUSTRIES, industryOf, expanded,
-    parseUscisFile, importUscisRows, rebuildUscisEmployers, linkUscisEmployers, ensureUscisIndexes,
+    parseUscisFile, parseUscisStream, HUB_CSV_URL, importUscisRows, rebuildUscisEmployers, linkUscisEmployers, ensureUscisIndexes,
     getUscisOverview, listUscisEmployers, uscisForIdentity, getUscisStatus, clearUscisCache: () => cache.clear() };

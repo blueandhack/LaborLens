@@ -27,7 +27,7 @@ test('USCIS petition decisions import, group, link to employers and answer queri
         // Two different employers start with the same cut-off USCIS name: no link.
         employer('massive dynamic research laboratories east inc', 5), employer('massive dynamic research laboratories west inc', 5),
     ]);
-    const official = { name: 'h1b_datahubexport.csv', url: 'https://www.uscis.gov/x.csv', official: true };
+    const official = { name: 'h1b_datahubexport.csv', url: 'https://www.uscis.gov/x.csv', official: true, archived: true };
     await uscis.importUscisRows(db, [
         row(2022, 'COGNIZANT TECHNOLOGY SOLUTIONS US CORP', [100, 10, 300, 5]),
         row(2016, 'COGNIZANT TECH SOLNS US CORP', [80, 20, 200, 10], { state: 'NJ', city: 'TEANECK' }),

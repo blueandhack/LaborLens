@@ -9,11 +9,16 @@ petitioner (name, last four digits of its tax ID, mailing address) × two-digit 
 
 | Fiscal years | Where | Format |
 |---|---|---|
-| FY2009–FY2023 | Archived CSV files on uscis.gov (`h1b_datahubexport-YYYY.csv`) | Initial/continuing approvals and denials |
-| FY2024 onward | Only the hub's interactive view (Crosstab View → Download → CSV) | Six petition types |
+| FY2009–FY2022 | Archived CSV files on uscis.gov (`h1b_datahubexport-YYYY.csv`) | Initial/continuing approvals and denials |
+| FY2023 onward | The hub's public Tableau view `H1BPublic`, exported as CSV one fiscal year at a time | Six petition types, one line per type (about 100 MB a year) |
 
-The archived FY2023 file covers only part of the year (about a quarter of FY2022's initial
-approvals). It is marked `partial` and left out of all-years totals.
+The archived FY2023 file covers only part of the year, so FY2023 comes from the hub. When an
+archived file is imported for a year listed in `PARTIAL_YEARS`, that year is marked `partial`
+and left out of all-years totals.
+
+The hub URL filters by the field `Fiscal Year   `, whose name ends in three spaces
+(`HUB_CSV_URL`). The importer refuses a download that contains any other year, in case the
+filter stops working.
 
 Newer exports report six petition types. They are combined the way USCIS combines them:
 initial = new employment + new concurrent + change of employer, and continuing = continuation +
@@ -22,13 +27,15 @@ change with the same employer + amended. The detailed counts are kept in `catego
 ## Importing
 
 ```bash
-node scripts/import-uscis-h1b.js --official            # download and import FY2009–2023
+node scripts/import-uscis-h1b.js --official            # download and import the archived FY2009–2023 files
+node scripts/import-uscis-h1b.js --hub 2023 2024 2025 2026   # stream fiscal years from the hub
 node scripts/import-uscis-h1b.js export.csv [...]       # hub exports (CSV, or the UTF-16 tab-separated crosstab)
 node scripts/import-uscis-h1b.js --relink              # re-link petitioner names to employers only
 ```
 
 Administrators can also upload a hub export under **Administration → Site data → USCIS H-1B
-decisions**. Each fiscal year in a file replaces that year. A file with fewer than half the
+decisions**. Uploads go to disk and are parsed as a stream: the long CSV, the wide CSV, or the
+UTF-16 crosstab. Each fiscal year in a file replaces that year. A file with fewer than half the
 rows already imported for a year is refused, because that is usually a filtered export
 (`--allow-smaller` overrides this).
 
