@@ -4,6 +4,7 @@ const { randomUUID } = require('node:crypto');
 const { programs } = require('./searchConfig');
 const { MAP_VERSION, MAP_PROGRAMS } = require('./map');
 const { getUscisStatus } = require('./uscisH1b');
+const { getI140Status } = require('./i140');
 
 const HISTORY = 10, EVENT_INTERVAL_MS = 5000;
 
@@ -41,7 +42,7 @@ function createRunRecorder(db, args) {
 
 async function getSiteStatus(db) {
     const state = db.collection('discovery_state');
-    const [documents, lock, metas, insights, profiles, requests, counts, uscis] = await Promise.all([
+    const [documents, lock, metas, insights, profiles, requests, counts, uscis, i140] = await Promise.all([
         state.find({ _id: { $in: ['refresh', 'map', 'employers', 'employer_identities', 'worksites'] } }, { maxTimeMS: 2000 }).toArray(),
         db.collection('discovery_locks').findOne({ _id: 'refresh' }, { maxTimeMS: 2000 }),
         db.collection('map_meta').find({}, { maxTimeMS: 2000 }).toArray(),
@@ -50,6 +51,7 @@ async function getSiteStatus(db) {
         db.collection('employer_profile_requests').countDocuments({}, { maxTimeMS: 2000 }),
         Promise.all(MAP_PROGRAMS.map(async program => [program, await db.collection(programs[program].collection).estimatedDocumentCount()])),
         getUscisStatus(db),
+        getI140Status(db),
     ]);
     const byId = Object.fromEntries(documents.map(document => [document._id, document]));
     const meta = Object.fromEntries(metas.map(document => [document._id, document]));
@@ -84,6 +86,7 @@ async function getSiteStatus(db) {
         }),
         profiles: { cached: profiles, pending: requests },
         uscis,
+        i140,
     };
 }
 

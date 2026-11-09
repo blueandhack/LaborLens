@@ -10,6 +10,7 @@ import EmployersView from './components/EmployersView';
 import NotFound from './components/NotFound';
 import MapView from './components/MapView';
 import UscisView from './components/UscisView';
+import I140View from './components/I140View';
 import PageSEO from './components/PageSEO';
 import './index.css';
 
@@ -49,6 +50,7 @@ const Navigation = () => {
         H-1B Search
       </Link>
       <Link to="/h1b-approvals" className={`tab ${location.pathname === '/h1b-approvals' ? 'active' : ''}`} aria-current={location.pathname === '/h1b-approvals' ? 'page' : undefined}>H-1B Approvals</Link>
+      <Link to="/i140" className={`tab ${location.pathname === '/i140' ? 'active' : ''}`} aria-current={location.pathname === '/i140' ? 'page' : undefined}>I-140</Link>
       <Link to="/map" className={`tab ${location.pathname === '/map' ? 'active' : ''}`} aria-current={location.pathname === '/map' ? 'page' : undefined}>Map</Link>
       <Link to="/employers" className={`tab ${location.pathname.startsWith('/employers') ? 'active' : ''}`} aria-current={location.pathname.startsWith('/employers') ? 'page' : undefined}>Employers</Link>
     </nav>
@@ -99,6 +101,7 @@ function App(props) {
             <Route path="/data" element={<DataGuide />} />
             <Route path="/map" element={<MapView />} />
             <Route path="/h1b-approvals" element={<UscisView />} />
+            <Route path="/i140" element={<I140View />} />
             <Route path="/employers" element={<EmployersView initialEmployers={props.initialEmployers} />} />
             <Route path="/employers/:slug" element={<EmployerProfile initialProfile={props.initialEmployer} />} />
             <Route path="/admin/data" element={<ImportView />} />

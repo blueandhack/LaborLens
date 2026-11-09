@@ -42,3 +42,4 @@
 .site-status-upload input[type="file"] { font: inherit; font-size: 13px; color: var(--text-secondary); max-width: 100%; }
 .site-status-upload .btn { justify-self: start; }
 .site-status-upload .admin-help { margin: 0; }
+.site-status-sources { margin: 8px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; overflow-wrap: anywhere; }

@@ -151,3 +151,45 @@ spec:
           - name: temp
             emptyDir:
               sizeLimit: 2Gi
+---
+# USCIS publishes Form I-140 statistics quarterly; a weekly check imports a new quarter soon after release.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: laborlens-i140-refresh
+  namespace: laborlens
+spec:
+  schedule: "15 4 * * 1"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          nodeSelector:
+            kubernetes.io/hostname: skycat
+          containers:
+          - name: i140
+            image: ghcr.io/blueandhack/laborlens-backend:8e3c516f3165321825b51c20169a01f9ac22f06a
+            imagePullPolicy: Always
+            command: ["node", "scripts/import-i140.js"]
+            env:
+            - name: MONGO_URI
+              value: "mongodb://laborlens-mongodb:27017/pwd_cases"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=160"
+            resources:
+              requests:
+                cpu: 50m
+                memory: 96Mi
+              limits:
+                cpu: "1"
+                memory: 256Mi

@@ -1,0 +1,17 @@
+.i140-section-title { font-size: 20px; margin: 0 0 10px; }
+.i140-page .uscis-trends { border-top: 1px solid var(--border-color-strong); margin-top: 28px; padding-top: 28px; }
+.i140-section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px 24px; margin-bottom: 12px; }
+.i140-section-head label { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
+.i140-section-head select { min-height: 44px; min-width: 200px; }
+.i140-breakdowns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(20px, 3vw, 44px); }
+.i140-breakdown h3 { font-size: 16px; margin: 0 0 4px; }
+.i140-breakdown .uscis-employer-table tbody th { min-width: 160px; }
+.i140-breakdown .uscis-employer-table tbody th small { display: block; color: var(--text-muted); font-size: 11px; }
+.i140-breakdown .text-button { margin-top: 10px; min-height: 36px; }
+.i140-share { display: inline-block; width: 60px; height: 8px; margin-right: 8px; vertical-align: middle; }
+.i140-share i { display: block; height: 100%; width: calc(var(--share) * 100%); background: var(--text-secondary); border-radius: 0 3px 3px 0; }
+.i140-awaiting tbody th .i140-share { display: block; width: 100%; max-width: 160px; margin-top: 6px; }
+.i140-awaiting th:not(:first-child) { white-space: normal; min-width: 92px; }
+.i140-awaiting tr.is-total th, .i140-awaiting tr.is-total td { font-weight: 600; border-top: 1px solid var(--border-color-strong); }
+@media (max-width: 1000px) { .i140-breakdowns { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .i140-section-head label, .i140-section-head select { width: 100%; } }

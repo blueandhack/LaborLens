@@ -164,6 +164,12 @@ export default function SiteDataStatus() {
       <RefreshRun refresh={status.refresh} />
       <MapBuilds rows={status.map} />
       <UscisData uscis={status.uscis} onImported={load} />
+      <section className="site-status-card" aria-labelledby="site-i140-heading">
+        <header><div><h4 id="site-i140-heading">USCIS I-140 statistics</h4><p className="admin-help">National I-140 counts behind <Link to="/i140">/i140</Link>. Checked weekly (Mondays, 4:15 AM Pacific) for a new USCIS quarter.</p></div>
+          <Pill tone={status.i140 ? 'success' : 'warning'}>{status.i140 ? `FY${status.i140.fiscalYear} Q${status.i140.quarter}` : 'Not imported'}</Pill></header>
+        {status.i140 && <><p className="admin-help">Imported {formatImportDate(status.i140.importedAt)}.</p>
+          <ul className="site-status-sources">{status.i140.sources.map(source => <li key={source.name}>{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.name}</a> : source.name}</li>)}</ul></>}
+      </section>
       <Summaries status={status} />
       <p className="admin-help">Status as of {formatImportDate(status.generatedAt)}.</p>
     </>}

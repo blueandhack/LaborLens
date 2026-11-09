@@ -26,6 +26,7 @@ const employers = require('./routes/employers').createEmployerRoutes({ db: () =>
 app.use('/api/employers', employers.api);
 app.use('/employers', employers.pages);
 app.use('/api/map', require('./routes/map').createMapRoutes({ db: () => mongoose.connection.db }));
+app.use('/api/i140', require('./routes/i140').createI140Routes({ db: () => mongoose.connection.db }));
 app.use('/api/uscis-h1b', require('./routes/uscis').createUscisRoutes({ db: () => mongoose.connection.db, authMiddleware: require('./routes/admin').authMiddleware }));
 app.use('/api/admin', adminRoute);
 
