@@ -4,6 +4,7 @@ const { fields: worksiteFields, stringExpression } = require('./worksites');
 const { employerPlaces } = require('./map');
 const { hintFor } = require('./indexHints');
 const { idFor, slugFor, searchKey, nameKey, NAME_VERSION, findIdentity, ensureIdentityIndexes } = require('./employerIdentity');
+const { uscisForIdentity } = require('./uscisH1b');
 const VERSION = 1;
 // Case links use the reported name's own slug; profile routes redirect any
 // included name to its combined identity.
@@ -216,7 +217,9 @@ async function getProfile(db, models, slug, { refresh = true } = {}) {
     const reportedNames = combined ? (await db.collection('employers').find({ _id: { $in: identity.keys.map(idFor) } }, { maxTimeMS: 1000 }).toArray())
         .sort((a, b) => identity.keys.indexOf(a.key) - identity.keys.indexOf(b.key))
         .map(member => ({ id: member._id, key: member.key, name: display(member.name), location: member.location || null, programs: programCounts(member) })) : [];
-    return { ...publicEmployer(identity), ready, summaries, similarNames, snapshotAt: snapshot?.updatedAt || null,
+    // USCIS petition decisions are a small live lookup; a failure never blocks the profile.
+    const uscis = await uscisForIdentity(db, identity.keys.map(idFor)).catch(error => { console.error('USCIS profile lookup failed:', error.message); return null; });
+    return { ...publicEmployer(identity), ready, summaries, similarNames, uscis, snapshotAt: snapshot?.updatedAt || null,
         ...(combined ? { reportedNames, grouping: { kind: identity.grouping?.kind || 'automatic', description: identity.grouping?.description || '',
             reason: identity.grouping?.reason || '', evidence: identity.grouping?.evidence || [], policy: GROUPING_POLICY } } : {}) };
 }

@@ -7,6 +7,7 @@ const { randomUUID } = require('node:crypto');
 const { refreshDirectory, refreshFeatured } = require('../services/employers');
 const { refreshIdentities } = require('../services/employerIdentity');
 const { refreshMap } = require('../services/map');
+const { linkUscisEmployers, EMPLOYERS: USCIS_EMPLOYERS } = require('../services/uscisH1b');
 const { createRunRecorder } = require('../services/siteStatus');
 let run = null;
 // Progress lines go to the job log and, throttled, to the administration page.
@@ -47,6 +48,10 @@ async function main() {
         if (!args.length || args.includes('--directory')) { await run.step('Employer directory'); await refreshDirectory(db, models, { signal: controller.signal, onProgress: log }); }
         // Identities follow the directory: they combine its reported names (and their counts).
         if (!args.length || args.includes('--directory') || args.includes('--identities')) { await run.step('Employer identities'); await refreshIdentities(db, models, { signal: controller.signal, onProgress: log }); }
+        // USCIS petitioner names link to employer names; new filing names can add links.
+        if ((!args.length || args.includes('--directory') || args.includes('--identities')) && await db.collection(USCIS_EMPLOYERS).estimatedDocumentCount()) {
+            await run.step('USCIS employer links'); await linkUscisEmployers(db, { signal: controller.signal });
+        }
         // The map skips programs whose cases are unchanged since its last build.
         // Profiles follow it: their worksite maps use the map's learned city areas.
         if (!args.length || args.includes('--map') || args.includes('--map-force')) { await run.step('Worksite map'); await refreshMap(db, models, { signal: controller.signal, onProgress: log, force: args.includes('--map-force') }); }

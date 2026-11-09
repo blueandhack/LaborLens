@@ -36,3 +36,9 @@
 .site-status-grid p { font-size: 12px; color: var(--text-secondary); margin: 6px 0 8px; }
 .site-status-grid ul { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
 .site-status-grid li { display: flex; justify-content: space-between; gap: 12px; padding-block: 6px; border-bottom: 1px solid var(--border-color); font-variant-numeric: tabular-nums; }
+
+.site-status-upload { display: grid; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color); }
+.site-status-upload label { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
+.site-status-upload input[type="file"] { font: inherit; font-size: 13px; color: var(--text-secondary); max-width: 100%; }
+.site-status-upload .btn { justify-self: start; }
+.site-status-upload .admin-help { margin: 0; }

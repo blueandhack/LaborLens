@@ -9,6 +9,7 @@ import EmployerProfile from './components/EmployerProfile';
 import EmployersView from './components/EmployersView';
 import NotFound from './components/NotFound';
 import MapView from './components/MapView';
+import UscisView from './components/UscisView';
 import PageSEO from './components/PageSEO';
 import './index.css';
 
@@ -47,6 +48,7 @@ const Navigation = () => {
       <Link to="/h1b" className={`tab ${isH1b ? 'active' : ''}`} aria-current={isH1b ? 'page' : undefined}>
         H-1B Search
       </Link>
+      <Link to="/h1b-approvals" className={`tab ${location.pathname === '/h1b-approvals' ? 'active' : ''}`} aria-current={location.pathname === '/h1b-approvals' ? 'page' : undefined}>H-1B Approvals</Link>
       <Link to="/map" className={`tab ${location.pathname === '/map' ? 'active' : ''}`} aria-current={location.pathname === '/map' ? 'page' : undefined}>Map</Link>
       <Link to="/employers" className={`tab ${location.pathname.startsWith('/employers') ? 'active' : ''}`} aria-current={location.pathname.startsWith('/employers') ? 'page' : undefined}>Employers</Link>
     </nav>
@@ -77,7 +79,7 @@ function App(props) {
                 <span className="brand-name">LaborLens</span>
               </div>
             </Link>
-            <p className="brand-subtitle">U.S. Department of Labor disclosure records</p>
+            <p className="brand-subtitle">U.S. Department of Labor and USCIS disclosure records</p>
           </div>
           <div className="header-right">
             <Navigation />
@@ -96,6 +98,7 @@ function App(props) {
             <Route path="/h1b" element={<H1bSearchView />} />
             <Route path="/data" element={<DataGuide />} />
             <Route path="/map" element={<MapView />} />
+            <Route path="/h1b-approvals" element={<UscisView />} />
             <Route path="/employers" element={<EmployersView initialEmployers={props.initialEmployers} />} />
             <Route path="/employers/:slug" element={<EmployerProfile initialProfile={props.initialEmployer} />} />
             <Route path="/admin/data" element={<ImportView />} />

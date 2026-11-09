@@ -2,7 +2,7 @@ import { programs } from './programs.js';
 import { presentCase } from './casePresentation.js';
 
 export const SITE_ORIGIN = 'https://laborlens.fyi';
-export const PUBLIC_PATHS = ['/', '/h1b', '/perm', '/map', '/employers', '/data', '/privacy/', '/terms/'];
+export const PUBLIC_PATHS = ['/', '/h1b', '/perm', '/h1b-approvals', '/map', '/employers', '/data', '/privacy/', '/terms/'];
 export const SEARCH_RESULT_KEYS = ['company', 'employer', 'employerGroup', 'jobTitle', 'location', 'worksite', 'worksiteState', 'caseNumber', 'determinationYear', 'decisionYear', 'receivedYear', 'page', 'sort'];
 const searchPrograms = { '/': 'pwd', '/perm': 'perm', '/h1b': 'h1b' };
 const descriptions = {
@@ -16,17 +16,20 @@ export function getPageSEO(pathname, search = '') {
   const program = searchPrograms[path];
   const params = new URLSearchParams(search);
   const filtered = Boolean(program && SEARCH_RESULT_KEYS.some(key => params.get(key)) || path === '/employers' && ['q', 'sort', 'page'].some(key => params.get(key))
-    || path === '/map' && ['program', 'year', 'occupation', 'metric', 'view'].some(key => params.get(key)));
+    || path === '/map' && ['program', 'year', 'occupation', 'metric', 'view'].some(key => params.get(key))
+    || path === '/h1b-approvals' && ['fy', 'state', 'industry', 'q', 'sort', 'page'].some(key => params.get(key)));
   const title = program ? `${program === 'h1b' ? 'H1B Salary Database & LCA Search' : program === 'perm' ? 'PERM Database & Employer Case Search' : 'Prevailing Wage Determination Search'} | LaborLens`
-    : path === '/employers' ? 'Employer H1B, PERM & Wage Profiles | LaborLens' : path === '/map' ? 'H1B, PERM & Prevailing Wage Map by State and Metro | LaborLens' : path === '/data' ? 'DOL Data Sources & Methodology | LaborLens'
+    : path === '/employers' ? 'Employer H1B, PERM & Wage Profiles | LaborLens' : path === '/map' ? 'H1B, PERM & Prevailing Wage Map by State and Metro | LaborLens' : path === '/h1b-approvals' ? 'H1B Approval & Denial Rates by Employer (USCIS Data) | LaborLens' : path === '/data' ? 'DOL Data Sources & Methodology | LaborLens'
       : ['/admin/data', '/import'].includes(path) ? 'Administration | LaborLens'
         : /^\/cases\/[a-f\d]{24}$/i.test(path) ? 'Case Disclosure | LaborLens' : 'Page Not Found | LaborLens';
-  const description = program ? descriptions[program] : path === '/map'
+  const description = program ? descriptions[program] : path === '/h1b-approvals'
+    ? 'USCIS H-1B petition approvals and denials by fiscal year, employer, state and industry. Compare initial and continuing denial rates from the H-1B Employer Data Hub.'
+    : path === '/map'
     ? 'Map H-1B LCA, PERM, and prevailing wage filings by worksite state and metro area. Compare filing volume, filings per resident, median wages, and wage levels by occupation and year.'
     : path === '/data'
     ? 'Understand LaborLens H-1B, PERM, and prevailing wage data: DOL sources, historical coverage, reported wage periods, case dates, and validation.'
     : 'Research public U.S. Department of Labor H-1B LCA, PERM labor certification, and prevailing wage disclosure records with LaborLens.';
-  const indexable = Boolean((program || path === '/data' || path === '/employers' || path === '/map') && !filtered);
+  const indexable = Boolean((program || ['/data', '/employers', '/map', '/h1b-approvals'].includes(path)) && !filtered);
   const casePage = /^\/cases\/[a-f\d]{24}$/i.test(path);
   return {
     title, description, canonical: indexable ? SITE_ORIGIN + path : null,

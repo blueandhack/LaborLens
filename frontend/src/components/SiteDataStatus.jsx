@@ -55,6 +55,54 @@ function MapBuilds({ rows }) {
   </section>;
 }
 
+function UscisData({ uscis, onImported }) {
+  const [file, setFile] = useState(null);
+  const [message, setMessage] = useState({ tone: '', text: '' });
+  const [sending, setSending] = useState(false);
+  const job = uscis?.job;
+  const years = uscis?.years || [];
+  const send = async event => {
+    event.preventDefault();
+    if (!file) return;
+    setSending(true); setMessage({ tone: '', text: '' });
+    try {
+      const body = new FormData(); body.append('file', file);
+      const response = await fetch('/api/uscis-h1b/import', { method: 'POST', body, headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'The file could not be imported.');
+      setMessage({ tone: 'success', text: `Importing ${formatCount(data.rows)} rows for FY${data.years.join(', FY')}.` });
+      setFile(null); event.target.reset(); onImported();
+    } catch (failure) { setMessage({ tone: 'error', text: failure.message }); }
+    finally { setSending(false); }
+  };
+  return <section className="site-status-card" aria-labelledby="site-uscis-heading">
+    <header><div><h4 id="site-uscis-heading">USCIS H-1B decisions</h4><p className="admin-help">Petition approvals and denials behind <Link to="/h1b-approvals">/h1b-approvals</Link> and employer profiles. Petitioner names are re-linked to employers nightly.</p></div>
+      <Pill tone={job?.state === 'importing' ? 'active' : job?.state === 'failed' ? 'error' : years.length ? 'success' : 'warning'}>{job?.state === 'importing' ? 'Importing' : job?.state === 'failed' ? 'Last import failed' : years.length ? 'Ready' : 'Not imported'}</Pill></header>
+    {job?.state === 'importing' && <p className="site-status-event" role="status">{job.phase || 'Importing'}: {job.file} · started {formatImportDate(job.startedAt)}</p>}
+    {job?.state === 'failed' && <p className="import-notice error">{job.file}: {job.error}</p>}
+    {years.length > 0 && <>
+      <dl className="site-status-facts">
+        <div><dt>Fiscal years</dt><dd>FY{years[0].fiscalYear}–FY{years.at(-1).fiscalYear}</dd></div>
+        <div><dt>Petitioner names</dt><dd>{formatCount(uscis.employers)}</dd></div>
+        <div><dt>Linked to employers</dt><dd>{formatCount(uscis.linked)} <small>{percent(uscis.linked, uscis.employers)}</small></dd></div>
+        <div><dt>Updated</dt><dd>{formatImportDate(uscis.updatedAt)}</dd></div>
+      </dl>
+      <details className="site-status-history"><summary>Imported fiscal years ({years.length})</summary>
+        <table><thead><tr><th scope="col">Fiscal year</th><th scope="col">Rows</th><th scope="col">Source</th><th scope="col">Imported</th></tr></thead>
+          <tbody>{[...years].reverse().map(year => <tr key={year.fiscalYear}><td>FY{year.fiscalYear}{year.partial && <small>Partial year</small>}</td><td>{formatCount(year.rows)}</td>
+            <td>{year.source?.url ? <a href={year.source.url} target="_blank" rel="noreferrer">{year.source.name}</a> : year.source?.name || '—'}{year.source && !year.source.official && <small>Uploaded export</small>}</td>
+            <td>{formatImportDate(year.importedAt)}</td></tr>)}</tbody></table>
+      </details>
+    </>}
+    <form className="site-status-upload" onSubmit={send}>
+      <label htmlFor="uscis-file">Add or replace fiscal years<input id="uscis-file" type="file" accept=".csv,.txt,text/csv,text/plain" onChange={event => setFile(event.target.files[0] || null)} /></label>
+      <button className="btn btn-secondary" type="submit" disabled={!file || sending || job?.state === 'importing'}>{sending ? 'Uploading…' : 'Import file'}</button>
+      <p className="admin-help">From the <a href="https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub" target="_blank" rel="noreferrer">H-1B Employer Data Hub</a>: open Crosstab View, choose one complete fiscal year with no other filters, then Download → CSV. Each year in the file replaces that year here.</p>
+      {message.text && <p className={`import-notice ${message.tone}`} role={message.tone === 'error' ? 'alert' : 'status'}>{message.text}</p>}
+    </form>
+  </section>;
+}
+
 function Summaries({ status }) {
   const { employers, identities, worksites, insights, profiles } = status;
   return <section className="site-status-card" aria-labelledby="site-summaries-heading">
@@ -115,6 +163,7 @@ export default function SiteDataStatus() {
     {!status && !error ? <div className="admin-status-loading" role="status">Loading site data status…</div> : status && <>
       <RefreshRun refresh={status.refresh} />
       <MapBuilds rows={status.map} />
+      <UscisData uscis={status.uscis} onImported={load} />
       <Summaries status={status} />
       <p className="admin-help">Status as of {formatImportDate(status.generatedAt)}.</p>
     </>}
