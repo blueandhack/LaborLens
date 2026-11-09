@@ -27,8 +27,8 @@ test('hub crosstab exports (UTF-16, tab-separated, six petition types) combine i
     assert.equal(format, 'petition-types');
     assert.equal(rows.length, 1, 'the total line is skipped');
     const [row] = rows;
-    // Initial: new employment, new concurrent, change of employer. Continuing: the rest.
-    assert.deepEqual([row.initialApprovals, row.initialDenials, row.continuingApprovals, row.continuingDenials], [10 + 4 + 5, 1 + 1 + 1, 20 + 3 + 6, 2 + 0 + 0]);
+    // Initial: new employment and new concurrent. Continuing: the rest, including change of employer.
+    assert.deepEqual([row.initialApprovals, row.initialDenials, row.continuingApprovals, row.continuingDenials], [10 + 4, 1 + 1, 20 + 3 + 5 + 6, 2 + 0 + 1 + 0]);
     assert.deepEqual(row.categories.changeOfEmployer, { approvals: 5, denials: 1 });
     assert.equal(row.naics, '54');
     assert.equal(row.groupKey, 'globex technology solutions llc');
@@ -63,7 +63,7 @@ test('the hub\'s long CSV (one line per petition type) becomes one row per petit
         assert.equal(row.employer, 'ACME, INC.');
         assert.equal(row.industry, '31-33');
         assert.deepEqual(row.categories.newEmployment, { approvals: 1200, denials: 0 });
-        assert.deepEqual([row.initialApprovals, row.initialDenials, row.continuingApprovals, row.continuingDenials], [1200 + 3 + 4, 3, 1 + 2 + 5, 0]);
+        assert.deepEqual([row.initialApprovals, row.initialDenials, row.continuingApprovals, row.continuingDenials], [1200 + 3, 0, 1 + 2 + 4 + 5, 3]);
     }
     assert.throws(() => parseUscisFile(Buffer.from(lines[0] + '\nACME,2025,54,Mystery Approval,A,TX,1,1,1,1\n')), /Line 2: Unknown measure "Mystery Approval"/);
 });

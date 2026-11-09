@@ -9,8 +9,8 @@ export const USCIS_SORTS = {
 };
 export const USCIS_STATE_KEYS = ['fy', 'state', 'industry', 'q', 'sort', 'page'];
 export const SERIES = [
-  { key: 'initial', label: 'Initial', description: 'New employment, new concurrent employment and change of employer' },
-  { key: 'continuing', label: 'Continuing', description: 'Continuation, change with the same employer and amended petitions' },
+  { key: 'initial', label: 'Initial', description: 'New employment and new concurrent employment' },
+  { key: 'continuing', label: 'Continuing', description: 'Continuation, change of employer, change with the same employer and amended petitions' },
 ];
 
 export function readUscisState(params) {

@@ -21,9 +21,9 @@ export default function EmployerUscis({ uscis }) {
       {search && <Link className="btn btn-secondary" to={`${USCIS_PATH}?q=${encodeURIComponent(search)}`}>Compare petitioners</Link>}</header>
     <dl className="uscis-stats">
       <div className="uscis-stat"><dt>Initial approved</dt><dd>{formatCount(values.initial.approvals)}</dd><small>{formatCount(values.initial.denials)} denied</small></div>
-      <div className="uscis-stat"><dt>Initial denial rate</dt><dd>{formatRate(values.initial.rate)}</dd><small>new, concurrent and change of employer</small></div>
+      <div className="uscis-stat"><dt>Initial denial rate</dt><dd>{formatRate(values.initial.rate)}</dd><small>new and concurrent employment</small></div>
       <div className="uscis-stat"><dt>Continuing approved</dt><dd>{formatCount(values.continuing.approvals)}</dd><small>{formatCount(values.continuing.denials)} denied</small></div>
-      <div className="uscis-stat"><dt>Continuing denial rate</dt><dd>{formatRate(values.continuing.rate)}</dd><small>extensions and amendments</small></div>
+      <div className="uscis-stat"><dt>Continuing denial rate</dt><dd>{formatRate(values.continuing.rate)}</dd><small>extensions, transfers and amendments</small></div>
     </dl>
     {complete.length < uscis.years.length && <p className="uscis-note">Totals leave out {uscis.years.filter(year => year.partial).map(year => fyLabel(year.fiscalYear)).join(', ')}, a partial year.</p>}
     <div className="uscis-table-scroll"><table className="uscis-employer-table employer-uscis-years">

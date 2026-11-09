@@ -21,8 +21,13 @@ The hub URL filters by the field `Fiscal Year   `, whose name ends in three spac
 filter stops working.
 
 Newer exports report six petition types. They are combined the way USCIS combines them:
-initial = new employment + new concurrent + change of employer, and continuing = continuation +
+initial = new employment + new concurrent, and continuing = continuation + change of employer +
 change with the same employer + amended. The detailed counts are kept in `categories`.
+
+This grouping was checked by matching the hub's FY2022 rows to the archived FY2022 file. Petitioners
+with only change-of-employer petitions are 91% continuing in the archive, and those with only
+new-concurrent petitions are 90% initial. After a mapping change, run
+`import-uscis-h1b.js --recompute` to recalculate the totals from the stored categories.
 
 ## Importing
 

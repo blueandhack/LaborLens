@@ -4,6 +4,7 @@
 //   node scripts/import-uscis-h1b.js --hub 2024 2025 [...]  # fiscal years from the H-1B Employer Data Hub (its public crosstab CSV)
 //   node scripts/import-uscis-h1b.js file.csv [...]         # hub exports (CSV, or the crosstab's tab-separated UTF-16)
 //   node scripts/import-uscis-h1b.js --relink              # re-link petitioner names to employers only
+//   node scripts/import-uscis-h1b.js --recompute           # recalculate initial/continuing totals from stored petition types
 //   Options: --allow-smaller (replace a year with a smaller file)
 require('dotenv').config();
 const { readFile } = require('node:fs/promises');
@@ -11,7 +12,7 @@ const { createHash } = require('node:crypto');
 const path = require('node:path');
 const mongoose = require('mongoose');
 const { Readable } = require('node:stream');
-const { OFFICIAL_URL, OFFICIAL_YEARS, HUB_CSV_URL, parseUscisFile, parseUscisStream, importUscisRows, rebuildUscisEmployers, linkUscisEmployers } = require('../services/uscisH1b');
+const { OFFICIAL_URL, OFFICIAL_YEARS, HUB_CSV_URL, parseUscisFile, parseUscisStream, importUscisRows, rebuildUscisEmployers, linkUscisEmployers, recomputeUscisTotals } = require('../services/uscisH1b');
 
 const log = value => console.log(JSON.stringify({ time: new Date().toISOString(), ...value }));
 
@@ -28,11 +29,12 @@ async function main() {
     const official = args.includes('--official');
     const officialDir = official && args[args.indexOf('--official') + 1] && !args[args.indexOf('--official') + 1].startsWith('--') ? args[args.indexOf('--official') + 1] : null;
     if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
-    if (!official && !hub.length && !files.length && !args.includes('--relink')) throw new Error('Usage: import-uscis-h1b.js --official | --hub <year ...> | --relink | <file.csv ...> [--allow-smaller]');
+    if (!official && !hub.length && !files.length && !args.includes('--relink') && !args.includes('--recompute')) throw new Error('Usage: import-uscis-h1b.js --official | --hub <year ...> | --relink | <file.csv ...> [--allow-smaller]');
     await mongoose.connect(process.env.MONGO_URI, { autoIndex: false, maxPoolSize: 3 });
     const db = mongoose.connection.db;
     try {
         if (args.includes('--relink')) { log({ event: 'linked', linked: await linkUscisEmployers(db) }); return; }
+        if (args.includes('--recompute')) { const meta = await recomputeUscisTotals(db, { onProgress: log }); log({ event: 'done', employers: meta.employers, linked: meta.linked }); return; }
         const inputs = official ? OFFICIAL_YEARS.map(year => ({ url: OFFICIAL_URL(year), name: path.basename(OFFICIAL_URL(year)), file: officialDir && path.join(officialDir, path.basename(OFFICIAL_URL(year))) })) : files.map(file => ({ file, name: path.basename(file) }));
         let total = 0; const years = new Set();
         // One file at a time keeps memory small; the employer summary is rebuilt once at the end.

@@ -2,7 +2,7 @@
 // fiscal year, petitioner (name, last four digits of its tax ID, mailing
 // address) and two-digit NAICS industry. Archived files report initial and
 // continuing totals; newer hub exports report six petition types, which are
-// combined into the same two totals (USCIS's own grouping).
+// combined into the same two totals (USCIS's own grouping, see INITIAL).
 const { nameKey, searchKey } = require('./employerIdentity');
 const { BoundedCache } = require('./boundedCache');
 
@@ -35,7 +35,9 @@ const industryOf = naics => INDUSTRIES.find(industry => industry.naics.includes(
 const LEGACY = { initialApprovals: 'initial approval', initialDenials: 'initial denial', continuingApprovals: 'continuing approval', continuingDenials: 'continuing denial' };
 const CATEGORIES = { newEmployment: 'new employment', newConcurrent: 'new concurrent', changeOfEmployer: 'change of employer',
     continuation: 'continuation', changeSameEmployer: 'change with same employer', amended: 'amended' };
-const INITIAL = ['newEmployment', 'newConcurrent', 'changeOfEmployer'];
+// USCIS's initial/continuing grouping: matching the hub's FY2022 rows to the archived FY2022
+// file, change-of-employer petitions are continuing and new concurrent ones initial.
+const INITIAL = ['newEmployment', 'newConcurrent'];
 const FIELDS = {
     fiscalYear: ['fiscal year'], employer: ['employer', 'employer name', 'employer petitioner name', 'petitioner name'],
     naics: ['naics', 'naics code', 'industry naics code'], taxId: ['tax id'], state: ['state', 'petitioner state'],
@@ -232,6 +234,20 @@ async function importUscisRows(db, rows, { source = null, allowSmaller = false, 
     await db.collection('discovery_state').updateOne({ _id: STATE_ID }, { $set: Object.fromEntries(Object.entries(years).map(([year, value]) => [`years.${year}`, value])) }, { upsert: true });
     if (rebuild) await rebuildUscisEmployers(db, { onProgress });
     return years;
+}
+
+// Recalculates initial/continuing totals of rows that keep the six petition
+// types (after a change to INITIAL), then each year's summary and the employers.
+async function recomputeUscisTotals(db, { onProgress = () => {} } = {}) {
+    const sum = (fields, key) => ({ $add: fields.map(field => `$categories.${field}.${key}`) });
+    const result = await db.collection(ROWS).updateMany({ categories: { $exists: true } }, [{ $set: {
+        initialApprovals: sum(INITIAL, 'approvals'), initialDenials: sum(INITIAL, 'denials'),
+        continuingApprovals: sum(CONTINUING, 'approvals'), continuingDenials: sum(CONTINUING, 'denials') } }]);
+    const years = await db.collection(ROWS).aggregate([{ $group: { _id: '$fiscalYear', ...Object.fromEntries(Object.keys(LEGACY).map(field => [field, { $sum: '$' + field }])) } }]).toArray();
+    await db.collection('discovery_state').updateOne({ _id: STATE_ID }, { $set: Object.fromEntries(years.flatMap(({ _id, ...totals }) =>
+        Object.entries(totals).map(([field, value]) => [`years.${_id}.${field}`, value]))) });
+    await onProgress({ event: 'uscis-recomputed', rows: result.modifiedCount });
+    return rebuildUscisEmployers(db, { onProgress });
 }
 
 // Older files cut names at about 34 characters. A cut name joins the longer
@@ -463,5 +479,5 @@ async function getUscisStatus(db) {
 }
 
 module.exports = { ROWS, EMPLOYERS, STATE_ID, OFFICIAL_URL, OFFICIAL_YEARS, PARTIAL_YEARS, INDUSTRIES, industryOf, expanded,
-    parseUscisFile, parseUscisStream, HUB_CSV_URL, importUscisRows, rebuildUscisEmployers, linkUscisEmployers, ensureUscisIndexes,
+    parseUscisFile, parseUscisStream, HUB_CSV_URL, importUscisRows, recomputeUscisTotals, rebuildUscisEmployers, linkUscisEmployers, ensureUscisIndexes,
     getUscisOverview, listUscisEmployers, uscisForIdentity, getUscisStatus, clearUscisCache: () => cache.clear() };

@@ -98,5 +98,11 @@ test('USCIS petition decisions import, group, link to employers and answer queri
     assert.equal(status.job.state, 'ready');
     assert.deepEqual(status.years.map(year => [year.fiscalYear, year.partial, year.source.official]), [[2016, false, true], [2022, false, true], [2023, true, true], [2025, false, false]]);
     const globex = await db.collection(uscis.EMPLOYERS).findOne({ _id: 'globex systems inc' });
+    // FY2025: new employment 4 and new concurrent 1 (initial); continuation 2 (continuing).
     assert.deepEqual(globex.years.map(year => [year.fiscalYear, year.initialApprovals, year.continuingApprovals]), [[2022, 10, 0], [2025, 5, 2]]);
+
+    // Recomputing from stored petition types reproduces the same totals and leaves archived rows alone.
+    await db.collection(uscis.ROWS).updateOne({ fiscalYear: 2025 }, { $set: { initialApprovals: 99 } });
+    await uscis.recomputeUscisTotals(db);
+    assert.deepEqual((await db.collection(uscis.EMPLOYERS).findOne({ _id: 'globex systems inc' })).years.map(year => [year.fiscalYear, year.initialApprovals, year.continuingApprovals]), [[2022, 10, 0], [2025, 5, 2]]);
 });
