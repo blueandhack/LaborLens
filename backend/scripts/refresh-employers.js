@@ -1,6 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { searchIndexes, programs } = require('../services/searchConfig');
+const { ensureSearchIndex } = require('../services/indexHints');
 const { normalizeWorksites } = require('../services/worksites');
 const { randomUUID } = require('node:crypto');
 const { refreshDirectory, refreshFeatured } = require('../services/employers');
@@ -35,11 +36,10 @@ async function main() {
         if (args.includes('--worksites')) await run.step('Worksite search fields');
         for (const program of args.includes('--worksites') ? ['h1b', 'pwd', 'perm'] : []) {
             const Model = models[program];
-            for (const index of searchIndexes(program).filter(index => index.name.startsWith('discovery_'))) await Model.collection.createIndex(index.key, { name: index.name });
+            for (const index of searchIndexes(program).filter(index => index.name.startsWith('discovery_'))) await ensureSearchIndex(Model.collection, index);
             const processed = await normalizeWorksites(Model, program, { signal: controller.signal, onProgress: log });
             for (const index of searchIndexes(program).filter(index => index.name.startsWith('search_worksite_'))) {
-                log({ event: 'index', program, index: index.name });
-                await Model.collection.createIndex(index.key, { name: index.name, partialFilterExpression: index.partialFilterExpression });
+                log({ event: 'index', program, index: index.name, result: await ensureSearchIndex(Model.collection, index) });
             }
             await db.collection('discovery_state').updateOne({ _id: 'worksites' }, { $set: { [`programs.${program}`]: { ready: true, updatedAt: new Date() } } }, { upsert: true });
             log({ event: 'worksites-ready', program, processed });

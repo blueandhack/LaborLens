@@ -1,5 +1,6 @@
 const { resolveSearch, metadataStages } = require('./caseSearch');
 const { indexNames } = require('./searchConfig');
+const { hintFor } = require('./indexHints');
 const { BoundedCache } = require('./boundedCache');
 
 const cache = new BoundedCache({ capacity: 32, ttlMs: 60000 });
@@ -66,7 +67,7 @@ async function computeInsights(Model, program, input, { maxTimeMS = 5000, signal
             const remaining = deadline - Date.now();
             if (remaining < 1) throw Object.assign(new Error('Insights timed out'), { status: 503 });
             const [result] = await Model.collection.aggregate(pipeline, {
-                hint, maxTimeMS: remaining, signal, allowDiskUse: false, comment: 'laborlens-search-insights',
+                hint: await hintFor(Model.collection, hint), maxTimeMS: remaining, signal, allowDiskUse: false, comment: 'laborlens-search-insights',
             }).toArray();
             if (result.outcomes.length > 1000) throw Object.assign(new Error('Too many distinct statuses. Narrow this search.'), { status: 503 });
             totalCount += result.total[0]?.count || 0;

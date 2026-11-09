@@ -2,6 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { programs, indexNames } = require('./searchConfig');
 const { fields: worksiteFields, stringExpression } = require('./worksites');
 const { employerPlaces } = require('./map');
+const { hintFor } = require('./indexHints');
 const { idFor, slugFor, searchKey, nameKey, NAME_VERSION, findIdentity, ensureIdentityIndexes } = require('./employerIdentity');
 const VERSION = 1;
 // Case links use the reported name's own slug; profile routes redirect any
@@ -95,7 +96,7 @@ async function refreshDirectory(db, models, { signal, onProgress = () => {} } = 
             { $match: { [config.company]: { $type: 'string', $ne: '' } } },
             { $project: { _id: 1, [config.company]: 1, [config.date]: 1 } },
             { $group: { _id: '$' + config.company, count: { $sum: 1 }, caseId: { $first: '$_id' }, latest: { $max: '$' + config.date } } },
-        ], { hint: indexNames.company, allowDiskUse: true, maxTimeMS: 60 * 60 * 1000, batchSize: 250, signal,
+        ], { hint: await hintFor(Model.collection, indexNames.company), allowDiskUse: true, maxTimeMS: 60 * 60 * 1000, batchSize: 250, signal,
             comment: 'laborlens-employer-directory' });
         let batch = [], processed = 0;
         async function flush() {
@@ -173,11 +174,11 @@ async function computeProfile(db, models, identity, { maxTimeMS = 12000, signal 
     for (const [program, info] of Object.entries(identity.programs || {})) {
         if (!info?.count || !models[program]) continue;
         const [summary] = await models[program].collection.aggregate(profilePipeline(program, keys), {
-            hint: indexNames.company, maxTimeMS, allowDiskUse: false, signal, comment: 'laborlens-employer-profile',
+            hint: await hintFor(models[program].collection, indexNames.company), maxTimeMS, allowDiskUse: false, signal, comment: 'laborlens-employer-profile',
         }).toArray();
         const recent = await models[program].collection.find({ [programs[program].company]: Array.isArray(keys) ? { $in: keys } : keys }, {
             projection: Object.fromEntries(programs[program].fields.map(field => [field, 1])), maxTimeMS: 2000, signal,
-        }).sort({ [programs[program].date]: -1, _id: 1 }).hint(indexNames.company).limit(5).toArray();
+        }).sort({ [programs[program].date]: -1, _id: 1 }).hint(await hintFor(models[program].collection, indexNames.company)).limit(5).toArray();
         // Worksite metros are an enhancement: a slow or failed breakdown never blocks the profile.
         const places = await employerPlaces(db, models[program], program, keys, { maxTimeMS, signal })
             .catch(error => { if (signal?.aborted) throw error; console.error('Employer worksite map failed:', error.message); return null; });

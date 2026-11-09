@@ -3,6 +3,9 @@ const { BoundedCache } = require('./boundedCache');
 const { findIdentity, identityForQuery, profileSlugs, slugFor } = require('./employerIdentity');
 const { groupForQuery } = require('./employerGroups');
 const { stateValues } = require('./geo');
+const { hintFor } = require('./indexHints');
+// Runs a query with its physical index hint, in the same tick when the name is known.
+const withHint = (collection, hint, run) => { const name = hintFor(collection, hint); return name instanceof Promise ? name.then(run) : run(name); };
 
 const counts = new BoundedCache();
 const employerGroups = new BoundedCache({ capacity: 256, ttlMs: 60000 });
@@ -33,7 +36,7 @@ function constrained(spec, ...conditions) {
 async function selectionCount(collection, spec, signal) {
     const count = async (query, hint) => {
         const rows = await collection.aggregate([...metadataStages(spec, query, hint), { $count: 'total' }],
-            { hint, maxTimeMS: QUERY_MS, signal }).toArray();
+            { hint: await hintFor(collection, hint), maxTimeMS: QUERY_MS, signal }).toArray();
         return rows[0]?.total || 0;
     };
     if (!spec.branches) return count(spec.query, spec.hint);
@@ -100,14 +103,14 @@ async function certificationIds(collection, spec, signal) {
                 { $unionWith: { coll: spec.config.collection, pipeline: stream(current, 'current') } },
                 { $sort: { _certificationSort: spec.direction, _id: -spec.direction } },
                 { $facet: { page: [{ $skip: spec.skip }, { $limit: spec.limit }], counts: [{ $group: { _id: '$_branch', count: { $sum: 1 } } }] } },
-            ], { hint: certificateHint, maxTimeMS: remaining(), allowDiskUse: true, signal }).toArray();
+            ], { hint: await hintFor(collection, certificateHint), maxTimeMS: remaining(), allowDiskUse: true, signal }).toArray();
             const counts = Object.fromEntries(result.counts.map(row => [row._id, row.count]));
             let complete = true;
             for (const [name, branch] of [['original', original], ['current', current]]) {
                 if ((counts[name] || 0) >= end) continue;
                 if (bounds[name] === undefined) {
                     const leading = metadataStages(branch, branch.query, branch.hint)[0].$match;
-                    bounds[name] = await collection.countDocuments(leading, { hint: branch.hint, maxTimeMS: remaining(), signal });
+                    bounds[name] = await collection.countDocuments(leading, { hint: await hintFor(collection, branch.hint), maxTimeMS: remaining(), signal });
                 }
                 if (window < bounds[name]) complete = false;
             }
@@ -123,7 +126,7 @@ async function certificationIds(collection, spec, signal) {
                 { $regexMatch: { input: { $ifNull: ['$CASE_STATUS', ''] }, regex: certified } }, '$DECISION_DATE', '$ORIGINAL_CERT_DATE',
             ] } } }, { $match: { _certificationSort: dateRange() } },
             { $sort: { _certificationSort: spec.direction, _id: -spec.direction } }, { $skip: spec.skip }, { $limit: spec.limit },
-        ], { hint: certificateHint, maxTimeMS: QUERY_MS, allowDiskUse: true, signal }).toArray();
+        ], { hint: await hintFor(collection, certificateHint), maxTimeMS: QUERY_MS, allowDiskUse: true, signal }).toArray();
     }
     const undated = { $nor: [{ CASE_STATUS: certified, DECISION_DATE: dateRange() },
         { CASE_STATUS: { $not: certified }, ORIGINAL_CERT_DATE: dateRange() }] };
@@ -277,16 +280,17 @@ function buildSearch(program, input, group = null) {
         sort, sortKey, sortField, direction, employerGroup };
 }
 
-function pageIds(collection, query, spec, signal, hint, skip = spec.skip, limit = spec.limit) {
+async function pageIds(collection, query, spec, signal, hint, skip = spec.skip, limit = spec.limit) {
+    const physical = await hintFor(collection, hint);
     const complex = spec.forceMetadata || spec.filters.location || spec.filters.worksite || spec.filters.worksiteState || (spec.filters.company || spec.filters.employer || spec.filters.employerGroup) && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
         || spec.filters.jobTitle && (spec.filters.receivedYear || spec.filters.caseNumber);
     if (complex && hint && hint !== 'CASE_NUMBER_1') {
         return collection.aggregate([...metadataStages(spec, query, hint, true), { $sort: spec.sort },
             { $skip: skip }, { $limit: limit }, { $project: sortProjection(spec) }],
-        { hint, maxTimeMS: QUERY_MS, signal, allowDiskUse: true }).toArray();
+        { hint: physical, maxTimeMS: QUERY_MS, signal, allowDiskUse: true }).toArray();
     }
     return collection.find(query, { projection: sortProjection(spec),
-        maxTimeMS: QUERY_MS, signal, allowDiskUse: true, ...(hint ? { hint } : {}) })
+        maxTimeMS: QUERY_MS, signal, allowDiskUse: true, ...(hint ? { hint: physical } : {}) })
         .sort(spec.sort).skip(skip).limit(limit).toArray();
 }
 
@@ -349,10 +353,10 @@ async function totalFor(Model, program, spec) {
     const count = async (query, hint) => {
         const condition = query.$and?.length === 1 && query.$and[0];
         if (!hint || condition && !condition.$or && !Object.values(condition)[0].$in) {
-            return collection.countDocuments(query, { maxTimeMS: QUERY_MS, ...(hint ? { hint } : {}) });
+            return withHint(collection, hint, physical => collection.countDocuments(query, { maxTimeMS: QUERY_MS, ...(hint ? { hint: physical } : {}) }));
         }
-        const rows = await collection.aggregate([...metadataStages(spec, query, hint), { $count: 'total' }],
-            { hint, maxTimeMS: QUERY_MS }).toArray();
+        const rows = await withHint(collection, hint, physical => collection.aggregate([...metadataStages(spec, query, hint), { $count: 'total' }],
+            { hint: physical, maxTimeMS: QUERY_MS }).toArray());
         return rows[0]?.total || 0;
     };
     return counts.get(countKey(program, spec), async () => {
@@ -405,7 +409,7 @@ async function selectIds(collection, selection, totalCount, signal) {
                 const window = Math.min(20000, Math.max(5000, (spec.skip + selection.limit) * 100));
                 ids = await collection.aggregate([stages[0], { $sort: spec.sort }, { $limit: window }, stages[1], stages[2],
                     { $skip: spec.skip }, { $limit: selection.limit }, { $project: sortProjection(spec) }],
-                { hint: recentHint, maxTimeMS: 500, signal }).toArray();
+                { hint: await hintFor(collection, recentHint), maxTimeMS: 500, signal }).toArray();
                 if (ids.length < (totalCount === null ? selection.limit : Math.min(selection.limit, totalCount - spec.skip))) ids = undefined;
             } catch (error) {
                 if (error.code !== 50 || signal?.aborted) throw error;

@@ -70,3 +70,19 @@ Run the backend suite with `MONGO_TEST_URI` pointing to a test MongoDB 9 server.
 Deferred-total regression tests also verify that cases return while a count is blocked, only one extra ID is used for Next, final/empty/outside pages remain distinct, simultaneous count work is bounded and coalesced, and separate count endpoints preserve the existing filter semantics. Browser checks exercise delayed/failed totals, retry, stale responses, pagination during counting, and responsive states from 320 to 3440 pixels for PWD, PERM, and H-1B.
 
 References: [MongoDB prefix regex indexes](https://www.mongodb.com/docs/manual/reference/operator/query/regex/), [MongoDB index sorting](https://www.mongodb.com/docs/manual/tutorial/sort-results-with-indexes/), [driver cancellation](https://www.mongodb.com/docs/drivers/node/current/crud/query/cursor/), [Traefik compression](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/compress/).
+
+## Compressed search indexes
+
+Search indexes use zstd block compression (`storageEngine: block_compressor=zstd`; MongoDB
+otherwise stores index pages uncompressed). On a 100k-case H-1B sample this cut index
+storage from 148 MB to 53 MB with no measurable change in query time.
+
+Index keys end with `_ZSTD_INDEX: 1`, a field no case has. MongoDB rejects two indexes with
+equal keys, so the field lets each compressed version be built beside the uncompressed
+version it replaces (`legacyIndexNames` in `services/searchConfig.js`).
+
+`node scripts/compress-indexes.js` replaces them one at a time: build the new index, wait 45s,
+drop the old one. It stops if free disk is under 3 GiB plus the old index's size. Meanwhile
+`services/indexHints.js` hints the new index once `$indexStats` shows it fully built (checked
+every 30s) and the previous version until then, so searches keep working. The nightly worksite
+step and `scripts/search-indexes.js` do not build a new index while its previous version exists.

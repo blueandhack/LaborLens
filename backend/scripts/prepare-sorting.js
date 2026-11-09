@@ -1,6 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { searchIndexes } = require('../services/searchConfig');
+const { ensureSearchIndex } = require('../services/indexHints');
 const { ensureEmployerIndexes } = require('../services/employers');
 
 async function main() {
@@ -10,7 +11,7 @@ async function main() {
         await ensureEmployerIndexes(mongoose.connection.db);
         for (const index of searchIndexes('h1b').filter(index => index.name.startsWith('search_certification_'))) {
             console.log(JSON.stringify({ at: new Date().toISOString(), event: 'building', index: index.name }));
-            await mongoose.connection.db.collection('h1bcases').createIndex(index.key, { name: index.name });
+            await ensureSearchIndex(mongoose.connection.db.collection('h1bcases'), index);
             console.log(JSON.stringify({ at: new Date().toISOString(), event: 'ready', index: index.name }));
         }
     } finally { await mongoose.disconnect(); }

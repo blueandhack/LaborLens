@@ -1,3 +1,5 @@
+const { indexNames } = require('./searchConfig');
+const { hintFor } = require('./indexHints');
 const fields = {
     h1b: { city: ['WORKSITE_CITY', 'WORKSITE_CITY_1', 'LCA_CASE_WORKLOC1_CITY', 'CITY_1', 'WORK_LOCATION_CITY1'], state: ['WORKSITE_STATE', 'WORKSITE_STATE_1', 'LCA_CASE_WORKLOC1_STATE', 'STATE_1', 'WORK_LOCATION_STATE1'] },
     pwd: { city: ['PRIMARY_WORKSITE_CITY', 'WORKSITE_CITY'], state: ['PRIMARY_WORKSITE_STATE', 'WORKSITE_STATE'] },
@@ -28,7 +30,7 @@ async function normalizeWorksites(Model, program, { signal, onProgress = () => {
     while (true) {
         signal?.throwIfAborted();
         const rows = await Model.collection.find({ _DISCOVERY_VERSION: null }, { projection, signal })
-            .hint('discovery_version_v1').limit(5000).batchSize(5000).toArray();
+            .hint(await hintFor(Model.collection, indexNames.discovery)).limit(5000).batchSize(5000).toArray();
         if (!rows.length) return processed;
         // JavaScript case-folding matches the importer, including non-ASCII
         // place names. A concurrent updated import (version 1) wins atomically.

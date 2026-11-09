@@ -24,12 +24,26 @@ const programs = {
 };
 
 const indexNames = {
-    certification: 'search_certification_v1',
-    certificationCompany: 'search_certification_company_v1', certificationTitle: 'search_certification_title_v1',
-    recent: 'search_recent_v4', company: 'search_company_v3', title: 'search_title_v3',
-    city: 'search_city_v3', state: 'search_state_v3', received: 'search_received_v3',
-    worksiteCity: 'search_worksite_city_v1', worksiteState: 'search_worksite_state_v1',
-    worksiteRecent: 'search_worksite_recent_v1',
+    certification: 'search_certification_v2',
+    certificationCompany: 'search_certification_company_v2', certificationTitle: 'search_certification_title_v2',
+    recent: 'search_recent_v5', company: 'search_company_v4', title: 'search_title_v4',
+    city: 'search_city_v4', state: 'search_state_v4', received: 'search_received_v4',
+    worksiteCity: 'search_worksite_city_v2', worksiteState: 'search_worksite_state_v2',
+    worksiteRecent: 'search_worksite_recent_v2', discovery: 'discovery_version_v2',
+};
+// Search indexes store zstd-compressed pages (about a third of the uncompressed
+// size; see docs/performance.md). Each replaces the uncompressed previous version
+// below. MongoDB rejects two indexes with equal keys, so new keys end with a field
+// no case has; it lets both versions exist while one replaces the other.
+const INDEX_STORAGE = { wiredTiger: { configString: 'block_compressor=zstd' } };
+const INDEX_VERSION_FIELD = '_ZSTD_INDEX';
+const legacyIndexNames = {
+    search_certification_v2: 'search_certification_v1', search_certification_company_v2: 'search_certification_company_v1',
+    search_certification_title_v2: 'search_certification_title_v1', search_recent_v5: 'search_recent_v4',
+    search_company_v4: 'search_company_v3', search_title_v4: 'search_title_v3', search_city_v4: 'search_city_v3',
+    search_state_v4: 'search_state_v3', search_received_v4: 'search_received_v3', search_worksite_city_v2: 'search_worksite_city_v1',
+    search_worksite_state_v2: 'search_worksite_state_v1', search_worksite_recent_v2: 'search_worksite_recent_v1',
+    discovery_version_v2: 'discovery_version_v1',
 };
 
 function searchIndexes(program) {
@@ -48,7 +62,7 @@ function searchIndexes(program) {
         })) : []),
         ...(program === 'h1b' ? [{ name: indexNames.certification, key: { ORIGINAL_CERT_DATE: -1, _id: 1,
             ...Object.fromEntries([...filters, 'DECISION_DATE', '_WORKSITE_CITY_LOWER', '_WORKSITE_STATE_LOWER', 'CASE_STATUS'].map(field => [field, 1])) } }] : []),
-        { name: 'discovery_version_v1', key: { _DISCOVERY_VERSION: 1, _id: 1 } },
+        { name: indexNames.discovery, key: { _DISCOVERY_VERSION: 1, _id: 1 } },
         { name: indexNames.worksiteRecent, key: { ...sort, ...Object.fromEntries(filters.map(field => [field, 1])), _WORKSITE_CITY_LOWER: 1, _WORKSITE_STATE_LOWER: 1, CASE_STATUS: 1 },
             partialFilterExpression: { $or: [{ _WORKSITE_CITY_LOWER: { $gt: '' } }, { _WORKSITE_STATE_LOWER: { $gt: '' } }] } },
         ...[['worksiteCity', '_WORKSITE_CITY_LOWER'], ['worksiteState', '_WORKSITE_STATE_LOWER']].map(([name, field]) => ({
@@ -62,11 +76,14 @@ function searchIndexes(program) {
                 name === 'company' || name === 'title' ? [...filters, 'CASE_STATUS'] : name === 'received' ? []
                     : [config.city, config.state, 'RECEIVED_DATE', 'CASE_NUMBER', 'CASE_STATUS']),
         })),
-    ];
+    ].map(index => ({ ...index, key: { ...index.key, [INDEX_VERSION_FIELD]: 1 }, storageEngine: INDEX_STORAGE }));
 }
+
+// createIndex options for a searchIndexes() entry.
+const indexOptions = ({ name, partialFilterExpression, storageEngine }) => ({ name, ...(partialFilterExpression ? { partialFilterExpression } : {}), ...(storageEngine ? { storageEngine } : {}) });
 
 function addSearchIndexes(schema, program) {
-    for (const { name, key, partialFilterExpression } of searchIndexes(program)) schema.index(key, { name, ...(partialFilterExpression ? { partialFilterExpression } : {}) });
+    for (const index of searchIndexes(program)) schema.index(index.key, indexOptions(index));
 }
 
-module.exports = { programs, indexNames, searchIndexes, addSearchIndexes };
+module.exports = { programs, indexNames, legacyIndexNames, searchIndexes, indexOptions, addSearchIndexes };

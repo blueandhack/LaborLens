@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildSearch, searchCases, countCases, invalidateCounts } = require('../services/caseSearch');
 const { BoundedCache } = require('../services/boundedCache');
+const { indexNames } = require('../services/searchConfig');
 
 test('search bounds page size and rejects malformed filters instead of unbounded queries', () => {
     for (const input of [{ limit: '0' }, { limit: '10000' }, { page: '-1' }, { page: '1e100' },
@@ -31,7 +32,7 @@ test('employer matching handles Synthropic punctuation variants without losing a
         const pattern = new RegExp(expression, 'u');
         for (const name of ['synthropic, inc.', 'synthropic inc', 'synthropic-inc']) assert(pattern.test(name));
         assert.equal(pattern.test('another synthropic inc'), false);
-        assert.equal(spec.hint, 'search_company_v3');
+        assert.equal(spec.hint, indexNames.company);
     }
     assert.equal(buildSearch('h1b', { company: '.*' }).query.$and[0].EMPLOYER_NAME_LOWER.$regex, '^\\.\\*');
     assert.equal(buildSearch('h1b', { jobTitle: 'C++' }).query.$and[0].JOB_TITLE_LOWER.$regex, '^c\\+\\+');

@@ -4,6 +4,7 @@
 const { programs, indexNames } = require('./searchConfig');
 const { BoundedCache } = require('./boundedCache');
 const geo = require('./geo');
+const { hintFor } = require('./indexHints');
 
 const MAP_VERSION = 1;
 const MIN_OCCUPATION = 50, MAX_OCCUPATIONS = 300;
@@ -250,7 +251,7 @@ async function employerPlaces(db, Model, program, keys, { maxTimeMS = 12000, sig
         { $match: { [config.company]: Array.isArray(keys) ? { $in: keys } : keys } },
         { $project: { _id: 0, ...projection } },
         { $group: { _id: Object.fromEntries(Object.keys(projection).map(key => [key, '$' + key])), n: { $sum: 1 } } },
-    ], { hint: indexNames.company, maxTimeMS, allowDiskUse: false, signal, comment: 'laborlens-employer-places' });
+    ], { hint: await hintFor(Model.collection, indexNames.company), maxTimeMS, allowDiskUse: false, signal, comment: 'laborlens-employer-places' });
     for await (const row of cursor) slice.add(geo.locate(row._id, cities), row.n, geo.wageLevel(row._id.l), row._id.b);
     const document = slice.document(program, 'all', 'all', null);
     return { total: document.total, located: document.located,

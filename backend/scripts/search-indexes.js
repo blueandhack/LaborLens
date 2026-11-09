@@ -1,6 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { programs, searchIndexes } = require('../services/searchConfig');
+const { programs, searchIndexes, legacyIndexNames } = require('../services/searchConfig');
+const { ensureSearchIndex } = require('../services/indexHints');
 
 async function main() {
     const args = process.argv.slice(2);
@@ -28,11 +29,16 @@ async function main() {
                         throw new Error(`Missing ${config.collection}.${index.name}`);
                     }
                 } else {
-                    console.log(`Ensuring ${config.collection}.${index.name}`);
-                    await collection.createIndex(index.key, { name: index.name, ...(index.partialFilterExpression ? { partialFilterExpression: index.partialFilterExpression } : {}) });
+                    console.log(`Ensuring ${config.collection}.${index.name}: ${await ensureSearchIndex(collection, index)}`);
                 }
             }
             if (args.includes('--prune-obsolete')) {
+                // Uncompressed previous versions, once their replacement is built.
+                const current = new Set((await collection.indexes()).map(index => index.name));
+                for (const index of desired) {
+                    const legacy = legacyIndexNames[index.name];
+                    if (legacy && current.has(legacy) && current.has(index.name)) { console.log(`Removing replaced ${config.collection}.${legacy}`); await collection.dropIndex(legacy); }
+                }
                 const names = new Set(['_id_', 'CASE_NUMBER_1', ...desired.map(index => index.name)]);
                 // Restrict cleanup to the old search indexes owned by this app.
                 const oldFields = new Set([config.company, config.employer, config.city, config.state,
