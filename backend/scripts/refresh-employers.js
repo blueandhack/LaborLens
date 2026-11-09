@@ -4,10 +4,11 @@ const { searchIndexes, programs } = require('../services/searchConfig');
 const { normalizeWorksites } = require('../services/worksites');
 const { randomUUID } = require('node:crypto');
 const { refreshDirectory, refreshFeatured } = require('../services/employers');
+const { refreshIdentities } = require('../services/employerIdentity');
 const log = value => console.log(JSON.stringify({ time: new Date().toISOString(), ...value }));
 async function main() {
     const args = process.argv.slice(2);
-    if (args.some(arg => !['--worksites', '--directory', '--profiles'].includes(arg))) throw new Error('Usage: refresh-employers.js [--worksites] [--directory] [--profiles]');
+    if (args.some(arg => !['--worksites', '--directory', '--identities', '--profiles'].includes(arg))) throw new Error('Usage: refresh-employers.js [--worksites] [--directory] [--identities] [--profiles]');
     if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
     const controller = new AbortController();
     const stop = () => controller.abort(new Error('Employer refresh interrupted'));
@@ -37,6 +38,8 @@ async function main() {
             log({ event: 'worksites-ready', program, processed });
         }
         if (!args.length || args.includes('--directory')) await refreshDirectory(db, models, { signal: controller.signal, onProgress: log });
+        // Identities follow the directory: they combine its reported names (and their counts).
+        if (!args.length || args.includes('--directory') || args.includes('--identities')) await refreshIdentities(db, models, { signal: controller.signal, onProgress: log });
         if (!args.length || args.includes('--profiles')) await refreshFeatured(db, models, { signal: controller.signal, onProgress: log });
     } finally {
         clearInterval(heartbeat);

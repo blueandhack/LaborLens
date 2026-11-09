@@ -1,4 +1,4 @@
-const { buildSearch, metadataStages } = require('./caseSearch');
+const { resolveSearch, metadataStages } = require('./caseSearch');
 const { indexNames } = require('./searchConfig');
 const { BoundedCache } = require('./boundedCache');
 
@@ -7,8 +7,8 @@ const SCHEMA_VERSION = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 let active = false;
 
-function insightsSpec(program, input = {}) {
-    return buildSearch(program, { ...input, page: '1', limit: '20' });
+function insightsSpec(Model, program, input = {}) {
+    return resolveSearch(Model, program, { ...input, page: '1', limit: '20' });
 }
 
 function insightsPipeline(spec, query = spec.query, selectedHint, exclude) {
@@ -52,7 +52,7 @@ async function computeInsights(Model, program, input, { maxTimeMS = 5000, signal
     if (active) throw Object.assign(new Error('Insights are busy. Try again in a moment.'), { status: 503 });
     active = true;
     try {
-        const spec = insightsSpec(program, input);
+        const spec = await insightsSpec(Model, program, input);
         // City and state are disjoint covered streams. Exclude city matches
         // from the state stream so overlapping prefixes count each case once.
         const scans = spec.branches ? [
@@ -88,7 +88,7 @@ async function computeInsights(Model, program, input, { maxTimeMS = 5000, signal
 }
 
 async function getSearchInsights(Model, program, input, { signal } = {}) {
-    const spec = insightsSpec(program, input);
+    const spec = await insightsSpec(Model, program, input);
     signal?.throwIfAborted();
     const unfiltered = !Object.values(spec.filters).some(Boolean);
     if (unfiltered) {

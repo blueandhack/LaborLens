@@ -6,7 +6,8 @@ const mongoose = require('mongoose');
 const { acquireImportLock } = require('../services/importLock');
 const { invalidateCache } = require('./search');
 const { noteInsightsChange } = require('../services/searchInsights');
-const { profileSlugFor: slugFor, clearEmployerProgram } = require('../services/employers');
+const { clearEmployerProgram } = require('../services/employers');
+const { profileSlugs } = require('../services/employerIdentity');
 const { programs } = require('../services/searchConfig');
 
 router.get('/:id', async (req, res) => {
@@ -16,7 +17,7 @@ router.get('/:id', async (req, res) => {
             const item = await Model.findById(req.params.id).lean().maxTimeMS(5000);
             if (item) {
                 const key = item[programs[program].company] || item[programs[program].employer]?.toLowerCase();
-                return res.set('Cache-Control', 'public, max-age=60').json({ ...item, _PROGRAM: program, EMPLOYER_PROFILE_SLUG: key ? slugFor(key) : null });
+                return res.set('Cache-Control', 'public, max-age=60').json({ ...item, _PROGRAM: program, EMPLOYER_PROFILE_SLUG: key ? (await profileSlugs(Model.db.db, [key]))(key) : null });
             }
         }
         res.status(404).json({ error: 'Case not found' });

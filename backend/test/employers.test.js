@@ -30,3 +30,30 @@ test('exact reported names do not broaden into prefixes and worksite queries kee
     assert.throws(() => buildSearch('pwd', { worksite: ['$ne'] }), error => error.status === 400);
     assert.equal(buildSearch('h1b', { employer: ' Amazon.com Services LLC\t' }).query.$and[0].EMPLOYER_NAME_LOWER, ' amazon.com services llc\t');
 });
+
+test('identity names normalize spelling and abbreviations but keep the legal form', () => {
+    const { nameKey, normalizeFein, feinLinks } = require('../services/employerIdentity');
+    for (const variant of ['COGNIZANT TECHNOLOGY SOLUTIONS U.S. CORPORATION', 'Cognizant Technology Solutions US Corp.', ' cognizant technology solutions us corporation\t'])
+        assert.equal(nameKey(variant), 'cognizant technology solutions us corp');
+    assert.equal(nameKey('Tech Mahindra ( Americas),Inc.'), nameKey('tech mahindra (americas) inc'));
+    assert.equal(nameKey('Ernst &Young U.S. LLP'), nameKey('ernst and young us llp'));
+    assert.equal(nameKey('The Société Générale'), nameKey('societe generale'));
+    assert.equal(nameKey('IBM India Pvt. Ltd.'), nameKey('ibm india private limited'));
+    assert.notEqual(nameKey('Acme Widgets LLC'), nameKey('Acme Widgets, Inc.'));
+    assert.notEqual(nameKey('Infosys BPM Limited'), nameKey('Infosys Limited'));
+    assert.equal(normalizeFein('20-1665019'), '201665019');
+    for (const invalid of ['000000000', '123456789', '12-34', null]) assert.equal(normalizeFein(invalid), null);
+    const row = (name, fein, count, zips) => ({ nameKey: name, fein, count, zips });
+    const { links, umbrellas } = feinLinks([
+        row('facebook inc', '20-1665019', 1, ['94025']), row('facebook inc', '99-0000001', 0, []),
+        row('meta platforms inc', '201665019', 500, ['94025']),
+        row('typo inc', '201665019', 2, ['10001']),
+        row('big a inc', '30-0000001', 40, ['11111']), row('big b inc', '30-0000001', 30, ['22222']),
+        row('fmr llc', '04-3532603', 3126, ['2210']), row('fmr llc dba fidelity investments', '043532603', 918, ['02210']),
+        row('mostly other inc', '201665019', 3, ['94025']), row('mostly other inc', '40-0000001', 7, ['94025']),
+        ...Array.from({ length: 7 }, (_, i) => row(`campus ${i}`, '50-0000001', 3, ['33333'])),
+    ]);
+    const pairs = links.map(link => [link.a, link.b].sort().join(' + ')).sort();
+    assert.deepEqual(pairs, ['facebook inc + meta platforms inc', 'fmr llc + fmr llc dba fidelity investments'], 'volume without a shared ZIP is not a link');
+    assert.deepEqual(umbrellas.map(item => item.fein), ['500000001']);
+});

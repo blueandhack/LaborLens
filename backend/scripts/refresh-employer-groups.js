@@ -1,7 +1,8 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { groups, groupForId } = require('../services/employerGroups');
-const { computeProfile } = require('../services/employers');
+const { computeProfile, cacheIdFor } = require('../services/employers');
+const { findIdentity } = require('../services/employerIdentity');
 
 async function main() {
     if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
@@ -17,10 +18,10 @@ async function main() {
         const db = mongoose.connection.db, models = require('../models/programModels');
         for (const group of selected) {
             controller.signal.throwIfAborted();
-            const employer = await db.collection('employers').findOne({ _id: group.id });
-            if (!employer) throw new Error(`Employer directory is missing ${group.name}`);
-            const snapshot = await computeProfile(db, models, employer, { maxTimeMS: 120000, signal: controller.signal });
-            console.log(JSON.stringify({ group: group.name, cache: snapshot._id, updatedAt: snapshot.updatedAt,
+            const identity = await findIdentity(db, group.id);
+            if (!identity) throw new Error(`Employer identities are missing ${group.name}; run refresh-employers.js --identities first`);
+            const snapshot = await computeProfile(db, models, identity, { maxTimeMS: 120000, signal: controller.signal });
+            console.log(JSON.stringify({ group: group.name, cache: snapshot._id, expected: cacheIdFor(identity), names: identity.keys.length, updatedAt: snapshot.updatedAt,
                 counts: Object.fromEntries(Object.entries(snapshot.summaries).map(([program, value]) => [program, value.totalCount])) }));
         }
     } finally {

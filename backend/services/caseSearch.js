@@ -1,9 +1,10 @@
 const { programs, indexNames } = require('./searchConfig');
 const { BoundedCache } = require('./boundedCache');
-const { profileSlugFor: slugFor } = require('./employers');
-const { groupForId, groupForQuery } = require('./employerGroups');
+const { findIdentity, identityForQuery, profileSlugs, slugFor } = require('./employerIdentity');
+const { groupForQuery } = require('./employerGroups');
 
 const counts = new BoundedCache();
+const employerGroups = new BoundedCache({ capacity: 256, ttlMs: 60000 });
 const QUERY_MS = 10000;
 let activeCounts = 0;
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -148,6 +149,25 @@ async function sortedIds(collection, spec, totalCount, signal) {
         constrained(spec, { [spec.sortField]: { $not: dateRange() } }), signal);
 }
 
+// Resolves employerGroup (an identity ID or included reported-name ID), or a
+// typed complete reviewed name, to the identity's exact reported names.
+async function resolveEmployerGroup(db, input) {
+    const id = text(input, 'employerGroup'), company = text(input, 'company');
+    if (text(input, 'employer') || !id && !(company && groupForQuery(company))) return null;
+    if (!db) throw Object.assign(new Error('Employer groups require a database connection'), { status: 503 });
+    return employerGroups.get(JSON.stringify([db.databaseName, id, id ? '' : company]), async () => {
+        const identity = id ? await findIdentity(db, id) : await identityForQuery(db, company);
+        return identity ? { id: identity._id, key: identity.key, name: identity.name, slug: identity.slug || slugFor(identity.key), keys: identity.keys } : null;
+    });
+}
+
+// Synchronous unless an employer group must be read, preserving the scheduling
+// of ordinary searches (counts start in the same tick as their request).
+function resolveSearch(Model, program, input) {
+    const needsGroup = !text(input, 'employer') && (text(input, 'employerGroup') || groupForQuery(text(input, 'company')));
+    return needsGroup ? resolveEmployerGroup(Model.db?.db, input).then(group => buildSearch(program, input, group)) : buildSearch(program, input);
+}
+
 function employerPrefix(value) {
     const parts = value.toLowerCase().match(/[\p{L}\p{N}]+/gu);
     // Retain a literal leading prefix for the existing employer index. Treat
@@ -176,7 +196,7 @@ function insensitivePrefix(value) {
     return { $in: prefixes.map(prefix => new RegExp(`^${escapeRegex(prefix)}`)) };
 }
 
-function buildSearch(program, input) {
+function buildSearch(program, input, group = null) {
     const config = programs[program];
     if (!config) throw badRequest('Invalid case program');
     const sortKey = text(input, 'sort') || 'event_desc';
@@ -193,8 +213,9 @@ function buildSearch(program, input) {
     const conditions = [];
     const prefix = value => ({ $regex: `^${escapeRegex(value.toLowerCase())}` });
     if (filters.employer && filters.employerGroup) throw badRequest('Choose either an employer group or an exact reported name');
-    let employerGroup = filters.employerGroup ? groupForId(filters.employerGroup) : !filters.employer ? groupForQuery(filters.company) : undefined;
-    if (filters.employerGroup && !employerGroup) throw badRequest('Unknown verified employer group');
+    // An employer identity (resolved by resolveEmployerGroup) combines its reported filing names.
+    if (filters.employerGroup && !group) throw badRequest('Unknown employer group');
+    const employerGroup = filters.employer ? null : group;
     if (employerGroup) { filters.employerGroup = employerGroup.id; conditions.push({ [config.company]: { $in: employerGroup.keys } }); }
     else if (filters.employer) conditions.push({ [config.company]: filters.employer.toLowerCase() });
     else if (filters.company) conditions.push({ [config.company]: employerPrefix(filters.company) });
@@ -243,7 +264,7 @@ function buildSearch(program, input) {
             ? location.map(branch => ({ $and: [...conditions, branch] })) : null,
         branchHints: filters.worksite ? [indexNames.worksiteCity, indexNames.worksiteState] : [indexNames.city, indexNames.state],
         intersection: location ? { $and: [...conditions, ...location] } : null,
-        sort, sortKey, sortField, direction };
+        sort, sortKey, sortField, direction, employerGroup };
 }
 
 function pageIds(collection, query, spec, signal, hint, skip = spec.skip, limit = spec.limit) {
@@ -347,7 +368,8 @@ async function totalFor(Model, program, spec) {
 
 async function countCases(Model, program, input, { signal } = {}) {
     signal?.throwIfAborted();
-    const totalCount = await totalFor(Model, program, buildSearch(program, input));
+    const resolving = resolveSearch(Model, program, input);
+    const totalCount = await totalFor(Model, program, resolving instanceof Promise ? await resolving : resolving);
     signal?.throwIfAborted();
     return { totalCount };
 }
@@ -387,7 +409,8 @@ async function selectIds(collection, selection, totalCount, signal) {
 async function searchCases(Model, program, input, { signal } = {}) {
     signal?.throwIfAborted();
     if (input.count !== undefined && !['deferred', 'exact'].includes(input.count)) throw badRequest('Invalid count mode');
-    const spec = buildSearch(program, input);
+    const resolving = resolveSearch(Model, program, input);
+    const spec = resolving instanceof Promise ? await resolving : resolving;
     const { config, page, limit } = spec;
     const collection = Model.collection;
     const deferred = input.count === 'deferred';
@@ -409,9 +432,11 @@ async function searchCases(Model, program, input, { signal } = {}) {
         { projection, maxTimeMS: QUERY_MS, signal }).toArray() : [];
     const byId = new Map(rows.map(row => [String(row._id), row]));
     const cases = ids.map(row => byId.get(String(row._id))).filter(Boolean);
+    const keyOf = row => row[config.company] || row[config.employer]?.toLowerCase();
+    const profileSlug = await profileSlugs(Model.db?.db, cases.map(keyOf));
     for (const row of cases) {
-        const key = row[config.company] || row[config.employer]?.toLowerCase();
-        if (typeof key === 'string' && key) row.EMPLOYER_PROFILE_SLUG = slugFor(key);
+        const key = keyOf(row);
+        if (typeof key === 'string' && key) row.EMPLOYER_PROFILE_SLUG = profileSlug(key);
         delete row[config.company];
     }
     if (program === 'perm' && cases.length) {
@@ -427,9 +452,10 @@ async function searchCases(Model, program, input, { signal } = {}) {
                 PWD_RECEIVED_DATE: match.RECEIVED_DATE, PWD_EXPIRATION_DATE: match.PWD_WAGE_EXPIRATION_DATE });
         }
     }
-    const group = groupForId(spec.filters.employerGroup);
-    return { cases, ...(group ? { employerGroup: { id: group.id, name: group.name, slug: slugFor(group.key), names: group.keys.length } } : {}), totalPages: knownTotal === null ? null : Math.ceil(knownTotal / limit), currentPage: page, totalCount: knownTotal,
+    const group = spec.employerGroup;
+    return { cases, ...(group ? { employerGroup: { id: group.id, name: group.name, slug: group.slug, names: group.keys.length } } : {}), totalPages: knownTotal === null ? null : Math.ceil(knownTotal / limit), currentPage: page, totalCount: knownTotal,
         ...(deferred ? { hasNextPage } : {}) };
 }
 
-module.exports = { buildSearch, insensitivePrefix, searchCases, countCases, metadataStages, invalidateCounts: () => counts.clear() };
+module.exports = { buildSearch, resolveSearch, resolveEmployerGroup, insensitivePrefix, searchCases, countCases, metadataStages,
+    invalidateCounts: () => { counts.clear(); employerGroups.clear(); } };

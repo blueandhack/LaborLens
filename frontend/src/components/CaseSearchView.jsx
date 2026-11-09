@@ -64,7 +64,7 @@ function SearchFilters({
         <div className="field-employer"><EmployerAutocomplete id="search-company" value={draft.company || draft.employer || ''}
           onChange={company => { setDraft(values => ({ ...values, company, employer: '', employerGroup: '' })); setSelectedEmployer(null); }}
           onSelect={employer => { setDraft(values => ({ ...values, company: employer.name.slice(0, 160), employer: employer.groupId ? '' : employer.key, employerGroup: employer.groupId || '' })); setSelectedEmployer(employer); }} />
-          {(draft.employer || draft.employerGroup) && <p className="selected-employer-link">{draft.employerGroup ? 'Matching verified filing-name variants.' : 'Matching this reported name exactly.'}{selectedEmployer && <> <Link to={'/employers/' + selectedEmployer.slug}>View employer profile</Link></>}</p>}
+          {(draft.employer || draft.employerGroup) && <p className="selected-employer-link">{draft.employerGroup ? 'Matching every combined filing name for this employer.' : 'Matching this reported name exactly.'}{selectedEmployer && <> <Link to={'/employers/' + selectedEmployer.slug}>View employer profile</Link></>}</p>}
         </div>
         <label htmlFor="search-job">
           Job title
@@ -481,10 +481,10 @@ export default function CaseSearchView({ program }) {
               className="filter-chip"
               key={key}
               onClick={() => update({ ...filters, [key]: "", ...(['employer', 'employerGroup'].includes(key) ? { company: '', employer: '', employerGroup: '' } : {}) }, 1)}
-              aria-label={`Remove ${filterLabels[key]} filter ${key === 'employerGroup' ? filters.company || 'verified filing names' : value}`}
+              aria-label={`Remove ${filterLabels[key]} filter ${key === 'employerGroup' ? filters.company || 'combined filing names' : value}`}
             >
               <span>
-                {filterLabels[key]}: {key === 'employerGroup' ? filters.company || data?.employerGroup?.name || 'Verified filing names' : value}
+                {filterLabels[key]}: {key === 'employerGroup' ? filters.company || data?.employerGroup?.name || 'Combined filing names' : value}
               </span>
               <FiX aria-hidden="true" />
             </button>
@@ -494,7 +494,7 @@ export default function CaseSearchView({ program }) {
           </button>
         </div>
       )}
-      {data?.employerGroup && <p className="inline-notice">Matching {data.employerGroup.names} verified filing names for {data.employerGroup.name}. <Link to={'/employers/' + data.employerGroup.slug}>View combined profile and source names</Link></p>}
+      {data?.employerGroup && <p className="inline-notice">Matching {data.employerGroup.names} combined filing names for {data.employerGroup.name}. <Link to={'/employers/' + data.employerGroup.slug}>View combined profile and source names</Link></p>}
       <div className="results-toolbar" id="search-results">
         <div className="results-summary" aria-live="polite" aria-atomic="true">
           <h3 ref={resultsHeading} tabIndex={-1}>

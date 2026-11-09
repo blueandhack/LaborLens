@@ -2,7 +2,7 @@ const express = require('express');
 const { readFile } = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
-const { getProfile, suggestions, publicEmployer, listEmployers, cacheIdFor, profileSlugFor } = require('../services/employers');
+const { getProfile, suggestions, publicEmployer, listEmployers, cacheIdFor, featuredEmployers } = require('../services/employers');
 let renderer;
 async function renderDocument(url, profile, employers) {
     renderer ||= import(pathToFileURL(path.resolve(__dirname, '../../frontend/dist-ssr/entry-server.js')).href);
@@ -23,7 +23,7 @@ function createEmployerRoutes({ db, models, render = renderDocument }) {
         try {
             if (req.query.directory === '1') return res.set('Cache-Control', 'public, max-age=30').json(await listEmployers(db(), req.query));
             const employers = req.query.q !== undefined ? await suggestions(db(), req.query.q)
-                : (await db().collection('employers').find({ featured: true }, { maxTimeMS: 1000 }).sort({ featuredRank: 1 }).limit(20).toArray()).map(publicEmployer);
+                : (await featuredEmployers(db(), 20)).map(publicEmployer);
             res.set('Cache-Control', 'public, max-age=30').json({ employers });
         } catch (error) { next(error); }
     });
@@ -46,10 +46,10 @@ function createEmployerRoutes({ db, models, render = renderDocument }) {
     });
     pages.get('/sitemap.xml', async (_req, res, next) => {
         try {
-            const rows = await db().collection('employers').find({ featured: true }).sort({ featuredRank: 1 }).limit(100).toArray();
+            const rows = await featuredEmployers(db(), 100);
             const documents = await db().collection('employer_profiles').find({ _id: { $in: rows.map(cacheIdFor) } }, { projection: { updatedAt: 1 } }).toArray();
             const updated = new Map(documents.map(row => [row._id, row.updatedAt]));
-            const xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + [...new Map(rows.map(row => [profileSlugFor(row.key), row])).values()].filter(row => updated.has(cacheIdFor(row))).map(row => `<url><loc>https://laborlens.fyi/employers/${profileSlugFor(row.key)}</loc><lastmod>${updated.get(cacheIdFor(row)).toISOString()}</lastmod></url>`).join('') + '</urlset>';
+            const xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + [...new Map(rows.map(row => [row.slug, row])).values()].filter(row => updated.has(cacheIdFor(row))).map(row => `<url><loc>https://laborlens.fyi/employers/${row.slug}</loc><lastmod>${updated.get(cacheIdFor(row)).toISOString()}</lastmod></url>`).join('') + '</urlset>';
             res.type('application/xml').set('Cache-Control', 'public, max-age=300').send(xml);
         } catch (error) { next(error); }
     });
