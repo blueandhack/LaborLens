@@ -27,7 +27,7 @@ spec:
           - name: refresh
             image: ghcr.io/blueandhack/laborlens-backend:3c5867cef6c38555afd962b7d4e5376c76a78265
             imagePullPolicy: Always
-            command: ["node", "scripts/refresh-employers.js", "--worksites", "--directory", "--profiles"]
+            command: ["node", "scripts/refresh-employers.js", "--worksites", "--directory", "--map", "--profiles"]
             env:
             - name: MONGO_URI
               value: "mongodb://laborlens-mongodb:27017/pwd_cases"

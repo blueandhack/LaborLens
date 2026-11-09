@@ -2,6 +2,7 @@ const { programs, indexNames } = require('./searchConfig');
 const { BoundedCache } = require('./boundedCache');
 const { findIdentity, identityForQuery, profileSlugs, slugFor } = require('./employerIdentity');
 const { groupForQuery } = require('./employerGroups');
+const { stateValues } = require('./geo');
 
 const counts = new BoundedCache();
 const employerGroups = new BoundedCache({ capacity: 256, ttlMs: 60000 });
@@ -63,7 +64,7 @@ async function certificationIds(collection, spec, signal) {
         // not require scanning millions of California applications.
         current.hint = certificateHint; current.branches = null; current.intersection = null; current.skipTrial = true;
     }
-    if (!current.hint || current.hint === indexNames.received) current.hint = spec.filters.worksite ? indexNames.worksiteRecent : indexNames.recent;
+    if (!current.hint || current.hint === indexNames.received) current.hint = spec.filters.worksite || spec.filters.worksiteState ? indexNames.worksiteRecent : indexNames.recent;
     const original = constrained({ ...spec, branches: null, intersection: null, hint: certificateHint,
         sort: { ORIGINAL_CERT_DATE: spec.direction, _id: -spec.direction }, sortField: 'ORIGINAL_CERT_DATE',
         recentHint: certificateHint === indexNames.certification ? indexNames.certification : undefined,
@@ -130,7 +131,7 @@ async function certificationIds(collection, spec, signal) {
     if (certificateHint === indexNames.certification && !rows.length && !spec.skip) {
         // Empty/sparse location and case-number searches should establish that
         // absence through their prefix index, rather than scan all history.
-        if (spec.filters.worksite || spec.filters.location) missing = constrained(spec, undated);
+        if (spec.filters.worksite || spec.filters.worksiteState || spec.filters.location) missing = constrained(spec, undated);
         else if (spec.filters.caseNumber) missing.hint = 'CASE_NUMBER_1';
     }
     return appendUndated(collection, spec, rows, async () => {
@@ -204,7 +205,7 @@ function buildSearch(program, input, group = null) {
     const direction = sortKey.endsWith('_asc') ? 1 : -1;
     const sortField = sortKey.startsWith('received_') ? 'RECEIVED_DATE' : config.date;
     const sort = { [sortField]: direction, ...(sortField !== config.date ? { [config.date]: direction } : {}), _id: -direction };
-    const filters = Object.fromEntries(['company', 'employer', 'employerGroup', 'location', 'worksite', 'caseNumber', 'jobTitle', config.year, 'receivedYear']
+    const filters = Object.fromEntries(['company', 'employer', 'employerGroup', 'location', 'worksite', 'worksiteState', 'caseNumber', 'jobTitle', config.year, 'receivedYear']
         .map(field => [field, text(input, field)]));
     const page = input.page === undefined ? 1 : Number(text(input, 'page'));
     const limit = input.limit === undefined ? 20 : Number(text(input, 'limit'));
@@ -237,11 +238,18 @@ function buildSearch(program, input, group = null) {
     const employerLocation = filters.location ? [
         { [config.city]: prefix(filters.location) }, { [config.state]: insensitivePrefix(filters.location) },
     ] : null;
-    const location = filters.worksite ? [
+    // A worksite state is an exact state (postal code or name, as reported).
+    // With a state, the worksite text matches the worksite city only.
+    const worksiteStates = filters.worksiteState ? stateValues(filters.worksiteState) : null;
+    if (filters.worksiteState && !worksiteStates) throw badRequest('Invalid worksiteState');
+    if (worksiteStates) { filters.worksiteState = filters.worksiteState.toUpperCase(); conditions.push({ _WORKSITE_STATE_LOWER: { $in: worksiteStates, $gt: '' } }); }
+    const cityOnly = Boolean(filters.worksite && worksiteStates);
+    if (cityOnly) conditions.push({ _WORKSITE_CITY_LOWER: { ...prefix(filters.worksite), $gt: '' } });
+    const location = filters.worksite && !cityOnly ? [
         { _WORKSITE_CITY_LOWER: { ...prefix(filters.worksite), $gt: '' } },
         { _WORKSITE_STATE_LOWER: { ...prefix(filters.worksite), $gt: '' } },
     ] : employerLocation;
-    if (filters.worksite && employerLocation) conditions.push({ $or: employerLocation });
+    if (filters.worksite && !cityOnly && employerLocation) conditions.push({ $or: employerLocation });
     for (const [parameter, field] of [[config.year, config.date], ['receivedYear', 'RECEIVED_DATE']]) {
         const value = filters[parameter];
         if (!value) continue;
@@ -255,6 +263,8 @@ function buildSearch(program, input, group = null) {
     else if (filters.jobTitle) hint = indexNames.title;
     else if (filters.caseNumber.length >= 10) hint = 'CASE_NUMBER_1';
     else if (filters.receivedYear) hint = indexNames.received;
+    else if (cityOnly && !location) hint = indexNames.worksiteCity;
+    else if (worksiteStates && !location) hint = indexNames.worksiteState;
     else if (!location) hint = indexNames.recent;
     const worksitePrefix = program === 'h1b' && filters.worksite && (filters.employer || filters.employerGroup || filters.company || filters.jobTitle);
     if (worksitePrefix) hint = filters.employer || filters.employerGroup || filters.company ? indexNames.certificationCompany : indexNames.certificationTitle;
@@ -262,13 +272,13 @@ function buildSearch(program, input, group = null) {
     return { config, query, filters, hint, page, limit, skip: (page - 1) * limit,
         branches: location && !worksitePrefix && (filters.worksite || !filters.company && !filters.employer && !filters.employerGroup && !filters.jobTitle && filters.caseNumber.length < 10)
             ? location.map(branch => ({ $and: [...conditions, branch] })) : null,
-        branchHints: filters.worksite ? [indexNames.worksiteCity, indexNames.worksiteState] : [indexNames.city, indexNames.state],
+        branchHints: filters.worksite && !cityOnly ? [indexNames.worksiteCity, indexNames.worksiteState] : [indexNames.city, indexNames.state],
         intersection: location ? { $and: [...conditions, ...location] } : null,
         sort, sortKey, sortField, direction, employerGroup };
 }
 
 function pageIds(collection, query, spec, signal, hint, skip = spec.skip, limit = spec.limit) {
-    const complex = spec.forceMetadata || spec.filters.location || spec.filters.worksite || (spec.filters.company || spec.filters.employer || spec.filters.employerGroup) && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
+    const complex = spec.forceMetadata || spec.filters.location || spec.filters.worksite || spec.filters.worksiteState || (spec.filters.company || spec.filters.employer || spec.filters.employerGroup) && (spec.filters.jobTitle || spec.filters.receivedYear || spec.filters.caseNumber)
         || spec.filters.jobTitle && (spec.filters.receivedYear || spec.filters.caseNumber);
     if (complex && hint && hint !== 'CASE_NUMBER_1') {
         return collection.aggregate([...metadataStages(spec, query, hint, true), { $sort: spec.sort },
@@ -386,7 +396,7 @@ async function selectIds(collection, selection, totalCount, signal) {
         // A short trial budget protects rare/historical queries; those fall back
         // to their selective prefix index.
         if (!spec.skipTrial && (spec.sortField === config.date || spec.recentHint) && hasFilters && (totalCount === null || totalCount >= 1000) && spec.skip + selection.limit <= 2000 && !spec.filters.receivedYear) {
-            const recentHint = spec.recentHint || (spec.filters.worksite ? indexNames.worksiteRecent : indexNames.recent);
+            const recentHint = spec.recentHint || (spec.filters.worksite || spec.filters.worksiteState ? indexNames.worksiteRecent : indexNames.recent);
             const stages = metadataStages(spec, query, recentHint, true);
             try {
                 // The bounded window also fences MongoDB's optimizer: without

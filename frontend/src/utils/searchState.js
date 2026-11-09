@@ -8,6 +8,7 @@ export const filterKeys = (program) => [
   "employerGroup",
   "location",
   "worksite",
+  "worksiteState",
   "caseNumber",
   "jobTitle",
   programs[program].yearKey,

@@ -5,7 +5,9 @@ import { programs } from '../utils/programs';
 import { presentCase } from '../utils/casePresentation';
 import { applyPageSEO, getEmployerSEO } from '../utils/seo';
 import NotFound from './NotFound';
+import EmployerPlaces from './EmployerPlaces';
 import './Employers.css';
+import './MapView.css';
 
 const number = value => Number(value || 0).toLocaleString('en-US');
 const date = value => value ? new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'Not yet available';
@@ -33,6 +35,7 @@ function ProgramProfile({ employer, program, summary }) {
         <p>These are the minimum and maximum reported values, not typical pay, total compensation, or verified payroll amounts.</p>
       </section>
     </div>
+    <EmployerPlaces employer={employer} program={program} places={summary.places} />
     <div className="employer-breakdowns"><RankedNames title="Common job titles" rows={summary.jobs} /><RankedNames title="Employer addresses" rows={summary.employers} locations /><RankedNames title="Reported primary worksites" rows={summary.worksites} locations /></div>
     <details className="employer-statuses"><summary>Reported case statuses</summary><dl>{summary.statuses.map((row, index) => <div key={index}><dt>{row._id || 'Not reported'}</dt><dd>{number(row.count)}</dd></div>)}</dl><p>Statuses describe DOL applications. They do not establish USCIS visa or green card approvals.</p></details>
     <section className="employer-recent"><h3>Recent {config.label} records</h3><ul>{summary.recent.map(record => { const item = presentCase(record, program); return <li key={String(record._id)}><Link to={'/cases/' + record._id} state={{ from: '/employers/' + employer.slug }}><span><strong>{item.title}</strong><small>{record.CASE_NUMBER} · {item.status}</small></span><span>{item.wage === 'N/A' ? 'Wage not reported' : item.wage}</span><span>{date(item.eventDate)}</span></Link></li>; })}</ul></section>

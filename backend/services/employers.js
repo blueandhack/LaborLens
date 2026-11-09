@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const { programs, indexNames } = require('./searchConfig');
 const { fields: worksiteFields, stringExpression } = require('./worksites');
+const { employerPlaces } = require('./map');
 const { idFor, slugFor, searchKey, nameKey, NAME_VERSION, findIdentity, ensureIdentityIndexes } = require('./employerIdentity');
 const VERSION = 1;
 // Case links use the reported name's own slug; profile routes redirect any
@@ -177,7 +178,10 @@ async function computeProfile(db, models, identity, { maxTimeMS = 12000, signal 
         const recent = await models[program].collection.find({ [programs[program].company]: Array.isArray(keys) ? { $in: keys } : keys }, {
             projection: Object.fromEntries(programs[program].fields.map(field => [field, 1])), maxTimeMS: 2000, signal,
         }).sort({ [programs[program].date]: -1, _id: 1 }).hint(indexNames.company).limit(5).toArray();
-        summaries[program] = { ...summary, totalCount: summary.total[0]?.count || 0, recent };
+        // Worksite metros are an enhancement: a slow or failed breakdown never blocks the profile.
+        const places = await employerPlaces(db, models[program], program, keys, { maxTimeMS, signal })
+            .catch(error => { if (signal?.aborted) throw error; console.error('Employer worksite map failed:', error.message); return null; });
+        summaries[program] = { ...summary, totalCount: summary.total[0]?.count || 0, recent, places };
         delete summaries[program].total;
     }
     const snapshot = { _id: cacheIdFor(identity), version: VERSION, summaries, updatedAt: new Date() };

@@ -26,6 +26,9 @@
     "unzipper": "^0.12.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "d3-geo": "^3.1.1",
+    "nodemon": "^3.1.14",
+    "topojson-client": "^3.1.0",
+    "us-atlas": "^3.0.1"
   }
 }

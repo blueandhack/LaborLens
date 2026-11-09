@@ -34,7 +34,7 @@ function searchHandler(Model, program, countOnly = false) {
         const disconnect = () => { if (!res.writableEnded) controller.abort(); };
         res.once('close', disconnect);
         try {
-            if (req.query.worksite) {
+            if (req.query.worksite || req.query.worksiteState) {
                 const status = await Model.db.collection('discovery_state').findOne({ _id: 'worksites' }, { maxTimeMS: 1000 });
                 if (!status?.programs?.[program]?.ready) return res.status(503).set('Cache-Control', 'no-store').json({ error: 'Worksite search is being prepared. You can still search employer locations.' });
             }

@@ -13,7 +13,7 @@ function insightsSpec(Model, program, input = {}) {
 
 function insightsPipeline(spec, query = spec.query, selectedHint, exclude) {
     const { config, filters } = spec;
-    const hint = selectedHint || ([indexNames.certificationCompany, indexNames.certificationTitle].includes(spec.hint) ? spec.hint : filters.caseNumber.length >= 10 ? 'CASE_NUMBER_1'
+    const hint = selectedHint || ([indexNames.certificationCompany, indexNames.certificationTitle, indexNames.worksiteCity, indexNames.worksiteState].includes(spec.hint) ? spec.hint : filters.caseNumber.length >= 10 ? 'CASE_NUMBER_1'
         : filters.company || filters.employer || filters.employerGroup ? indexNames.company : filters.jobTitle ? indexNames.title : indexNames.recent);
     const date = '$' + config.date;
     const year = { $cond: [{ $and: [

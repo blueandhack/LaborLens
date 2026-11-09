@@ -1,0 +1,42 @@
+/* Sequential blue ramp, validated as ordinal steps against each theme's surface:
+   light starts at step 300 (2.23:1 on #f5f2e7); dark ends at step 550 (2.38:1 on #1e2424).
+   Low values recede toward the surface in both themes. */
+:root {
+  --map-step-1: #1c5cab;
+  --map-step-2: #2a78d6;
+  --map-step-3: #5598e7;
+  --map-step-4: #86b6ef;
+  --map-step-5: #cde2fb;
+  --map-empty: rgba(232, 228, 214, 0.07);
+  --map-border: #1e2424;
+  --map-bubble-neutral: #5598e7;
+}
+[data-theme="light"] {
+  --map-step-1: #6da7ec;
+  --map-step-2: #3987e5;
+  --map-step-3: #256abf;
+  --map-step-4: #184f95;
+  --map-step-5: #0d366b;
+  --map-empty: rgba(28, 35, 31, 0.07);
+  --map-border: #f5f2e7;
+  --map-bubble-neutral: #256abf;
+}
+
+.us-map { display: block; width: 100%; height: auto; overflow: visible; touch-action: manipulation; }
+.us-map path { fill: var(--map-empty); stroke: var(--map-border); stroke-width: 0.9; stroke-linejoin: round; cursor: pointer; transition: fill .15s; }
+.us-map path[data-step="1"], .us-map circle[data-step="1"] { fill: var(--map-step-1); }
+.us-map path[data-step="2"], .us-map circle[data-step="2"] { fill: var(--map-step-2); }
+.us-map path[data-step="3"], .us-map circle[data-step="3"] { fill: var(--map-step-3); }
+.us-map path[data-step="4"], .us-map circle[data-step="4"] { fill: var(--map-step-4); }
+.us-map path[data-step="5"], .us-map circle[data-step="5"] { fill: var(--map-step-5); }
+.us-map path:hover { stroke: var(--text-primary); stroke-width: 1.4; }
+.us-map path.is-selected { stroke: var(--text-primary); stroke-width: 2.2; }
+/* Bubbles: a 2px surface ring separates overlapping marks. */
+.us-map circle { fill: var(--map-bubble-neutral); fill-opacity: .88; stroke: var(--map-border); stroke-width: 1.5; cursor: pointer; }
+.us-map circle[data-step="0"] { fill: var(--text-muted); fill-opacity: .5; }
+.us-map circle:hover, .us-map circle.is-selected { stroke: var(--text-primary); stroke-width: 2.2; fill-opacity: 1; }
+.us-map-compact path { cursor: default; }
+@media (forced-colors: active) {
+  .us-map path { stroke: CanvasText; }
+  .us-map circle { stroke: CanvasText; }
+}

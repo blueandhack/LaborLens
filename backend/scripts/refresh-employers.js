@@ -5,10 +5,11 @@ const { normalizeWorksites } = require('../services/worksites');
 const { randomUUID } = require('node:crypto');
 const { refreshDirectory, refreshFeatured } = require('../services/employers');
 const { refreshIdentities } = require('../services/employerIdentity');
+const { refreshMap } = require('../services/map');
 const log = value => console.log(JSON.stringify({ time: new Date().toISOString(), ...value }));
 async function main() {
     const args = process.argv.slice(2);
-    if (args.some(arg => !['--worksites', '--directory', '--identities', '--profiles'].includes(arg))) throw new Error('Usage: refresh-employers.js [--worksites] [--directory] [--identities] [--profiles]');
+    if (args.some(arg => !['--worksites', '--directory', '--identities', '--map', '--map-force', '--profiles'].includes(arg))) throw new Error('Usage: refresh-employers.js [--worksites] [--directory] [--identities] [--map | --map-force] [--profiles]');
     if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
     const controller = new AbortController();
     const stop = () => controller.abort(new Error('Employer refresh interrupted'));
@@ -40,6 +41,9 @@ async function main() {
         if (!args.length || args.includes('--directory')) await refreshDirectory(db, models, { signal: controller.signal, onProgress: log });
         // Identities follow the directory: they combine its reported names (and their counts).
         if (!args.length || args.includes('--directory') || args.includes('--identities')) await refreshIdentities(db, models, { signal: controller.signal, onProgress: log });
+        // The map skips programs whose cases are unchanged since its last build.
+        // Profiles follow it: their worksite maps use the map's learned city areas.
+        if (!args.length || args.includes('--map') || args.includes('--map-force')) await refreshMap(db, models, { signal: controller.signal, onProgress: log, force: args.includes('--map-force') });
         if (!args.length || args.includes('--profiles')) await refreshFeatured(db, models, { signal: controller.signal, onProgress: log });
     } finally {
         clearInterval(heartbeat);

@@ -14,6 +14,7 @@ import {
   FiBarChart2,
 } from "react-icons/fi";
 import CaseResults from "./CaseResults";
+import { STATES, stateName } from "../utils/states";
 import EmployerAutocomplete from './EmployerAutocomplete';
 import "./CaseSearchView.css";
 import { programs } from "../utils/programs";
@@ -79,7 +80,7 @@ function SearchFilters({
           />
         </label>
         <label htmlFor="search-worksite">Worksite location
-          <input id="search-worksite" name="worksite" className="search-input" placeholder={worksiteReady ? 'Primary worksite city or state' : 'Worksite search preparing…'}
+          <input id="search-worksite" name="worksite" className="search-input" placeholder={!worksiteReady ? 'Worksite search preparing…' : draft.worksiteState ? 'Primary worksite city' : 'Primary worksite city or state'}
             value={draft.worksite || ''} onChange={edit('worksite')} disabled={!worksiteReady} autoComplete="off" />
         </label>
         <label htmlFor="search-location">
@@ -100,13 +101,14 @@ function SearchFilters({
           className="advanced-search"
           open={Boolean(
             initialValues.caseNumber ||
+            initialValues.worksiteState ||
             initialValues[yearKey] ||
             initialValues.receivedYear,
           )}
         >
           <summary>
             <FiSliders aria-hidden="true" />
-            Case number and dates
+            Case number, dates and worksite state
           </summary>
           <div className="advanced-search-fields">
             <label htmlFor="search-case">
@@ -145,6 +147,14 @@ function SearchFilters({
                       {year}
                     </option>
                   ))}
+              </select>
+            </label>
+            <label htmlFor="search-worksite-state">
+              Worksite state
+              <select id="search-worksite-state" name="worksiteState" className="search-input" value={draft.worksiteState || ''}
+                onChange={edit("worksiteState")} disabled={!worksiteReady}>
+                <option value="">Any state</option>
+                {STATES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
               </select>
             </label>
             <label htmlFor="search-received-year">
@@ -200,7 +210,7 @@ function SearchFilters({
       <p className="search-hint">
         Search by the beginning of a name, title, city, or case number. Employer names tolerate punctuation and spacing differences. Combine
         fields to narrow your results.
-        {' '}Employer location is the business address; worksite location is the reported primary worksite. Missing worksites are not inferred.
+        {' '}Employer location is the business address; worksite location is the reported primary worksite. With a worksite state selected, worksite location matches the city. Missing worksites are not inferred.
       </p>
     </form>
   );
@@ -261,7 +271,8 @@ export default function CaseSearchView({ program }) {
     employer: "Reported name",
     employerGroup: "Employer",
     location: "Location",
-    worksite: "Worksite",
+    worksite: filters.worksiteState ? "Worksite city" : "Worksite",
+    worksiteState: "Worksite state",
     caseNumber: "Case",
     jobTitle: "Job",
     determinationYear: "Determined",
@@ -484,7 +495,7 @@ export default function CaseSearchView({ program }) {
               aria-label={`Remove ${filterLabels[key]} filter ${key === 'employerGroup' ? filters.company || 'combined filing names' : value}`}
             >
               <span>
-                {filterLabels[key]}: {key === 'employerGroup' ? filters.company || data?.employerGroup?.name || 'Combined filing names' : value}
+                {filterLabels[key]}: {key === 'employerGroup' ? filters.company || data?.employerGroup?.name || 'Combined filing names' : key === 'worksiteState' ? stateName(value) : value}
               </span>
               <FiX aria-hidden="true" />
             </button>

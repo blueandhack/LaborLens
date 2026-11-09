@@ -155,3 +155,15 @@
 .employer-group-evidence { display: grid; gap: 12px; padding-left: 18px; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .employer-directory-list .employer-group-link { color: var(--focus-ring); font-size: 12px; }
 @media (max-width: 680px) { .employer-name-breakdown > li { grid-template-columns: minmax(0, 1fr); } }
+
+.employer-places { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: clamp(24px, 3vw, 56px); margin-top: 40px; padding-top: 32px; border-top: 1px solid var(--border-color); align-items: start; }
+.employer-places h3 { font-size: 16px; margin: 0 0 6px; }
+.employer-places-map > p:not(.employer-chart-note) { color: var(--text-secondary); font-size: 13px; margin: 0 0 12px; }
+.employer-places-list ol { list-style: none; margin: 8px 0 0; padding: 0; }
+.employer-places-list li { border-bottom: 1px solid var(--border-color); padding-block: 8px; display: grid; gap: 2px; }
+.employer-places-list li a { display: flex; justify-content: space-between; gap: 16px; color: var(--text-primary); text-decoration: none; min-height: 32px; align-items: center; }
+.employer-places-list li a:hover span { color: var(--focus-ring); text-decoration: underline; }
+.employer-places-list li span { overflow-wrap: anywhere; font-size: 14px; }
+.employer-places-list li strong { font-variant-numeric: tabular-nums; font-weight: 500; }
+.employer-places-list li small, .employer-places-list > p { color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+@media (max-width: 1000px) { .employer-places { grid-template-columns: minmax(0, 1fr); } }
