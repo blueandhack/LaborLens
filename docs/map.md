@@ -56,3 +56,11 @@ O*NET 2010→2019 and 2009→2010 crosswalks (USDOL/ETA, CC BY 4.0).
 Places link to case search with `worksiteState` (exact state, matching both postal codes and names).
 With a state, the `worksite` text matches the city only. Metro links search the principal city, so suburbs
 are not included, and search does not filter by occupation.
+
+## Status
+
+The administration page's **Site data** tab (`GET /api/admin/site-status`) shows the nightly refresh run
+(current step, latest progress, recent runs and errors, recorded in `discovery_state` `refresh`), each
+program's map build (phase and occupation progress while building, recorded in `discovery_state` `map`),
+and the employer directory, identities, worksite search, insights snapshots and profile caches.
+A run or build marked running without a live `discovery_locks` lease is shown as interrupted.

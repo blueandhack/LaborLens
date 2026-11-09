@@ -154,7 +154,7 @@
     .admin-page-heading { gap: 16px; }
     .admin-page-heading p:last-child { font-size: 13px; }
     .admin-sign-out { padding: 9px 11px !important; }
-    .admin-sections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-block: 24px; }
+    .admin-sections { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-block: 24px; }
     .admin-sections button { min-width: 0; min-height: 64px; padding: 10px 5px; flex-direction: column; gap: 5px; font-size: 12px; }
     .admin-sections button span { text-wrap: balance; }
     .admin-section-heading { flex-wrap: wrap; gap: 12px; }

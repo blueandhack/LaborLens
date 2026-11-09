@@ -61,6 +61,13 @@ class Slices {
     }
 }
 
+// Build progress for the administration page: discovery_state "map".programs.<program>.
+function setStatus(db, program, fields) {
+    return db.collection('discovery_state').updateOne({ _id: 'map' }, { $set: Object.fromEntries(
+        Object.entries({ ...fields, updatedAt: new Date() }).map(([key, value]) => [`programs.${program}.${key}`, value])) }, { upsert: true })
+        .catch(error => console.error('Map status update failed:', error.message));
+}
+
 async function fingerprint(db, Model, program) {
     const [count, insights] = await Promise.all([Model.collection.estimatedDocumentCount(),
         db.collection('search_insights').findOne({ _id: program }, { projection: { revision: 1 } })]);
@@ -72,11 +79,15 @@ async function refreshProgramMap(db, Model, program, { generation, signal, onPro
     const previous = await meta.findOne({ _id: program });
     const source = await fingerprint(db, Model, program);
     if (!force && previous?.version === MAP_VERSION && previous.source?.count === source.count && previous.source?.revision === source.revision) {
+        await setStatus(db, program, { state: 'unchanged', phase: null, checkedAt: new Date() });
         await onProgress({ event: 'map-unchanged', program });
         return { program, unchanged: true };
     }
     const tmp = db.collection(`map_cells_${program}_tmp`);
     await tmp.drop().catch(() => {});
+    const startedAt = new Date();
+    await setStatus(db, program, { state: 'building', phase: 'Reducing cases to worksite cells', startedAt, checkedAt: startedAt,
+        finishedAt: null, error: null, cells: null, completed: null, of: null, cases: source.count });
     try {
         // 1. Reduce cases to distinct (ZIP, city, state, year, occupation, level, wage bin) cells.
         const projection = geo.cellProjection(program, config.date);
@@ -88,7 +99,9 @@ async function refreshProgramMap(db, Model, program, { generation, signal, onPro
         ], { allowDiskUse: true, hint: { $natural: 1 }, signal, comment: 'laborlens-map-cells' }).toArray();
         signal?.throwIfAborted();
         await tmp.createIndex({ o: 1 });
-        await onProgress({ event: 'map-cells', program, cells: await tmp.estimatedDocumentCount() });
+        const cellCount = await tmp.estimatedDocumentCount();
+        await setStatus(db, program, { phase: 'Learning worksite cities', cells: cellCount });
+        await onProgress({ event: 'map-cells', program, cells: cellCount });
 
         // 2. Learn worksite cities' metros from cases that also report a ZIP code.
         const cities = new geo.CityMetros();
@@ -115,6 +128,7 @@ async function refreshProgramMap(db, Model, program, { generation, signal, onPro
             const documents = [...slices.slices].map(([year, slice]) => slice.document(program, year, slices.occupation, generation));
             if (documents.length) await stats.bulkWrite(documents.map(document => ({ replaceOne: { filter: { _id: document._id }, replacement: document, upsert: true } })), { ordered: false });
         };
+        await setStatus(db, program, { phase: 'Summarizing occupations', completed: 0, of: published.length });
         const all = new Slices(); all.occupation = 'all';
         const add = (slices, row) => {
             const location = geo.locate(row, cities), level = geo.wageLevel(row.l);
@@ -127,8 +141,12 @@ async function refreshProgramMap(db, Model, program, { generation, signal, onPro
             const slices = new Slices(); slices.occupation = entry.code;
             for await (const row of tmp.find({ o: { $in: entry.raw } }, { signal })) add(slices, row);
             await write(slices);
-            if (index % 25 === 0) await onProgress({ event: 'map-occupations', program, completed: index + 1, of: published.length });
+            if (index % 25 === 0) {
+                await setStatus(db, program, { completed: index + 1 });
+                await onProgress({ event: 'map-occupations', program, completed: index + 1, of: published.length });
+            }
         }
+        await setStatus(db, program, { phase: 'Summarizing all filings', completed: published.length });
         for await (const row of tmp.find({ o: { $nin: published.flatMap(entry => entry.raw) } }, { signal })) add(null, row);
         await write(all);
         await stats.deleteMany({ program, generation: { $ne: generation } });
@@ -143,8 +161,12 @@ async function refreshProgramMap(db, Model, program, { generation, signal, onPro
             metroLocated: [...overall.places].filter(([key]) => key[0] === 'M').reduce((sum, [, place]) => sum + place.count, 0),
             updatedAt: new Date() }, { upsert: true });
         cache.clear(); cityCache.clear();
+        await setStatus(db, program, { state: 'ready', phase: null, finishedAt: new Date(), durationMs: Date.now() - startedAt.getTime() });
         await onProgress({ event: 'map-ready', program, total: overall.total, located: overall.located, occupations: published.length });
         return { program, total: overall.total, located: overall.located };
+    } catch (error) {
+        await setStatus(db, program, { state: 'failed', phase: null, finishedAt: new Date(), error: String(error?.message || error).slice(0, 500) });
+        throw error;
     } finally {
         await tmp.drop().catch(() => {});
     }

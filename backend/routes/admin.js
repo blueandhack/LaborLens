@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const Admin = require('../models/Admin');
+const { getSiteStatus } = require('../services/siteStatus');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -131,6 +133,16 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error('Change password error:', error);
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/site-status — background refresh and summary status
+router.get('/site-status', authMiddleware, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store').json(await getSiteStatus(mongoose.connection.db));
+    } catch (error) {
+        console.error('Site status error:', error.message);
+        res.status(503).set('Cache-Control', 'no-store').json({ error: 'Site data status is temporarily unavailable.' });
     }
 });
 

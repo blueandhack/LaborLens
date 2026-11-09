@@ -6,7 +6,10 @@ const { randomUUID } = require('node:crypto');
 const { refreshDirectory, refreshFeatured } = require('../services/employers');
 const { refreshIdentities } = require('../services/employerIdentity');
 const { refreshMap } = require('../services/map');
-const log = value => console.log(JSON.stringify({ time: new Date().toISOString(), ...value }));
+const { createRunRecorder } = require('../services/siteStatus');
+let run = null;
+// Progress lines go to the job log and, throttled, to the administration page.
+const log = value => { console.log(JSON.stringify({ time: new Date().toISOString(), ...value })); return run?.event(value); };
 async function main() {
     const args = process.argv.slice(2);
     if (args.some(arg => !['--worksites', '--directory', '--identities', '--map', '--map-force', '--profiles'].includes(arg))) throw new Error('Usage: refresh-employers.js [--worksites] [--directory] [--identities] [--map | --map-force] [--profiles]');
@@ -27,7 +30,10 @@ async function main() {
             .then(result => { if (!result.matchedCount) controller.abort(new Error('Employer refresh lease lost')); })
             .catch(error => controller.abort(error)), 30000);
         heartbeat.unref();
-        if (args.includes('--worksites')) for (const program of ['h1b', 'pwd', 'perm']) {
+        run = createRunRecorder(db, args);
+        await run.start();
+        if (args.includes('--worksites')) await run.step('Worksite search fields');
+        for (const program of args.includes('--worksites') ? ['h1b', 'pwd', 'perm'] : []) {
             const Model = models[program];
             for (const index of searchIndexes(program).filter(index => index.name.startsWith('discovery_'))) await Model.collection.createIndex(index.key, { name: index.name });
             const processed = await normalizeWorksites(Model, program, { signal: controller.signal, onProgress: log });
@@ -38,13 +44,17 @@ async function main() {
             await db.collection('discovery_state').updateOne({ _id: 'worksites' }, { $set: { [`programs.${program}`]: { ready: true, updatedAt: new Date() } } }, { upsert: true });
             log({ event: 'worksites-ready', program, processed });
         }
-        if (!args.length || args.includes('--directory')) await refreshDirectory(db, models, { signal: controller.signal, onProgress: log });
+        if (!args.length || args.includes('--directory')) { await run.step('Employer directory'); await refreshDirectory(db, models, { signal: controller.signal, onProgress: log }); }
         // Identities follow the directory: they combine its reported names (and their counts).
-        if (!args.length || args.includes('--directory') || args.includes('--identities')) await refreshIdentities(db, models, { signal: controller.signal, onProgress: log });
+        if (!args.length || args.includes('--directory') || args.includes('--identities')) { await run.step('Employer identities'); await refreshIdentities(db, models, { signal: controller.signal, onProgress: log }); }
         // The map skips programs whose cases are unchanged since its last build.
         // Profiles follow it: their worksite maps use the map's learned city areas.
-        if (!args.length || args.includes('--map') || args.includes('--map-force')) await refreshMap(db, models, { signal: controller.signal, onProgress: log, force: args.includes('--map-force') });
-        if (!args.length || args.includes('--profiles')) await refreshFeatured(db, models, { signal: controller.signal, onProgress: log });
+        if (!args.length || args.includes('--map') || args.includes('--map-force')) { await run.step('Worksite map'); await refreshMap(db, models, { signal: controller.signal, onProgress: log, force: args.includes('--map-force') }); }
+        if (!args.length || args.includes('--profiles')) { await run.step('Featured employer profiles'); await refreshFeatured(db, models, { signal: controller.signal, onProgress: log }); }
+        await run?.finish();
+    } catch (error) {
+        await run?.finish(error);
+        throw error;
     } finally {
         clearInterval(heartbeat);
         await db.collection('discovery_locks').deleteOne({ _id: 'refresh', owner }).catch(() => {});

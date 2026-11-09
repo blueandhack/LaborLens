@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import AutomaticImports from './AutomaticImports';
+import SiteDataStatus from './SiteDataStatus';
 import './ImportView.css';
 import { FiUploadCloud, FiLogOut, FiSettings, FiX, FiShield, FiUnlock, FiRefreshCw, FiDatabase } from 'react-icons/fi';
 
@@ -268,9 +269,10 @@ const ImportView = () => {
             <button onClick={handleLogout} className="btn btn-secondary admin-sign-out"><FiLogOut aria-hidden="true" /> Sign out</button>
         </header>
         <nav className="admin-sections" aria-label="Administration sections">
-            {[['automatic', 'Automatic imports', <FiRefreshCw aria-hidden="true" />], ['manual', 'Manual upload', <FiUploadCloud aria-hidden="true" />], ['security', 'Access & security', <FiShield aria-hidden="true" />]].map(([id, label, icon]) => <button key={id} aria-pressed={section === id} onClick={() => setSection(id)}>{icon}<span>{label}</span></button>)}
+            {[['automatic', 'Automatic imports', <FiRefreshCw aria-hidden="true" />], ['data', 'Site data', <FiDatabase aria-hidden="true" />], ['manual', 'Manual upload', <FiUploadCloud aria-hidden="true" />], ['security', 'Access & security', <FiShield aria-hidden="true" />]].map(([id, label, icon]) => <button key={id} aria-pressed={section === id} onClick={() => setSection(id)}>{icon}<span>{label}</span></button>)}
         </nav>
 
+        {section === 'data' && <SiteDataStatus />}
         {section === 'automatic' && <AutomaticImports status={autoStatus} error={autoStatusError} refreshing={isRefreshing} onRefresh={fetchAutoStatus} />}
 
         <section aria-labelledby="manual-upload-heading" hidden={section !== 'manual'}>
