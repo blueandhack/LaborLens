@@ -15,3 +15,5 @@
 .i140-awaiting tr.is-total th, .i140-awaiting tr.is-total td { font-weight: 600; border-top: 1px solid var(--border-color-strong); }
 @media (max-width: 1000px) { .i140-breakdowns { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) { .i140-section-head label, .i140-section-head select { width: 100%; } }
+.i140-range-note { font-size: 14px; font-weight: 400; color: var(--text-secondary); }
+.i140-page .uscis-controls { gap: 16px 28px; }

@@ -127,3 +127,17 @@
 .employer-uscis-bar i.is-continuing { background: var(--uscis-continuing); }
 .employer-uscis-bar i:last-child { border-radius: 0 4px 4px 0; }
 @media (max-width: 600px) { .employer-uscis-bar { display: none; } }
+
+/* Fiscal-year range (H-1B approvals and I-140) */
+.year-range { border: 0; margin: 0; padding: 0; min-width: 0; }
+.year-range legend { font-size: 13px; font-weight: 500; margin-bottom: 8px; padding: 0; }
+.year-range-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.year-range-fields label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+.year-range-fields select { min-height: 44px; min-width: 110px; }
+.year-range-presets { display: inline-flex; border: 1px solid var(--border-color-strong); border-radius: 6px; overflow: hidden; }
+.year-range-presets button { min-height: 44px; padding: 0 12px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.year-range-presets button + button { border-left: 1px solid var(--border-color-strong); }
+.year-range-presets button:hover { background: var(--input-bg); color: var(--text-primary); }
+.year-range-presets button[aria-pressed="true"] { background: var(--btn-bg); color: var(--btn-text); }
+.year-range-presets button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+@media (max-width: 600px) { .year-range, .year-range-fields label { flex: 1 1 100%; } .year-range-fields label select { flex: 1; } }

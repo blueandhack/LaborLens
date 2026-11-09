@@ -6,6 +6,8 @@ import { STATES } from '../utils/states';
 import { compact, formatCount, formatRate } from '../utils/uscisPresentation';
 import { INCOMPLETE_SHARE, denialRate, levelOf, quarterLabel, quarterMonths, readI140State, titleCase, writeI140State } from '../utils/i140Presentation';
 import { Legend, Lines, StackedColumns } from './StatCharts';
+import YearRange from './YearRange';
+import { inRange, normalizeRange } from '../utils/yearRange';
 import './UscisView.css';
 import './I140View.css';
 
@@ -59,12 +61,18 @@ export default function I140View() {
   if (!data.available) return <article className="uscis-page">{intro}<div className="search-state"><h2>I-140 statistics are being prepared</h2><p>Please check back soon.</p></div></article>;
 
   const category = state.category, categoryLabel = data.categories.find(item => item.code === category)?.label;
-  const quarters = data.quarters.map(quarter => ({ ...quarter, values: quarter.categories[category] || {} }));
-  const latest = quarters.at(-1), fiscalYear = latest.fiscalYear;
-  const yearToDate = quarters.filter(quarter => quarter.fiscalYear === fiscalYear).reduce((sum, quarter) => {
+  // The time range covers both views: quarters (FY2022 onward) and years filed (FY2012 onward).
+  const years = [...new Set([...data.quarters.map(quarter => quarter.fiscalYear), ...data.cohorts.countries.flatMap(item => item.years)])].sort((a, b) => a - b);
+  const range = normalizeRange(years, state.from, state.to);
+  const rangeLabel = range.single ? `FY${range.from}` : `FY${range.from}–FY${range.to}`;
+  const quarters = data.quarters.filter(quarter => inRange(quarter.fiscalYear, range)).map(quarter => ({ ...quarter, values: quarter.categories[category] || {} }));
+  const latest = quarters.at(-1), fiscalYear = latest?.fiscalYear;
+  const sumOf = list => list.reduce((sum, quarter) => {
     for (const key of ['received', 'approved', 'denied']) sum[key] += quarter.values[key] || 0;
     return sum;
   }, { received: 0, approved: 0, denied: 0 });
+  const yearToDate = sumOf(quarters.filter(quarter => quarter.fiscalYear === fiscalYear));
+  const rangeTotals = sumOf(quarters);
   const quarterRows = quarters.map(quarter => ({ key: `${quarter.fiscalYear}-${quarter.quarter}`, label: quarterLabel(quarter.fiscalYear, quarter.quarter),
     title: `${quarterLabel(quarter.fiscalYear, quarter.quarter)} · ${quarterMonths(quarter.fiscalYear, quarter.quarter)}`, values: { ...quarter.values, rate: denialRate(quarter.values.approved || 0, quarter.values.denied || 0) } }));
 
@@ -72,11 +80,12 @@ export default function I140View() {
   const countries = data.cohorts.countries;
   const country = countries.find(item => item.name === state.country) || countries[0];
   const cohort = country.categories[level];
-  const cohortRows = country.years.map((year, index) => {
+  const cohortRows = country.years.map((year, index) => [year, index]).filter(([year]) => inRange(year, range)).map(([year, index]) => {
     const pending = cohort.pending[index], total = cohort.total[index] || cohort.approved[index] + cohort.denied[index] + pending;
     return { key: year, label: String(year), title: `Filed in FY${year}`, incomplete: total > 0 && pending / total > INCOMPLETE_SHARE,
       values: { approved: cohort.approved[index], denied: cohort.denied[index], pending, total, rate: denialRate(cohort.approved[index], cohort.denied[index]) } };
   });
+  const olderShown = (country.older || []).filter(item => inRange(item.year, range));
   const awaiting = data.awaiting;
   const awaitingTotal = awaiting.countries.find(row => row.name === 'Total');
   const awaitingMax = Math.max(1, ...awaiting.countries.filter(row => row.name !== 'Total').map(row => row.values.at(-1)));
@@ -87,9 +96,22 @@ export default function I140View() {
       <label htmlFor="i140-category" className="uscis-industry">Preference category<select id="i140-category" className="search-input" value={category} onChange={event => update({ category: event.target.value })}>
         {data.categories.map(item => <option key={item.code} value={item.code}>{item.level !== item.code && item.code !== 'all' ? '— ' : ''}{item.label}</option>)}
       </select></label>
+      <YearRange years={years} from={state.from} to={state.to} onChange={changes => update(changes)} />
     </form>
 
-    <section className="uscis-summary" aria-labelledby="i140-latest">
+    {!latest ? <section className="uscis-summary"><h2 id="i140-latest">{categoryLabel} · {rangeLabel}</h2>
+      <p className="uscis-note">Quarterly figures start in FY{data.quarters[0].fiscalYear}. The charts of petitions by year filed below cover {rangeLabel}.</p></section>
+    : !range.whole ? <section className="uscis-summary" aria-labelledby="i140-latest">
+      <h2 id="i140-latest">{categoryLabel} · {rangeLabel} <small className="i140-range-note">({quarterLabel(quarters[0].fiscalYear, quarters[0].quarter)} – {quarterLabel(fiscalYear, latest.quarter)})</small></h2>
+      <dl className="uscis-stats">
+        <div className="uscis-stat"><dt>Received</dt><dd>{formatCount(rangeTotals.received)}</dd><small>in {quarters.length} {quarters.length === 1 ? 'quarter' : 'quarters'}</small></div>
+        <div className="uscis-stat"><dt>Approved</dt><dd>{formatCount(rangeTotals.approved)}</dd><small>{formatCount(rangeTotals.denied)} denied</small></div>
+        <div className="uscis-stat"><dt>Denial rate</dt><dd>{formatRate(denialRate(rangeTotals.approved, rangeTotals.denied))}</dd><small>of petitions decided in this range</small></div>
+        <div className="uscis-stat"><dt>Pending</dt><dd>{formatCount(latest.values.pending)}</dd><small>at the end of {quarterLabel(fiscalYear, latest.quarter)}</small></div>
+      </dl>
+      <p className="uscis-note">Decisions in a quarter can be on petitions filed earlier. Denial rate is denied ÷ (approved + denied). USCIS fiscal years run October through September.</p>
+    </section>
+    : <section className="uscis-summary" aria-labelledby="i140-latest">
       <h2 id="i140-latest">{categoryLabel} · {quarterLabel(fiscalYear, latest.quarter)} ({quarterMonths(fiscalYear, latest.quarter)})</h2>
       <dl className="uscis-stats">
         <div className="uscis-stat"><dt>Received</dt><dd>{formatCount(latest.values.received)}</dd><small>{formatCount(yearToDate.received)} in FY{fiscalYear} so far</small></div>
@@ -98,9 +120,9 @@ export default function I140View() {
         <div className="uscis-stat"><dt>Pending</dt><dd>{formatCount(latest.values.pending)}</dd><small>awaiting a decision at quarter end</small></div>
       </dl>
       <p className="uscis-note">Decisions in a quarter can be on petitions filed earlier. Denial rate is denied ÷ (approved + denied). USCIS fiscal years run October through September.</p>
-    </section>
+    </section>}
 
-    <section className="uscis-trends" aria-labelledby="i140-quarters">
+    {quarters.length > 0 && <section className="uscis-trends" aria-labelledby="i140-quarters">
       <h2 id="i140-quarters" className="i140-section-title">Decisions by quarter</h2>
       <Legend series={[...DECISIONS, { key: 'pending', label: 'Pending', tone: 'pending' }]} />
       <div className="uscis-charts">
@@ -115,11 +137,11 @@ export default function I140View() {
         <thead><tr><th scope="col">Quarter</th><th scope="col">Received</th><th scope="col">Approved</th><th scope="col">Denied</th><th scope="col">Denial rate</th><th scope="col">Pending at end</th></tr></thead>
         <tbody>{[...quarterRows].reverse().map(row => <tr key={row.key}><th scope="row">{row.title}</th><td>{formatCount(row.values.received)}</td><td>{formatCount(row.values.approved)}</td><td>{formatCount(row.values.denied)}</td><td>{formatRate(row.values.rate)}</td><td>{formatCount(row.values.pending)}</td></tr>)}</tbody>
       </table></div></details>
-    </section>
+    </section>}
 
     <section className="uscis-trends i140-cohorts" aria-labelledby="i140-cohorts">
       <header className="i140-section-head"><div><h2 id="i140-cohorts" className="i140-section-title">What happened to petitions filed each year</h2>
-        <p className="uscis-note">Every petition filed in a fiscal year, by its status today (FY{country.years[0]}–FY{country.years.at(-1)}).{country.older?.length > 0 && ` ${country.older.map(item => `FY${item.year}`).join(' and ')} come from earlier USCIS reports (${[...new Set(country.older.map(item => item.source?.match(/FY(\d{4})/i)?.[1]).filter(Boolean))].map(year => `FY${year}`).join(', ')}) and show their status then; nearly all had been decided.`} {level !== category ? `USCIS reports this for each preference level, so this shows all of ${data.categories.find(item => item.code === level)?.label}.` : ''}</p></div>
+        <p className="uscis-note">Every petition filed in a fiscal year, by its status today ({cohortRows.length ? `FY${cohortRows[0].key}–FY${cohortRows.at(-1).key}` : rangeLabel}).{olderShown.length > 0 && ` ${olderShown.map(item => `FY${item.year}`).join(' and ')} ${olderShown.length === 1 ? 'comes' : 'come'} from earlier USCIS reports (${[...new Set(olderShown.map(item => item.source?.match(/FY(\d{4})/i)?.[1]).filter(Boolean))].map(year => `FY${year}`).join(', ')}) and ${olderShown.length === 1 ? 'shows its' : 'show their'} status then; nearly all had been decided.`} {level !== category ? `USCIS reports this for each preference level, so this shows all of ${data.categories.find(item => item.code === level)?.label}.` : ''}</p></div>
         <label htmlFor="i140-country">Country of birth<select id="i140-country" className="search-input" value={country.name} onChange={event => update({ country: event.target.value === countries[0].name ? '' : event.target.value })}>
           {countries.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label></header>
       <Legend series={OUTCOMES} extra={<li><i className="stat-swatch is-incomplete" aria-hidden="true" /><span>* Still being decided <small>(over 10% pending)</small></span></li>} />
@@ -134,7 +156,7 @@ export default function I140View() {
     </section>
 
     <section className="uscis-trends" aria-labelledby="i140-places">
-      <h2 id="i140-places" className="i140-section-title">Where petitions come from · {quarterLabel(fiscalYear, latest.quarter)}</h2>
+      <h2 id="i140-places" className="i140-section-title">Where petitions come from · {quarterLabel(data.latest.fiscalYear, data.latest.quarter)}</h2>{!range.whole && <p className="uscis-note">The latest quarter USCIS reports by state and country; the time range does not apply.</p>}
       <div className="i140-breakdowns">
         <Breakdown kind="state" title="By the worker’s state" rows={data.latest.states} category={category}
           note="The beneficiary’s U.S. state on the petition. Many EB-3 petitions are for workers abroad and have no state (Unknown)." />
@@ -161,7 +183,7 @@ export default function I140View() {
         <li><strong>Two views of the same petitions.</strong> “By quarter” counts what USCIS received and decided in each quarter, whenever the petition was filed. “By year filed” follows each fiscal year’s petitions to their current status; recent years are still being decided.</li>
         <li><strong>Pending or other</strong> includes petitions awaiting a decision and a small number with other outcomes, such as withdrawals.</li>
         <li><strong>Categories.</strong> EB-1A, EB-2 national interest waiver and some EB-1B petitions can be self-filed; the other categories are filed by employers, and most EB-2 and EB-3 petitions require an approved PERM labor certification first.</li>
-        <li><strong>Updates.</strong> USCIS revises earlier figures as cases are entered; LaborLens checks for a new quarter weekly. {compact(data.quarters.length)} quarters are shown (FY{data.quarters[0].fiscalYear} onward); earlier quarterly reports are published only as PDFs.</li>
+        <li><strong>Updates.</strong> USCIS revises earlier figures as cases are entered; LaborLens checks for a new quarter weekly. {compact(data.quarters.length)} quarters are available (FY{data.quarters[0].fiscalYear} onward); earlier quarterly reports are published only as PDFs.</li>
       </ul>
       <p>Sources: {[...data.sources, data.cohorts.source, data.awaiting.source].map((source, index) => <span key={source.name}>{index ? ' · ' : ''}{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.name}</a> : source.name}</span>)} · <a href="https://www.uscis.gov/tools/reports-and-studies/immigration-and-citizenship-data" target="_blank" rel="noreferrer">USCIS Immigration and Citizenship Data</a> · <Link to="/data">Methodology <FiArrowRight aria-hidden="true" /></Link></p>
     </section>

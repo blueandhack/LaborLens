@@ -17,8 +17,8 @@ export function getPageSEO(pathname, search = '') {
   const params = new URLSearchParams(search);
   const filtered = Boolean(program && SEARCH_RESULT_KEYS.some(key => params.get(key)) || path === '/employers' && ['q', 'sort', 'page'].some(key => params.get(key))
     || path === '/map' && ['program', 'year', 'occupation', 'metric', 'view'].some(key => params.get(key))
-    || path === '/h1b-approvals' && ['fy', 'state', 'industry', 'q', 'sort', 'page'].some(key => params.get(key))
-    || path === '/i140' && ['category', 'country'].some(key => params.get(key)));
+    || path === '/h1b-approvals' && ['from', 'to', 'fy', 'state', 'industry', 'q', 'sort', 'page'].some(key => params.get(key))
+    || path === '/i140' && ['category', 'country', 'from', 'to'].some(key => params.get(key)));
   const title = program ? `${program === 'h1b' ? 'H1B Salary Database & LCA Search' : program === 'perm' ? 'PERM Database & Employer Case Search' : 'Prevailing Wage Determination Search'} | LaborLens`
     : path === '/employers' ? 'Employer H1B, PERM & Wage Profiles | LaborLens' : path === '/map' ? 'H1B, PERM & Prevailing Wage Map by State and Metro | LaborLens' : path === '/h1b-approvals' ? 'H1B Approval & Denial Rates by Employer (USCIS Data) | LaborLens' : path === '/i140' ? 'I-140 Approval & Denial Rates, Pending Petitions and Visa Backlog | LaborLens' : path === '/data' ? 'DOL Data Sources & Methodology | LaborLens'
       : ['/admin/data', '/import'].includes(path) ? 'Administration | LaborLens'

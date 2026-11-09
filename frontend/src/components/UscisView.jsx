@@ -7,6 +7,8 @@ import {
   SERIES, USCIS_SORTS, apiQuery, coverageLabel, formatCount, formatRate, fyLabel, location, rate, readUscisState, seriesValues, writeUscisState,
 } from '../utils/uscisPresentation';
 import { ApprovalsChart, DenialRateChart, TrendTable } from './UscisCharts';
+import YearRange from './YearRange';
+import { inRange, normalizeRange } from '../utils/yearRange';
 import './UscisView.css';
 
 function useJSON(url) {
@@ -27,8 +29,8 @@ function Stat({ label, value, detail }) {
   return <div className="uscis-stat"><dt>{label}</dt><dd>{value}</dd><small>{detail}</small></div>;
 }
 
-function Employers({ state, update, industries }) {
-  const { data, error, loading, retry } = useJSON('/api/uscis-h1b/employers?' + apiQuery(state, ['fy', 'state', 'industry', 'q', 'sort', 'page']));
+function Employers({ state, update, industries, range }) {
+  const { data, error, loading, retry } = useJSON('/api/uscis-h1b/employers?' + apiQuery(state, ['from', 'to', 'state', 'industry', 'q', 'sort', 'page']));
   const [draft, setDraft] = useState(state.q);
   const [shownQ, setShownQ] = useState(state.q);
   // The URL changed (back/forward or a cleared filter): show its query in the box.
@@ -41,7 +43,7 @@ function Employers({ state, update, industries }) {
   const rows = data?.employers || [];
   return <section className="uscis-employers" aria-labelledby="uscis-employers-title">
     <header>
-      <div><h2 id="uscis-employers-title">Petitioners</h2><p>Each row combines the spellings of one petitioner name; underlined names link to the matching LaborLens employer profile.{state.fy === 'all' ? ' Rankings count every imported fiscal year, including partial ones.' : ''}</p></div>
+      <div><h2 id="uscis-employers-title">Petitioners</h2><p>Each row combines the spellings of one petitioner name; underlined names link to the matching LaborLens employer profile.{range.single ? ` Rankings cover ${fyLabel(range.from)}.` : ` Rankings cover ${fyLabel(range.from)}–${fyLabel(range.to)}${range.whole ? ', every imported fiscal year' : ''}.`}</p></div>
       <div className="uscis-employer-controls">
         <label htmlFor="uscis-search">Petitioner name<input id="uscis-search" className="search-input" type="search" value={draft} placeholder="Starts with…" autoComplete="off"
           onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') update({ q: draft, page: 1 }); }} /></label>
@@ -75,10 +77,9 @@ export default function UscisView() {
   const state = readUscisState(params);
   const update = changes => setParams(writeUscisState({ ...state, page: 1, ...changes }));
   // While a new selection loads, the previous one stays on screen (dimmed).
-  const overview = useJSON('/api/uscis-h1b?' + apiQuery(state, ['fy', 'state', 'industry']));
+  const overview = useJSON('/api/uscis-h1b?' + apiQuery(state, ['from', 'to', 'state', 'industry']));
   const data = overview.data;
   const [hover, setHover] = useState(null);
-  const selectedYear = state.fy === 'all' ? null : Number(state.fy);
 
   const intro = <header className="uscis-intro">
     <p className="section-kicker">USCIS H-1B Employer Data Hub</p>
@@ -92,21 +93,23 @@ export default function UscisView() {
   if (!data.available) return <article className="uscis-page">{intro}<div className="search-state"><h2>USCIS data is being prepared</h2><p>The H-1B Employer Data Hub files have not been imported yet. Please check back soon.</p></div></article>;
 
   const years = data.years;
-  const trend = data.trend;
+  const range = normalizeRange(years.map(year => year.fiscalYear), state.from, state.to);
+  const selectedYear = range.single ? range.from : null;
+  // One year is shown in its full trend; a range narrows the charts to it.
+  const trend = range.single ? data.trend : data.trend.filter(row => inRange(row.fiscalYear, range));
+  // Partial years noted are the ones in view.
+  const partialYears = years.filter(year => year.partial && trend.some(row => row.fiscalYear === year.fiscalYear));
   const totals = data.totals, values = seriesValues(totals);
-  const partialYears = years.filter(year => year.partial);
-  const scope = [selectedYear ? fyLabel(selectedYear) : coverageLabel(years, { excludePartial: data.totalsExcludePartial }),
+  const scope = [selectedYear ? fyLabel(selectedYear) : coverageLabel(years.filter(year => inRange(year.fiscalYear, range)), { excludePartial: data.totalsExcludePartial }),
     state.state && stateName(state.state), state.industry && data.industries.find(item => item.code === state.industry)?.label].filter(Boolean).join(' · ');
-  const filtered = state.fy !== 'all' || state.state || state.industry;
+  const filtered = !range.whole || state.state || state.industry;
   const missingRecent = years.length && years.at(-1).fiscalYear < new Date().getUTCFullYear() - 1;
 
   return <article className="uscis-page">
     {intro}
     <form className="uscis-controls" aria-label="Filter USCIS decisions" onSubmit={event => event.preventDefault()}>
-      <label htmlFor="uscis-fy">Fiscal year<select id="uscis-fy" className="search-input" value={state.fy} onChange={event => update({ fy: event.target.value })}>
-        <option value="all">All fiscal years</option>
-        {[...years].reverse().map(year => <option key={year.fiscalYear} value={year.fiscalYear}>{fyLabel(year.fiscalYear)}{year.partial ? ' (partial)' : ''}</option>)}
-      </select></label>
+      <YearRange years={years.map(year => year.fiscalYear)} from={state.from} to={state.to} onChange={changes => update(changes)}
+        format={year => `${fyLabel(year)}${years.find(item => item.fiscalYear === year)?.partial ? ' (partial)' : ''}`} />
       <label htmlFor="uscis-state">Petitioner state<select id="uscis-state" className="search-input" value={state.state} onChange={event => update({ state: event.target.value })}>
         <option value="">All states</option>
         {data.states.map(code => <option key={code} value={code}>{stateName(code)}</option>)}
@@ -136,14 +139,14 @@ export default function UscisView() {
         {partialYears.length > 0 && <li><i className="uscis-swatch is-partial" aria-hidden="true" /><strong>* Partial year</strong><span>{partialYears.map(year => year.note || `${fyLabel(year.fiscalYear)} is incomplete.`).join(' ')}</span></li>}
       </ul>
       <div className="uscis-charts">
-        <ApprovalsChart rows={trend} selected={selectedYear} hover={hover} onHover={setHover} onSelect={year => update({ fy: String(year) })} />
-        <DenialRateChart rows={trend} selected={selectedYear} hover={hover} onHover={setHover} onSelect={year => update({ fy: String(year) })} />
+        <ApprovalsChart rows={trend} selected={selectedYear} hover={hover} onHover={setHover} onSelect={year => update({ from: String(year), to: String(year) })} />
+        <DenialRateChart rows={trend} selected={selectedYear} hover={hover} onHover={setHover} onSelect={year => update({ from: String(year), to: String(year) })} />
       </div>
-      <p className="uscis-note">Select a year to filter the page. {state.state || state.industry ? 'Charts follow the state and industry filters. ' : ''}Source: USCIS H-1B Employer Data Hub.</p>
+      <p className="uscis-note">Select a year to show it alone. {state.state || state.industry ? 'Charts follow the state and industry filters. ' : ''}Source: USCIS H-1B Employer Data Hub.</p>
       <TrendTable rows={trend} />
     </section>
 
-    <Employers state={state} industries={data.industries} update={changes => setParams(writeUscisState({ ...state, ...changes }))} />
+    <Employers state={state} industries={data.industries} range={range} update={changes => setParams(writeUscisState({ ...state, ...changes }))} />
 
     <section className="uscis-method" aria-labelledby="uscis-method-title">
       <h2 id="uscis-method-title">What these numbers mean</h2>

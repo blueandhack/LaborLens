@@ -7,7 +7,7 @@ export const USCIS_SORTS = {
   denialRate: 'Highest denial rate',
   name: 'Name (A–Z)',
 };
-export const USCIS_STATE_KEYS = ['fy', 'state', 'industry', 'q', 'sort', 'page'];
+export const USCIS_STATE_KEYS = ['from', 'to', 'fy', 'state', 'industry', 'q', 'sort', 'page'];
 export const SERIES = [
   { key: 'initial', label: 'Initial', description: 'New employment and new concurrent employment' },
   { key: 'continuing', label: 'Continuing', description: 'Continuation, change of employer, change with the same employer and amended petitions' },
@@ -15,8 +15,11 @@ export const SERIES = [
 
 export function readUscisState(params) {
   const page = Number(params.get('page'));
+  const year = key => /^\d{4}$/.test(params.get(key) || '') ? params.get(key) : '';
+  // fy (a single year) is the earlier link format.
   return {
-    fy: /^\d{4}$/.test(params.get('fy') || '') ? params.get('fy') : 'all',
+    from: year('fy') || year('from'),
+    to: year('fy') || year('to'),
     state: /^[A-Z]{2}$/.test(params.get('state') || '') ? params.get('state') : '',
     industry: /^\d{2}(-\d{2})?$/.test(params.get('industry') || '') ? params.get('industry') : '',
     q: (params.get('q') || '').slice(0, 160),
@@ -28,7 +31,8 @@ export function readUscisState(params) {
 // Only non-default values go in the URL; any filter change returns to page 1.
 export function writeUscisState(state) {
   const params = new URLSearchParams();
-  if (state.fy && state.fy !== 'all') params.set('fy', state.fy);
+  if (state.from) params.set('from', state.from);
+  if (state.to) params.set('to', state.to);
   if (state.state) params.set('state', state.state);
   if (state.industry) params.set('industry', state.industry);
   if (state.q?.trim()) params.set('q', state.q.trim());

@@ -58,6 +58,14 @@ test('USCIS petition decisions import, group, link to employers and answer queri
     assert.equal((await uscis.getUscisOverview(db, { state: 'CA' })).totals.initialApprovals, 10);
     assert.equal((await uscis.getUscisOverview(db, { industry: '31-33' })).totals.initialApprovals, 10);
     await assert.rejects(uscis.getUscisOverview(db, { fy: '1999' }), { status: 400 });
+    // A range: the partial year is left out unless it is the whole selection; reversed ends are swapped.
+    const range = await uscis.getUscisOverview(db, { from: '2023', to: '2022' });
+    assert.deepEqual([range.filters.from, range.filters.to, range.filters.whole], [2022, 2023, false]);
+    assert.equal(range.totals.initialApprovals, 100 + 10 + 3 + 1 + 2);
+    assert.equal(range.totalsExcludePartial, true);
+    await assert.rejects(uscis.getUscisOverview(db, { from: '2030' }), { status: 400 });
+    assert.deepEqual((await uscis.listUscisEmployers(db, { from: '2016', to: '2016', state: 'NJ' })).employers.map(row => row.approvals), [290]);
+    assert.deepEqual((await uscis.listUscisEmployers(db, { from: '2022', to: '2023', q: 'cognizant' })).employers.map(row => row.approvals), [100 + 300 + 7 + 9]);
 
     // Employers: every-year ranking, filtered rankings, name search, denial rate, profile links.
     let list = await uscis.listUscisEmployers(db, {});

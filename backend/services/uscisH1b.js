@@ -378,18 +378,33 @@ async function meta(db) {
             .sort((a, b) => a.fiscalYear - b.fiscalYear) };
 }
 
+// A fiscal-year range (from/to; fy is a single year). Years outside the data are refused.
+function rangeOf(input, info) {
+    const known = info.years.map(year => year.fiscalYear), first = Math.min(...known), last = Math.max(...known);
+    const year = value => {
+        if (value === undefined || value === '' || value === 'all') return null;
+        const number = Number(value);
+        if (!Number.isInteger(number) || number < first || number > last) throw invalid('Unknown fiscal year');
+        return number;
+    };
+    const single = year(input.fy);
+    let from = single ?? year(input.from) ?? first, to = single ?? year(input.to) ?? last;
+    if (from > to) [from, to] = [to, from];
+    return { from, to, whole: from === first && to === last };
+}
+
 function filtersOf(input, info) {
-    const fy = input.fy === undefined || input.fy === '' || input.fy === 'all' ? null : Number(input.fy);
-    if (fy !== null && !info.years.some(year => year.fiscalYear === fy)) throw invalid('Unknown fiscal year');
+    const { from, to, whole } = rangeOf(input, info);
     const state = input.state ? String(input.state).toUpperCase() : null;
     if (state && !info.states.includes(state)) throw invalid('Unknown state');
     const industry = input.industry ? String(input.industry) : null;
     if (industry && !INDUSTRIES.some(item => item.code === industry)) throw invalid('Unknown industry');
     const q = typeof input.q === 'string' ? input.q.trim() : '';
     if (q.length > 160 || input.q !== undefined && typeof input.q !== 'string') throw invalid('Invalid employer query');
-    return { fy, state, industry, q };
+    return { from, to, whole, state, industry, q };
 }
-const rowMatch = ({ fy, state, industry }) => ({ ...(fy !== null ? { fiscalYear: fy } : {}), ...(state ? { state } : {}), ...(industry ? { industry } : {}) });
+const rowMatch = ({ from, to, whole, state, industry }) => ({ ...(!whole ? { fiscalYear: from === to ? from : { $gte: from, $lte: to } } : {}),
+    ...(state ? { state } : {}), ...(industry ? { industry } : {}) });
 const sumStage = Object.fromEntries(Object.keys(LEGACY).map(field => [field, { $sum: '$' + field }]));
 
 async function getUscisOverview(db, input = {}) {
@@ -397,13 +412,15 @@ async function getUscisOverview(db, input = {}) {
     if (!info) return { available: false, industries: INDUSTRIES.map(({ code, label }) => ({ code, label })) };
     const filters = filtersOf(input, info);
     const trend = await cache.get(`trend|${info.revision}|${filters.state}|${filters.industry}`, () => db.collection(ROWS).aggregate([
-        { $match: rowMatch({ ...filters, fy: null }) }, { $group: { _id: '$fiscalYear', ...sumStage } }, { $sort: { _id: 1 } },
+        { $match: rowMatch({ ...filters, whole: true }) }, { $group: { _id: '$fiscalYear', ...sumStage } }, { $sort: { _id: 1 } },
     ], { maxTimeMS: 15000, allowDiskUse: true }).toArray());
     const years = new Map(info.years.map(year => [year.fiscalYear, year]));
     const series = trend.map(({ _id, ...row }) => ({ fiscalYear: _id, ...row, partial: Boolean(years.get(_id)?.partial) }));
-    const selected = filters.fy === null ? series.filter(row => !row.partial || series.length === 1) : series.filter(row => row.fiscalYear === filters.fy);
+    // A partial year counts only when it is the whole selection.
+    const inRange = series.filter(row => row.fiscalYear >= filters.from && row.fiscalYear <= filters.to);
+    const selected = filters.from === filters.to ? inRange : inRange.filter(row => !row.partial);
     return { available: true, filters, years: info.years, states: info.states, industries: INDUSTRIES.map(({ code, label }) => ({ code, label })),
-        trend: series, totals: totalsOf(selected), totalsExcludePartial: filters.fy === null && selected.length < series.length,
+        trend: series, totals: totalsOf(selected), totalsExcludePartial: selected.length < inRange.length,
         employers: info.employers, linked: info.linked, updatedAt: info.updatedAt };
 }
 
@@ -422,7 +439,7 @@ async function listUscisEmployers(db, input = {}) {
     const prefixes = filters.q ? [...new Set([searchKey(filters.q), nameKey(filters.q)].filter(Boolean))].map(value => new RegExp('^' + escape(value))) : [];
     const skip = (page - 1) * PAGE_SIZE;
     const rows = await cache.get(`employers|${info.revision}|${JSON.stringify(filters)}|${sort}|${page}`, async () => {
-        if (filters.fy === null && !filters.state && !filters.industry) {
+        if (filters.whole && !filters.state && !filters.industry) {
             const query = { ...(prefixes.length ? { $or: [{ searchKey: { $in: prefixes } }, { _id: { $in: prefixes } }] } : {}), ...(sort === 'denialRate' ? { denialRate: { $ne: null } } : {}) };
             return db.collection(EMPLOYERS).find(query, { maxTimeMS: 8000 }).sort(SORTS[sort].order).skip(skip).limit(PAGE_SIZE + 1).toArray();
         }

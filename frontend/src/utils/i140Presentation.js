@@ -1,18 +1,22 @@
 // USCIS Form I-140 statistics: page state, labels and derived rates.
 export const I140_PATH = '/i140';
-export const I140_STATE_KEYS = ['category', 'country'];
+export const I140_STATE_KEYS = ['category', 'country', 'from', 'to'];
 const CATEGORY_CODES = ['all', 'eb1', 'eb1a', 'eb1b', 'eb1c', 'eb2', 'eb2a', 'niw', 'eb3', 'eb3s', 'eb3p', 'eb3u'];
 
 export function readI140State(params) {
   return {
     category: CATEGORY_CODES.includes(params.get('category')) ? params.get('category') : 'all',
     country: (params.get('country') || '').slice(0, 60),
+    from: /^\d{4}$/.test(params.get('from') || '') ? params.get('from') : '',
+    to: /^\d{4}$/.test(params.get('to') || '') ? params.get('to') : '',
   };
 }
 export function writeI140State(state) {
   const params = new URLSearchParams();
   if (state.category && state.category !== 'all') params.set('category', state.category);
   if (state.country) params.set('country', state.country);
+  if (state.from) params.set('from', state.from);
+  if (state.to) params.set('to', state.to);
   return params;
 }
 

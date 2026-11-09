@@ -4,11 +4,11 @@ import { readUscisState, writeUscisState, apiQuery, formatRate, niceMax, seriesV
 import { getPageSEO } from '../src/utils/seo.js';
 
 test('page state round-trips through the URL, keeping only non-default values', () => {
-  const state = readUscisState(new URLSearchParams('fy=2019&state=TX&industry=31-33&q=acme&sort=denialRate&page=3'));
-  assert.deepEqual(state, { fy: '2019', state: 'TX', industry: '31-33', q: 'acme', sort: 'denialRate', page: 3 });
-  assert.equal(writeUscisState(state).toString(), 'fy=2019&state=TX&industry=31-33&q=acme&sort=denialRate&page=3');
+  const state = readUscisState(new URLSearchParams('from=2019&to=2021&state=TX&industry=31-33&q=acme&sort=denialRate&page=3'));
+  assert.deepEqual(state, { from: '2019', to: '2021', state: 'TX', industry: '31-33', q: 'acme', sort: 'denialRate', page: 3 });
+  assert.equal(writeUscisState(state).toString(), 'from=2019&to=2021&state=TX&industry=31-33&q=acme&sort=denialRate&page=3');
   const defaults = readUscisState(new URLSearchParams('fy=nope&state=texas&sort=bogus&page=-2'));
-  assert.deepEqual(defaults, { fy: 'all', state: '', industry: '', q: '', sort: 'approvals', page: 1 });
+  assert.deepEqual(defaults, { from: '', to: '', state: '', industry: '', q: '', sort: 'approvals', page: 1 });
   assert.equal(writeUscisState(defaults).toString(), '');
   assert.equal(apiQuery({ ...defaults, state: 'CA' }, ['fy', 'state', 'industry']), 'state=CA');
 });
