@@ -86,3 +86,21 @@ drop the old one. It stops if free disk is under 3 GiB plus the old index's size
 `services/indexHints.js` hints the new index once `$indexStats` shows it fully built (checked
 every 30s) and the previous version until then, so searches keep working. The nightly worksite
 step and `scripts/search-indexes.js` do not build a new index while its previous version exists.
+
+## Compressed case data
+
+Case collections store their documents and indexes with zstd instead of the default snappy
+(about 40% smaller on disk). A collection's compressor is fixed when it is created, so
+`node scripts/compress-collections.js [--program perm|pwd|h1b]` rewrites each one:
+
+1. Take the import lock and the nightly refresh lease. Imports, clears and the worksite
+   step get a "busy" result until it finishes, so no write can be missed.
+2. Create `<collection>_zstd` with zstd for data and `indexOptionDefaults`, and `$out` into it
+   (`$out` keeps an existing target's options).
+3. Build the source's indexes on the copy, one at a time.
+4. Check that the counts and index names match, then `renameCollection` with `dropTarget`
+   to swap it in. Searches that are running at that moment fail once.
+
+It skips collections already on zstd. It stops before copying unless free disk covers
+3 GiB plus the collection's storage and index size. On failure it drops the copy and leaves
+the original unchanged.
