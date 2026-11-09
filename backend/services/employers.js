@@ -93,7 +93,7 @@ async function refreshDirectory(db, models, { signal, onProgress = () => {} } = 
         const cursor = Model.collection.aggregate([
             { $match: { [config.company]: { $type: 'string', $ne: '' } } },
             { $project: { _id: 1, [config.company]: 1, [config.date]: 1 } },
-            { $group: { _id: '$' + config.company, count: { $sum: 1 }, caseId: { $first: '$_id' } } },
+            { $group: { _id: '$' + config.company, count: { $sum: 1 }, caseId: { $first: '$_id' }, latest: { $max: '$' + config.date } } },
         ], { hint: indexNames.company, allowDiskUse: true, maxTimeMS: 60 * 60 * 1000, batchSize: 250, signal,
             comment: 'laborlens-employer-directory' });
         let batch = [], processed = 0;
@@ -108,7 +108,8 @@ async function refreshDirectory(db, models, { signal, onProgress = () => {} } = 
                 return { updateOne: { filter: { _id: idFor(row._id) }, update: { $set: {
                     key: row._id, slug: slugFor(row._id), name: example[config.employer] || row._id, searchKey: searchKey(row._id),
                     nameKey: nameKey(row._id), nameVersion: NAME_VERSION,
-                    [`programs.${program}`]: { count: row.count, generation, updatedAt: new Date() },
+                    [`programs.${program}`]: { count: row.count, generation, updatedAt: new Date(),
+                        ...(row.latest instanceof Date ? { latest: row.latest } : {}) },
                     location: [example.EMPLOYER_CITY || example.EMP_CITY, example[config.state]].filter(Boolean).join(', ') || null,
                     updatedAt: new Date(),
                 } }, upsert: true } };

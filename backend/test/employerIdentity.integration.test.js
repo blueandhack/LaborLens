@@ -44,7 +44,8 @@ test('employer identities combine spelling variants, FEIN-linked renames and rev
         for (const [key, count] of Object.entries(cognizant[program] || {})) rows.push(...Array.from({ length: count }, (_, j) => record(program, key, j)));
         // Facebook → Meta: same FEIN and ZIP on PERM/PWD. A typo of that FEIN elsewhere has another ZIP and is ignored.
         rows.push(...Array.from({ length: 5 }, (_, j) => record(program, 'facebook, inc.', j, program === 'h1b' ? {} : { [fein[program]]: j ? undefined : '20-1665019', [zip[program]]: '94025-1452' })));
-        rows.push(...Array.from({ length: 3 }, (_, j) => record(program, 'meta platforms, inc.', j, program === 'h1b' ? {} : { [fein[program]]: '201665019', [zip[program]]: '94025' })));
+        rows.push(...Array.from({ length: 3 }, (_, j) => record(program, 'meta platforms, inc.', j, { [programs[program].date]: new Date(2026, 0, j + 1),
+            ...(program === 'h1b' ? {} : { [fein[program]]: '201665019', [zip[program]]: '94025' }) })));
         rows.push(record(program, 'tiny typo employer llc', 0, program === 'h1b' ? {} : { [fein[program]]: '20-1665019', [zip[program]]: '10001' }));
         // The legal form must agree: an LLC does not merge with an Inc.
         rows.push(record(program, 'acme widgets llc', 0), record(program, 'acme widgets, inc.', 0));
@@ -79,6 +80,8 @@ test('employer identities combine spelling variants, FEIN-linked renames and rev
     await t.test('a FEIN-linked rename combines while typos and umbrella FEINs stay separate', async () => {
         const meta = await findIdentity(connection.db, idFor('meta platforms, inc.'));
         assert.deepEqual([...meta.keys].sort(), ['facebook, inc.', 'meta platforms, inc.']);
+        assert.equal(meta._id, idFor('meta platforms, inc.'), 'the most recently used name titles a renamed employer, despite fewer filings');
+        assert.equal(meta.name, 'META PLATFORMS, INC.');
         assert.equal(meta.programs.h1b.count, 8, 'H-1B names without a FEIN join through their normalized spelling');
         assert.equal(meta.grouping.kind, 'automatic');
         assert.match(meta.grouping.reason, /FEIN \(ending 5019\)/); assert.match(meta.grouping.reason, /94025/);

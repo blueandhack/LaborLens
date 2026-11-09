@@ -106,6 +106,8 @@ class Clusters {
 }
 
 const total = programs => Object.values(programs || {}).reduce((sum, info) => sum + (info?.count || 0), 0);
+const latest = programs => Math.max(0, ...Object.values(programs || {}).map(info => info?.latest instanceof Date && info.latest <= new Date() ? info.latest.getTime() : 0));
+const RENAME_SHARE = 0.1;      // A name needs this share of an identity's filings to become its title.
 const display = name => String(name).replace(/\s+/g, ' ').trim();
 const feinEnding = fein => fein.slice(-4);
 const programLabel = { h1b: 'H-1B', perm: 'PERM', pwd: 'PWD' };
@@ -114,7 +116,18 @@ const programLabel = { h1b: 'H-1B', perm: 'PERM', pwd: 'PWD' };
 function describeIdentity(members, { links = [], reviewed = [] } = {}) {
     const reviewedGroup = reviewed[0];
     const sorted = [...members].sort((a, b) => total(b.programs) - total(a.programs) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-    const canonical = (reviewedGroup && sorted.find(member => member.key === reviewedGroup.key)) || sorted[0];
+    // Linked names (a rename such as Facebook -> Meta Platforms) are titled by
+    // the most recently used substantial name; spelling variants by volume.
+    const byName = new Map();
+    for (const member of sorted) {
+        const key = member.nameKey || nameKey(member.key), entry = byName.get(key) || { members: [], total: 0, latest: 0 };
+        entry.members.push(member); entry.total += total(member.programs); entry.latest = Math.max(entry.latest, latest(member.programs));
+        byName.set(key, entry);
+    }
+    const clusterTotal = sorted.reduce((sum, member) => sum + total(member.programs), 0);
+    const current = [...byName.values()].filter(entry => entry.total >= RENAME_SHARE * clusterTotal)
+        .sort((a, b) => b.latest - a.latest || b.total - a.total)[0];
+    const canonical = (reviewedGroup && sorted.find(member => member.key === reviewedGroup.key)) || current?.members[0] || sorted[0];
     const keys = sorted.map(member => member.key);
     const programs = {};
     for (const member of sorted) for (const [program, info] of Object.entries(member.programs || {})) {
