@@ -349,9 +349,10 @@ async function getMap(db, input = {}) {
 }
 
 // Learned cities of one state for a program: key → [name, county, x, y].
+// Keyed by the map build's generation, so a new build is used at once.
 const cityIndexCache = new BoundedCache({ capacity: 40, ttlMs: 3600000 });
-function cityIndex(db, program, state) {
-    return cityIndexCache.get(JSON.stringify([db.databaseName, program, state]), async () => {
+function cityIndex(db, program, state, generation) {
+    return cityIndexCache.get(JSON.stringify([db.databaseName, program, state, generation || null]), async () => {
         const document = await db.collection('map_city_index').findOne({ _id: `${program}:${state}` }, { maxTimeMS: 2000 });
         return new Map((document?.cities || []).map(([key, ...rest]) => [key, rest]));
     });
@@ -369,11 +370,11 @@ async function getLocalMap(db, input = {}) {
     const { program, year, occupation, state } = localParameters(input);
     return cache.get(JSON.stringify(['local', db.databaseName, program, year, occupation, state]), async () => {
         const base = `${program}:${year}:${occupation}`;
-        const [documents, meta, index] = await Promise.all([
+        const meta = await db.collection('map_meta').findOne({ _id: program }, { projection: { updatedAt: 1, localVersion: 1, generation: 1 }, maxTimeMS: 2000 });
+        const [documents, index] = await Promise.all([
             db.collection('map_local').find({ _id: { $in: [`${base}:${state}`, `${base}:*`] }, version: LOCAL_VERSION },
                 { projection: { [`states.${state}`]: 1, total: 1, counties: 1, cities: 1, otherCities: 1, otherCityFilings: 1 }, maxTimeMS: 2000 }).toArray(),
-            db.collection('map_meta').findOne({ _id: program }, { projection: { updatedAt: 1, localVersion: 1 }, maxTimeMS: 2000 }),
-            cityIndex(db, program, state),
+            cityIndex(db, program, state, meta?.generation),
         ]);
         const payload = documents.find(document => document._id.endsWith(':' + state)) || documents.find(document => document.states)?.states?.[state];
         const result = { program, year, occupation, state, ready: meta?.localVersion === LOCAL_VERSION, updatedAt: meta?.updatedAt || null,

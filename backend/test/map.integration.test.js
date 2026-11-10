@@ -52,6 +52,8 @@ test('map summarizes filings by worksite state and metro, occupation and year', 
     await models.perm.collection.insertMany(times(4, () => record('perm', { zip: '10001', city: 'New York', state: 'NY', level: 'Level IV', wage: 150000 })));
     await models.pwd.collection.insertMany(times(2, () => record('pwd', { zip: '06103', city: 'Hartford', state: 'CT', wage: 90000 })));
 
+    // Before the first build the zoomed map reports that detail is not ready.
+    assert.equal((await getLocalMap(db, { program: 'h1b', state: 'WA' })).ready, false);
     const progress = [];
     await refreshMap(db, models, { onProgress: event => progress.push(event) });
     assert.deepEqual(progress.filter(event => event.event === 'map-ready').map(event => event.program), ['h1b', 'perm', 'pwd']);
