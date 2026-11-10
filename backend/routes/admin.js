@@ -54,22 +54,80 @@ function resetAttempts(ip) {
     loginAttempts.delete(ip);
 }
 
-// Middleware to verify JWT token
-const authMiddleware = (req, res, next) => {
+// Re-entering the current password (to change the username or password) is
+// limited per account, so a stolen sign-in token cannot be used to guess it.
+const reauthAttempts = new Map(); // admin id → { count, lockedUntil }
+function checkAccountLimit(id) {
+    const state = reauthAttempts.get(id);
+    if (state?.lockedUntil && Date.now() < state.lockedUntil) return { blocked: true, secsLeft: Math.ceil((state.lockedUntil - Date.now()) / 1000) };
+    if (state?.lockedUntil) reauthAttempts.delete(id);
+    return { blocked: false };
+}
+function recordAccountFailure(id) {
+    const state = reauthAttempts.get(id) || { count: 0, lockedUntil: null };
+    state.count += 1;
+    if (state.count >= MAX_ATTEMPTS) state.lockedUntil = Date.now() + LOCKOUT_MS;
+    reauthAttempts.set(id, state);
+}
+const FAILURE_DELAY_MS = 1000;
+const slow = () => new Promise(r => setTimeout(r, FAILURE_DELAY_MS));
+
+const signToken = admin => jwt.sign({ id: String(admin._id), username: admin.username, v: admin.tokenVersion || 0 }, JWT_SECRET,
+    { expiresIn: '24h', algorithm: 'HS256' });
+
+// Middleware to verify JWT token: signature, expiry, and that the account still
+// exists with the same token version (username and password changes raise it).
+const authMiddleware = async (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
         return res.status(401).json({ error: 'Authentication required' });
     }
 
+    let decoded;
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.adminId = decoded.id;
+        decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    if (typeof decoded.id !== 'string' || !mongoose.isValidObjectId(decoded.id)) return res.status(401).json({ error: 'Invalid token' });
+    try {
+        const admin = await Admin.findById(decoded.id, { tokenVersion: 1, username: 1 }).lean();
+        if (!admin || (admin.tokenVersion || 0) !== (decoded.v || 0)) {
+            return res.status(401).json({ error: 'Your session has ended. Please sign in again.' });
+        }
+        req.adminId = String(admin._id);
+        req.adminUsername = admin.username;
         next();
     } catch (error) {
-        res.status(401).json({ error: 'Invalid token' });
+        console.error('Auth check error:', error.message);
+        res.status(503).json({ error: 'Sign-in could not be checked. Please try again.' });
     }
 };
+
+// Loads the signed-in admin and checks the current password, with the per-account limit.
+async function reauthenticate(req, res) {
+    const limit = checkAccountLimit(req.adminId);
+    if (limit.blocked) {
+        res.status(429).json({ error: `Too many incorrect passwords. Try again in ${limit.secsLeft} seconds.` });
+        return null;
+    }
+    const admin = await Admin.findById(req.adminId);
+    if (!admin) {
+        res.status(401).json({ error: 'Your session has ended. Please sign in again.' });
+        return null;
+    }
+    const { currentPassword } = req.body || {};
+    const isMatch = typeof currentPassword === 'string' && currentPassword.length > 0 && await admin.comparePassword(currentPassword);
+    if (!isMatch) {
+        recordAccountFailure(req.adminId);
+        await slow();
+        res.status(400).json({ error: 'Incorrect current password' });
+        return null;
+    }
+    reauthAttempts.delete(req.adminId);
+    return admin;
+}
 
 // POST /api/admin/login
 router.post('/login', async (req, res) => {
@@ -80,21 +138,22 @@ router.post('/login', async (req, res) => {
     }
 
     try {
-        const { username, password } = req.body;
+        const { username, password } = req.body || {};
 
-        const admin = await Admin.findOne({ username });
+        // Only plain strings: a query object here must never reach MongoDB.
+        const admin = typeof username === 'string' && typeof password === 'string' && username.length <= 200
+            ? await Admin.findOne({ username: username.trim() }) : null;
         const isMatch = admin ? await admin.comparePassword(password) : false;
 
         if (!admin || !isMatch) {
             recordFailure(ip);
             // Constant-time delay to slow automated attacks
-            await new Promise(r => setTimeout(r, 1000));
+            await slow();
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         resetAttempts(ip);
-        const token = jwt.sign({ id: admin._id, username: admin.username }, JWT_SECRET, { expiresIn: '24h' });
-        res.json({ token, username: admin.username });
+        res.json({ token: signToken(admin), username: admin.username });
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ error: 'Server error' });
@@ -104,34 +163,71 @@ router.post('/login', async (req, res) => {
 // GET /api/admin/check-auth
 router.get('/check-auth', authMiddleware, (req, res) => {
     // If middleware passes, token is valid
-    res.json({ valid: true });
+    res.json({ valid: true, username: req.adminUsername });
 });
 
 // POST /api/admin/change-password
+// Signs out every other session; the response carries a new token for this one.
 router.post('/change-password', authMiddleware, async (req, res) => {
     try {
-        const { currentPassword, newPassword } = req.body;
+        const admin = await reauthenticate(req, res);
+        if (!admin) return;
 
-        const admin = await Admin.findById(req.adminId);
-        if (!admin) {
-            return res.status(404).json({ error: 'Admin not found' });
-        }
-
-        const isMatch = await admin.comparePassword(currentPassword);
-        if (!isMatch) {
-            return res.status(400).json({ error: 'Incorrect current password' });
-        }
-
-        if (!newPassword || newPassword.length < 12) {
+        const { newPassword } = req.body;
+        if (typeof newPassword !== 'string' || newPassword.length < 12) {
             return res.status(400).json({ error: 'New password must be at least 12 characters' });
+        }
+        if (newPassword.length > 200) {
+            return res.status(400).json({ error: 'New password must be at most 200 characters' });
         }
 
         admin.password = newPassword;
+        admin.tokenVersion = (admin.tokenVersion || 0) + 1;
         await admin.save(); // Password will be hashed by pre-save hook
+        console.log(JSON.stringify({ event: 'admin-password-changed', adminId: req.adminId, username: admin.username, ip: getClientIP(req), at: new Date().toISOString() }));
 
-        res.json({ message: 'Password updated successfully' });
+        res.json({ message: 'Password updated successfully', token: signToken(admin), username: admin.username });
     } catch (error) {
         console.error('Change password error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/admin/change-username { currentPassword, newUsername }
+// Signs out every other session; the response carries a new token for this one.
+router.post('/change-username', authMiddleware, async (req, res) => {
+    try {
+        const admin = await reauthenticate(req, res);
+        if (!admin) return;
+
+        const username = Admin.normalizeUsername(req.body.newUsername);
+        if (!username) {
+            return res.status(400).json({ error: 'Usernames are 3 to 64 characters: letters, digits, and . _ @ - only' });
+        }
+        if (username === admin.username) {
+            return res.status(400).json({ error: 'That is already your username' });
+        }
+        // Names differing only in letter case are too easy to confuse.
+        const taken = await Admin.exists({ _id: { $ne: admin._id }, username }).collation({ locale: 'en', strength: 2 });
+        if (taken) {
+            return res.status(409).json({ error: 'That username is not available' });
+        }
+
+        // One atomic update, only if the account has not changed since it was checked.
+        const updated = await Admin.findOneAndUpdate(
+            // Accounts created before token versions have no field yet: version 0.
+            { _id: admin._id, username: admin.username, tokenVersion: admin.tokenVersion ? admin.tokenVersion : { $in: [0, null] } },
+            { $set: { username }, $inc: { tokenVersion: 1 } },
+            { new: true });
+        if (!updated) {
+            return res.status(409).json({ error: 'Your account changed in the meantime. Please sign in again.' });
+        }
+        console.log(JSON.stringify({ event: 'admin-username-changed', adminId: req.adminId, from: admin.username, to: username, ip: getClientIP(req), at: new Date().toISOString() }));
+
+        res.json({ message: 'Username updated', token: signToken(updated), username: updated.username });
+    } catch (error) {
+        if (error?.code === 11000) return res.status(409).json({ error: 'That username is not available' });
+        console.error('Change username error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });

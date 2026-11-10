@@ -11,8 +11,22 @@ const adminSchema = new mongoose.Schema({
     password: {
         type: String,
         required: true
+    },
+    // Raised on every username or password change; sign-in tokens carry the
+    // version they were issued under, so older tokens stop working.
+    tokenVersion: {
+        type: Number,
+        default: 0
     }
 }, { timestamps: true });
+
+// Usernames: 3–64 ASCII letters, digits and . _ @ - (no spaces or look-alike characters).
+const USERNAME_PATTERN = /^[A-Za-z0-9._@-]{3,64}$/;
+adminSchema.statics.normalizeUsername = function (value) {
+    if (typeof value !== 'string') return null;
+    const username = value.trim();
+    return USERNAME_PATTERN.test(username) ? username : null;
+};
 
 // Hash password before saving
 adminSchema.pre('save', async function () {

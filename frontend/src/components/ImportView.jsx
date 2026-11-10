@@ -4,6 +4,9 @@ import SiteDataStatus from './SiteDataStatus';
 import './ImportView.css';
 import { FiUploadCloud, FiLogOut, FiSettings, FiX, FiShield, FiUnlock, FiRefreshCw, FiDatabase } from 'react-icons/fi';
 
+// Matches the server's rule (backend/models/Admin.js).
+const USERNAME_PATTERN = /^[A-Za-z0-9._@-]{3,64}$/;
+
 const ImportView = () => {
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [isCheckingIPs, setIsCheckingIPs] = useState(false);
@@ -22,6 +25,10 @@ const ImportView = () => {
     const [isAuthenticated, setIsAuthenticated]     = useState(false);
     const [isCheckingAuth, setIsCheckingAuth]       = useState(true);
     const [showChangePassword, setShowChangePassword] = useState(false);
+    const [showChangeUsername, setShowChangeUsername] = useState(false);
+    const [usernameForm, setUsernameForm]           = useState({ newUsername: '', currentPassword: '' });
+    const [usernameMessage, setUsernameMessage]     = useState({ type: '', text: '' });
+    const [adminUsername, setAdminUsername]         = useState(() => (typeof localStorage === 'undefined' ? '' : localStorage.getItem('adminUsername') || ''));
     const [loginForm, setLoginForm]                 = useState({ username: '', password: '' });
     const [passwordForm, setPasswordForm]           = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
     const [authError, setAuthError]                 = useState('');
@@ -40,7 +47,11 @@ const ImportView = () => {
             if (!token) { setIsCheckingAuth(false); return; }
             try {
                 const res = await fetch('/api/admin/check-auth', { headers: { 'Authorization': `Bearer ${token}` } });
-                if (res.ok) setIsAuthenticated(true);
+                if (res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    if (data.username) { localStorage.setItem('adminUsername', data.username); setAdminUsername(data.username); }
+                    setIsAuthenticated(true);
+                }
                 else { localStorage.removeItem('adminToken'); localStorage.removeItem('adminUsername'); }
             } catch { localStorage.removeItem('adminToken'); }
             finally { setIsCheckingAuth(false); }
@@ -122,7 +133,7 @@ const ImportView = () => {
         try {
             const res  = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginForm) });
             const data = await res.json();
-            if (res.ok) { localStorage.setItem('adminToken', data.token); localStorage.setItem('adminUsername', data.username); setIsAuthenticated(true); }
+            if (res.ok) { localStorage.setItem('adminToken', data.token); localStorage.setItem('adminUsername', data.username); setAdminUsername(data.username); setIsAuthenticated(true); }
             else setAuthError(data.error || 'Login failed');
         } catch { setAuthError('Network error. Please try again.'); }
         finally { setIsSigningIn(false); }
@@ -130,7 +141,7 @@ const ImportView = () => {
 
     const handleLogout = () => {
         localStorage.removeItem('adminToken'); localStorage.removeItem('adminUsername');
-        setIsAuthenticated(false); setLoginForm({ username: '', password: '' });
+        setIsAuthenticated(false); setLoginForm({ username: '', password: '' }); setAdminUsername('');
         setLogs([]); setProgress({ processed: 0, total: 0, percentage: 0, inserted: 0, updated: 0 });
         setBlockedIPs([]);
         setAutoStatus(null);
@@ -181,10 +192,37 @@ const ImportView = () => {
             const res   = await fetch('/api/admin/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword }) });
             const data  = await res.json();
             if (res.ok) {
-                setPwdMessage({ type: 'success', text: 'Password updated successfully' });
+                // The change signs out every other session; this one continues with the new token.
+                if (data.token) localStorage.setItem('adminToken', data.token);
+                setPwdMessage({ type: 'success', text: 'Password updated. Other signed-in sessions have been signed out.' });
                 setTimeout(() => { setShowChangePassword(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPwdMessage({ type: '', text: '' }); }, 2000);
             } else setPwdMessage({ type: 'error', text: data.error || 'Failed to update password' });
         } catch { setPwdMessage({ type: 'error', text: 'Network error. Please try again.' }); }
+    };
+
+    const handleChangeUsername = async (e) => {
+        e.preventDefault(); setUsernameMessage({ type: '', text: '' });
+        const newUsername = usernameForm.newUsername.trim();
+        if (!USERNAME_PATTERN.test(newUsername)) { setUsernameMessage({ type: 'error', text: 'Use 3 to 64 characters: letters, digits, and . _ @ - only.' }); return; }
+        if (newUsername === adminUsername) { setUsernameMessage({ type: 'error', text: 'That is already your username.' }); return; }
+        try {
+            const token = localStorage.getItem('adminToken');
+            const res   = await fetch('/api/admin/change-username', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ newUsername, currentPassword: usernameForm.currentPassword }) });
+            const data  = await res.json().catch(() => ({}));
+            if (res.ok) {
+                localStorage.setItem('adminToken', data.token); localStorage.setItem('adminUsername', data.username); setAdminUsername(data.username);
+                setUsernameForm({ newUsername: '', currentPassword: '' });
+                setUsernameMessage({ type: 'success', text: `Your username is now ${data.username}. Use it the next time you sign in. Other signed-in sessions have been signed out.` });
+            } else if (res.status === 401) {
+                localStorage.removeItem('adminToken'); localStorage.removeItem('adminUsername'); setIsAuthenticated(false);
+            } else setUsernameMessage({ type: 'error', text: data.error || 'Failed to update username' });
+        } catch { setUsernameMessage({ type: 'error', text: 'Network error. Please try again.' }); }
+    };
+    const closeUsernameForm = () => {
+        setShowChangeUsername(false);
+        setUsernameForm({ newUsername: '', currentPassword: '' });
+        setUsernameMessage(message => message.type === 'success' ? message : { type: '', text: '' });
+        requestAnimationFrame(() => document.getElementById('admin-change-username-toggle')?.focus());
     };
 
     const onClearData = async () => {
@@ -307,10 +345,19 @@ const ImportView = () => {
         </section>
 
         <section aria-labelledby="access-security-heading" hidden={section !== 'security'}>
-            <div className="admin-section-heading"><div><p className="section-kicker">Administrator controls</p><h3 id="access-security-heading">Access & security</h3><p className="admin-help">Manage your password and review blocked sign-in attempts.</p></div></div>
+            <div className="admin-section-heading"><div><p className="section-kicker">Administrator controls</p><h3 id="access-security-heading">Access & security</h3><p className="admin-help">Manage your username and password and review blocked sign-in attempts.</p></div></div>
             <div className="admin-security-layout">
                 <section className="admin-account-panel" aria-labelledby="admin-account-heading">
-                    <FiSettings className="admin-form-icon" aria-hidden="true" /><h4 id="admin-account-heading">Your administrator account</h4><p className="admin-help">Update the password used to access data management.</p>
+                    <FiSettings className="admin-form-icon" aria-hidden="true" /><h4 id="admin-account-heading">Your administrator account</h4><p className="admin-help">{adminUsername ? <>Signed in as <strong>{adminUsername}</strong>. </> : null}Update the username and password used to access data management.</p>
+                    {!showChangeUsername && usernameMessage.type === 'success' && <p className="import-notice success" role="status">{usernameMessage.text}</p>}
+                    {!showChangeUsername && <button id="admin-change-username-toggle" onClick={() => { setShowChangeUsername(true); setUsernameMessage({ type: '', text: '' }); requestAnimationFrame(() => document.getElementById('admin-new-username')?.focus()); }} className="btn btn-secondary" aria-expanded={false}>Change username</button>}
+                    {showChangeUsername && <form onSubmit={handleChangeUsername} className="admin-form-stack" aria-label="Change username">
+                        {usernameMessage.text && <p className={`import-notice ${usernameMessage.type}`} role={usernameMessage.type === 'error' ? 'alert' : 'status'}>{usernameMessage.text}</p>}
+                        <label htmlFor="admin-new-username">New username<input id="admin-new-username" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} maxLength={64} className="search-input" value={usernameForm.newUsername} onChange={event => setUsernameForm({ ...usernameForm, newUsername: event.target.value })} aria-describedby="admin-new-username-help" required /></label>
+                        <p id="admin-new-username-help" className="admin-help">3 to 64 characters: letters, digits, and . _ @ -. Changing it signs out every other session.</p>
+                        <label htmlFor="admin-username-password">Current password<input id="admin-username-password" type="password" autoComplete="current-password" className="search-input" value={usernameForm.currentPassword} onChange={event => setUsernameForm({ ...usernameForm, currentPassword: event.target.value })} required /></label>
+                        <div className="admin-form-actions"><button type="submit" className="btn">Update username</button><button type="button" onClick={closeUsernameForm} className="btn btn-secondary"><FiX aria-hidden="true" /> Cancel</button></div>
+                    </form>}
                     {!showChangePassword && <button id="admin-change-password-toggle" onClick={() => { setShowChangePassword(true); requestAnimationFrame(() => document.getElementById('admin-current-password')?.focus()); }} className="btn btn-secondary" aria-expanded={false}>Change password</button>}
                     {showChangePassword && <form onSubmit={handleChangePassword} className="admin-form-stack">
                         {pwdMessage.text && <p className={`import-notice ${pwdMessage.type}`} role={pwdMessage.type === 'error' ? 'alert' : 'status'}>{pwdMessage.text}</p>}

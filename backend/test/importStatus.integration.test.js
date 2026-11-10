@@ -32,7 +32,10 @@ test('authenticated import status reports live program and quarterly coverage wi
     await db.collection('import_locks').insertOne({ _id: 'case-import', runId: 'active-run', expiresAt: new Date(Date.now() + 300000) });
     const endpoint = `http://127.0.0.1:${server.address().port}/api/upload/auto/status`;
     assert.equal((await fetch(endpoint)).status, 401);
-    const token = jwt.sign({ id: 'test-admin' }, process.env.JWT_SECRET, { expiresIn: '5m' });
+    // Tokens are only accepted for an existing administrator account.
+    const admin = await require('../models/Admin').create({ username: 'status-admin', password: 'status admin password' });
+    assert.equal((await fetch(endpoint, { headers: { Authorization: `Bearer ${jwt.sign({ id: 'test-admin' }, process.env.JWT_SECRET)}` } })).status, 401);
+    const token = jwt.sign({ id: String(admin._id), v: 0 }, process.env.JWT_SECRET, { expiresIn: '5m' });
     const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
     assert.equal(response.status, 200);
     const data = await response.json();
