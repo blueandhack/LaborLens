@@ -8,12 +8,20 @@ const { groups: reviewedGroups, groupForQuery } = require('./employerGroups');
 //     Corporation). The suffix itself must agree: an Inc. never merges with an LLC.
 //  2. Names whose PERM/PWD filings report the same employer FEIN, as their
 //     dominant FEIN, with a shared business ZIP code.
-// Reviewed links from employerGroups.js add documented history (for example
-// a former name used only before FEINs were disclosed).
+//  3. Names that USCIS H-1B petition data (FY2009 onward, long before DOL
+//     disclosed FEINs) reports under the same petitioner tax ID ending and ZIP
+//     code, starting with the same word; see taxIdLinks for the safeguards.
+// Reviewed links from employerGroups.js add documented history that no data
+// source links.
 const NAME_VERSION = 1;
 const MAX_FEIN_NAMES = 6;      // A FEIN reported by more names is an umbrella (e.g. a university system).
-const MAX_LINKED_NAMES = 12;   // Normalized names per identity joined by FEIN links.
+const MAX_LINKED_NAMES = 12;   // Normalized names per identity joined by FEIN or tax-ID links.
 const FEIN_SHARE = 0.6;        // A FEIN must dominate each linked name's FEIN-bearing filings.
+const TAX_SHARE = 0.6;         // A tax ID must dominate each linked name's USCIS rows.
+const MAX_TAX_WORDS = 3;       // More distinct first words on one tax ID and ZIP: a shared system or office.
+const CONCURRENT_DAYS = 365;   // Differently named peers both filing within a year of each other stay separate...
+const MINOR_SHARE = 0.1;       // ...unless one has under 10% of the other's filings and adds words to it (a dba).
+const MAX_SHARED_YEARS = 2;    // Fiscal years a former and a new name can both appear in USCIS data.
 
 const idFor = key => createHash('sha256').update(key).digest('hex').slice(0, 24);
 const searchKey = name => (name.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).join(' ');
@@ -56,10 +64,11 @@ function feinLinks(rows) {
         if (row.caseId && entry.examples.length < 2) entry.examples.push({ caseId: row.caseId, program: row.program, name: row.name });
         feins.set(fein, entry); byName.set(row.nameKey, feins);
     }
-    const byFein = new Map();
+    const byFein = new Map(), dominant = new Map();
     for (const [key, feins] of byName) {
         const total = [...feins.values()].reduce((sum, entry) => sum + entry.count, 0);
         for (const [fein, entry] of feins) if (entry.count / total >= FEIN_SHARE) {
+            dominant.set(key, fein);
             const list = byFein.get(fein) || [];
             list.push({ nameKey: key, ...entry }); byFein.set(fein, list);
         }
@@ -80,6 +89,83 @@ function feinLinks(rows) {
         }
     }
     // Strongest evidence first, so the cluster-size guard keeps the best links.
+    links.sort((x, y) => Math.min(...y.counts) - Math.min(...x.counts) || (x.a + x.b < y.a + y.b ? -1 : 1));
+    return { links, umbrellas, dominant };
+}
+
+// Trailing legal forms, so "salesforce com" and "salesforce com inc" read as one name.
+const LEGAL_FORMS = new Set(['inc', 'llc', 'corp', 'co', 'ltd', 'llp', 'lp', 'lllp', 'pc', 'pllc', 'plc', 'pvt', 'pa', 'ps', 'sc', 'apc', 'gmbh', 'ag', 'sa']);
+function baseName(key) {
+    const words = key.split(' ');
+    while (words.length > 1 && LEGAL_FORMS.has(words.at(-1))) words.pop();
+    return words.join(' ');
+}
+const DAY = 24 * 60 * 60 * 1000;
+const FILLER = new Set(['and', 'of', 'the', 'at']);
+// Public systems file campuses, schools and hospitals under one tax ID, so these
+// names link only as variants of each other, never as a rename.
+const INSTITUTIONAL = new Set(['university', 'univ', 'college', 'school', 'schools', 'district', 'county', 'city', 'state', 'academy',
+    'hospital', 'hospitals', 'campus', 'board', 'department', 'dept', 'government']);
+const institutional = key => key.split(' ').some(word => INSTITUTIONAL.has(word));
+// One name's words all appear in the other (a dba, division or added word):
+// "anthropic pbc" within "anthropic pbc dba anthropic inc".
+function nested(a, b) {
+    const [x, y] = [a, b].map(key => new Set(baseName(key).split(' ').filter(word => !FILLER.has(word))));
+    const within = (small, big) => [...small].every(word => big.has(word));
+    return within(x, y) || within(y, x);
+}
+
+// USCIS reports each petitioner's tax ID ending and ZIP code from FY2009, so it
+// links renames that predate DOL's FEIN disclosure (Salesforce.com, Inc. →
+// Salesforce, Inc.; Tesla Motors → Tesla). Four digits are not unique, so two
+// directory names link only when they also share the first word, and:
+//  - the tax ID and ZIP are not shared by names starting with several different
+//    words (a university or college system files every campus under one tax ID);
+//  - their DOL FEINs, where both report one, agree;
+//  - names that differ beyond a legal form were not both in use, unless one is
+//    a minor variant whose words the other contains: USCIS reports them together
+//    in at most two fiscal years, and one stopped filing with DOL at least a year
+//    before the other's latest filing. (Two campuses of a college system that
+//    share a tax ID file side by side; a renamed employer hands over.)
+//  - names of universities, schools, hospitals and governments link only when
+//    one's words contain the other's (a campus never links to another campus).
+// buckets: [{ taxId, zip, names: [{ nameKey, first, last }] }] from collectTaxIdRows.
+// activity: Map nameKey → { total, latest (ms) } for directory names.
+function taxIdLinks(buckets, activity, { dominantFein = new Map() } = {}) {
+    const compatible = (x, y) => {
+        const [fx, fy] = [dominantFein.get(x.nameKey), dominantFein.get(y.nameKey)];
+        if (fx && fy && fx !== fy) return false;
+        if (baseName(x.nameKey) === baseName(y.nameKey)) return true;
+        if ((institutional(x.nameKey) || institutional(y.nameKey)) && !nested(x.nameKey, y.nameKey)) return false;
+        if (Math.min(x.total, y.total) < MINOR_SHARE * Math.max(x.total, y.total) && nested(x.nameKey, y.nameKey)) return true;
+        if (Math.min(x.last, y.last) - Math.max(x.first, y.first) + 1 > MAX_SHARED_YEARS) return false;
+        return Boolean(x.latest && y.latest) && Math.abs(x.latest - y.latest) >= CONCURRENT_DAYS * DAY;
+    };
+    const seen = new Set(), links = [];
+    let umbrellas = 0;
+    for (const bucket of buckets) {
+        const words = new Map();
+        for (const name of bucket.names) {
+            const word = name.nameKey.split(' ')[0];
+            words.set(word, [...(words.get(word) || []), name]);
+        }
+        if (words.size > MAX_TAX_WORDS) { umbrellas++; continue; }
+        for (const names of words.values()) {
+            const listed = names.filter(name => activity.has(name.nameKey)).map(name => ({ ...name, ...activity.get(name.nameKey) }));
+            if (listed.length < 2 || listed.length > MAX_FEIN_NAMES) continue;
+            listed.sort((a, b) => b.total - a.total || (a.nameKey < b.nameKey ? -1 : 1));
+            const [anchor, ...others] = listed, kept = [anchor];
+            for (const other of others) {
+                if (!kept.every(member => compatible(member, other))) continue;
+                kept.push(other);
+                const pair = [anchor.nameKey, other.nameKey].sort().join('|');
+                if (seen.has(pair)) continue;
+                seen.add(pair);
+                links.push({ source: 'uscis', a: anchor.nameKey, b: other.nameKey, taxId: bucket.taxId, zip: bucket.zip, counts: [anchor.total, other.total],
+                    years: [[anchor.first, anchor.last], [other.first, other.last]] });
+            }
+        }
+    }
     links.sort((x, y) => Math.min(...y.counts) - Math.min(...x.counts) || (x.a + x.b < y.a + y.b ? -1 : 1));
     return { links, umbrellas };
 }
@@ -147,24 +233,30 @@ function describeIdentity(members, { links = [], reviewed = [] } = {}) {
     const nameGroups = new Map();
     for (const member of sorted) nameGroups.set(member.nameKey || nameKey(member.key), (nameGroups.get(member.nameKey || nameKey(member.key)) || 0) + 1);
     const spellings = [...nameGroups.values()].some(count => count > 1);
-    const feinNames = links.map(link => {
-        const names = [link.a, link.b].map(key => display(sorted.find(member => (member.nameKey || nameKey(member.key)) === key)?.name || key));
-        return `${names[0]} and ${names[1]} report the same employer FEIN (ending ${feinEnding(link.fein)}) and business ZIP code ${link.zip}`;
-    });
+    const nameOf = key => display(sorted.find(member => (member.nameKey || nameKey(member.key)) === key)?.name || key);
+    const feinLinked = links.filter(link => link.source !== 'uscis'), taxLinked = links.filter(link => link.source === 'uscis');
+    const feinNames = feinLinked.map(link => `${nameOf(link.a)} and ${nameOf(link.b)} report the same employer FEIN (ending ${feinEnding(link.fein)}) and business ZIP code ${link.zip}`);
+    const fiscalYears = ([first, last]) => first === last ? `FY${first}` : `FY${first}–FY${last}`;
+    const taxNames = taxLinked.map(link => `USCIS H-1B petition data reports ${nameOf(link.a)} (${fiscalYears(link.years[0])}) and ${nameOf(link.b)} (${fiscalYears(link.years[1])}) under the same petitioner tax ID ending ${link.taxId} and ZIP code ${link.zip}`);
     const parts = [];
     if (reviewedGroup) parts.push(reviewedGroup.description);
     if (spellings) parts.push('Combines reported spellings that differ only in capitalization, punctuation, spacing, accents, or abbreviated corporate words such as Corp./Corporation, Inc./Incorporated and Ltd./Limited.');
     if (feinNames.length) parts.push('Also combines names linked by the employer identification number reported on PERM and prevailing wage filings.');
+    if (taxNames.length) parts.push('Also combines names, such as a former company name, that USCIS H-1B petition data reports under the same petitioner tax ID and ZIP code.');
     const reasons = [];
     if (reviewedGroup) reasons.push(reviewedGroup.reason);
     if (feinNames.length) reasons.push(feinNames.join('; ') + '.');
+    if (taxNames.length) reasons.push(taxNames.join('; ') + '. USCIS publishes only the last four digits of a tax ID, so these names must also start with the same word, and names that are not spelling variants must not have been in use at the same time.');
     if (spellings) reasons.push('Spelling variants must normalize to the same name, including the same legal form (an Inc. never merges with an LLC).');
-    const evidence = [...(reviewedGroup?.evidence || []), ...links.flatMap(link => link.examples.map(example => ({
+    const evidence = [...(reviewedGroup?.evidence || []), ...feinLinked.flatMap(link => link.examples.map(example => ({
         title: `${programLabel[example.program]}: ${display(example.name)} · FEIN ending ${feinEnding(link.fein)}`, url: `/cases/${example.caseId}`,
+    }))), ...taxLinked.flatMap(link => [link.a, link.b].map((key, index) => ({
+        title: `USCIS H-1B: ${nameOf(key)} · ${fiscalYears(link.years[index])} · tax ID ending ${link.taxId}`, url: `/h1b-approvals?q=${encodeURIComponent(nameOf(key))}`,
     })))].filter((item, index, list) => list.findIndex(other => other.url === item.url) === index).slice(0, 12);
     identity.grouping = {
         kind: reviewedGroup ? 'reviewed' : 'automatic', description: parts.join(' '), reason: reasons.join(' '), evidence,
-        links: links.map(link => ({ names: [link.a, link.b], feinEnding: feinEnding(link.fein), zip: link.zip })),
+        links: links.map(link => link.source === 'uscis' ? { source: 'uscis', names: [link.a, link.b], taxIdEnding: link.taxId, zip: link.zip }
+            : { names: [link.a, link.b], feinEnding: feinEnding(link.fein), zip: link.zip }),
     };
     return identity;
 }
@@ -226,15 +318,63 @@ async function collectFeinRows(models, { signal } = {}) {
     return rows;
 }
 
+// Tax ID and ZIP buckets holding two or more USCIS petitioner names, each name
+// counted under its dominant tax ID. The grouping runs inside MongoDB, so only
+// the small set of shared buckets reaches the application.
+async function collectTaxIdRows(db, { signal } = {}) {
+    const { ROWS } = require('./uscisH1b');
+    const cursor = db.collection(ROWS).aggregate([
+        { $match: { taxId: { $regex: /^\d{4}$/ }, zip: { $type: 'string' }, nameKey: { $type: 'string', $ne: '' } } },
+        // Weighted by petitions, so a stray tax ID on a few small rows does not dilute the main one.
+        { $group: { _id: { n: '$nameKey', t: '$taxId' }, rows: { $sum: { $max: [1, { $add: [{ $ifNull: ['$initialApprovals', 0] }, { $ifNull: ['$initialDenials', 0] },
+            { $ifNull: ['$continuingApprovals', 0] }, { $ifNull: ['$continuingDenials', 0] }] }] } }, zips: { $addToSet: '$zip' }, first: { $min: '$fiscalYear' }, last: { $max: '$fiscalYear' } } },
+        { $sort: { rows: -1, '_id.t': 1 } },
+        { $group: { _id: '$_id.n', total: { $sum: '$rows' }, taxId: { $first: '$_id.t' }, rows: { $first: '$rows' }, zips: { $first: '$zips' },
+            first: { $first: '$first' }, last: { $first: '$last' } } },
+        { $match: { $expr: { $gte: ['$rows', { $multiply: [TAX_SHARE, '$total'] }] } } },
+        { $project: { taxId: 1, first: 1, last: 1, zips: { $slice: ['$zips', 20] } } },
+        { $unwind: '$zips' },
+        { $group: { _id: { t: '$taxId', z: '$zips' }, names: { $push: { nameKey: '$_id', first: '$first', last: '$last' } } } },
+        { $match: { 'names.1': { $exists: true } } },
+    ], { allowDiskUse: true, maxTimeMS: 60 * 60 * 1000, signal, comment: 'laborlens-employer-identities' });
+    const buckets = [];
+    try {
+        for await (const row of cursor) buckets.push({ taxId: row._id.t, zip: row._id.z, names: row.names });
+    } finally { await cursor.close(); }
+    return buckets;
+}
+
+// Filing totals and latest filing date of the directory names in the buckets.
+async function nameActivity(db, buckets, { signal } = {}) {
+    const keys = [...new Set(buckets.flatMap(bucket => bucket.names.map(name => name.nameKey)))];
+    const activity = new Map();
+    for (let index = 0; index < keys.length; index += 5000) {
+        signal?.throwIfAborted();
+        const rows = await db.collection('employers').find({ nameKey: { $in: keys.slice(index, index + 5000) } },
+            { projection: { nameKey: 1, programs: 1 }, maxTimeMS: 120000 }).toArray();
+        for (const row of rows) {
+            const entry = activity.get(row.nameKey) || { total: 0, latest: 0 };
+            entry.total += total(row.programs); entry.latest = Math.max(entry.latest, latest(row.programs));
+            activity.set(row.nameKey, entry);
+        }
+    }
+    return activity;
+}
+
 async function refreshIdentities(db, models, { signal, onProgress = () => {} } = {}) {
     await ensureIdentityIndexes(db);
     const backfilled = await backfillNameKeys(db, { signal });
     await onProgress({ event: 'identity-names', backfilled });
-    const { links, umbrellas } = feinLinks(await collectFeinRows(models, { signal }));
+    const { links, umbrellas, dominant } = feinLinks(await collectFeinRows(models, { signal }));
+    const buckets = await collectTaxIdRows(db, { signal });
+    const tax = taxIdLinks(buckets, await nameActivity(db, buckets, { signal }), { dominantFein: dominant });
     const clusters = new Clusters();
     for (const group of reviewedGroups) for (const key of group.keys.slice(1)) clusters.union(nameKey(group.keys[0]), nameKey(key));
-    const accepted = links.filter(link => clusters.union(link.a, link.b, MAX_LINKED_NAMES));
-    await onProgress({ event: 'identity-links', fein: accepted.length, skipped: links.length - accepted.length, umbrellas: umbrellas.length });
+    // FEIN links are the stronger evidence, so they claim cluster capacity first.
+    const accepted = [...links, ...tax.links].filter(link => clusters.union(link.a, link.b, MAX_LINKED_NAMES));
+    const taxAccepted = accepted.filter(link => link.source === 'uscis').length;
+    await onProgress({ event: 'identity-links', fein: accepted.length - taxAccepted, taxId: taxAccepted, skipped: links.length + tax.links.length - accepted.length,
+        umbrellas: umbrellas.length, taxUmbrellas: tax.umbrellas });
     const reviewedByName = new Map(reviewedGroups.flatMap(group => group.keys.map(key => [nameKey(key), group])));
     const generation = randomUUID();
     const pending = new Map();
@@ -281,9 +421,9 @@ async function refreshIdentities(db, models, { signal, onProgress = () => {} } =
     // Retire identities only after every name received its current identity.
     const retired = await db.collection('employer_identities').deleteMany({ generation: { $ne: generation } });
     await db.collection('discovery_state').updateOne({ _id: 'employer_identities' },
-        { $set: { ready: true, identities, combined, feinLinks: accepted.length, updatedAt: new Date() } }, { upsert: true });
+        { $set: { ready: true, identities, combined, feinLinks: accepted.length - taxAccepted, taxIdLinks: taxAccepted, updatedAt: new Date() } }, { upsert: true });
     await onProgress({ event: 'identities-ready', identities, combined, retired: retired.deletedCount });
-    return { identities, combined, feinLinks: accepted.length };
+    return { identities, combined, feinLinks: accepted.length - taxAccepted, taxIdLinks: taxAccepted };
 }
 
 const validId = value => typeof value === 'string' && /^[a-f0-9]{24}$/.test(value);
@@ -310,5 +450,5 @@ async function profileSlugs(db, keys) {
     return key => slugs.get(key) || slugFor(key);
 }
 
-module.exports = { NAME_VERSION, idFor, searchKey, slugFor, nameKey, normalizeFein, feinLinks, Clusters, describeIdentity,
+module.exports = { NAME_VERSION, idFor, searchKey, slugFor, nameKey, normalizeFein, feinLinks, taxIdLinks, baseName, nested, collectTaxIdRows, nameActivity, Clusters, describeIdentity,
     ensureIdentityIndexes, backfillNameKeys, collectFeinRows, refreshIdentities, findIdentity, identityForQuery, profileSlugs };

@@ -117,7 +117,7 @@ function Summaries({ status }) {
       <article><h5>Employer identities</h5>
         {identities ? <><Pill tone={identities.ready ? 'success' : 'warning'}>{identities.ready ? 'Ready' : 'Not ready'}</Pill>
           <p>Updated {formatImportDate(identities.updatedAt)}</p>
-          <ul><li><span>Employers</span><span>{formatCount(identities.identities)}</span></li><li><span>Combined from several names</span><span>{formatCount(identities.combined)}</span></li><li><span>FEIN links</span><span>{formatCount(identities.feinLinks)}</span></li></ul></>
+          <ul><li><span>Employers</span><span>{formatCount(identities.identities)}</span></li><li><span>Combined from several names</span><span>{formatCount(identities.combined)}</span></li><li><span>FEIN links</span><span>{formatCount(identities.feinLinks)}</span></li><li><span>USCIS tax-ID links</span><span>{formatCount(identities.taxIdLinks)}</span></li></ul></>
           : <Pill tone="warning">Not built</Pill>}
       </article>
       <article><h5>Worksite search</h5>

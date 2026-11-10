@@ -51,11 +51,21 @@ test('employer identities combine spelling variants, FEIN-linked renames and rev
         rows.push(record(program, 'acme widgets llc', 0), record(program, 'acme widgets, inc.', 0));
         // A FEIN shared by many names is an umbrella (e.g. a university system), never a link.
         if (program !== 'h1b') rows.push(...Array.from({ length: 7 }, (_, j) => record(program, `state university campus ${j}`, 0, { [fein[program]]: '11-1111112', [zip[program]]: '12345' })));
+        // Salesforce-style rename before FEINs were disclosed: only USCIS petition data links the names.
+        rows.push(...Array.from({ length: 4 }, (_, j) => record(program, 'salesforce.com, inc.', j, { [programs[program].date]: new Date(2021, 0, j + 1) })));
+        rows.push(...Array.from({ length: 3 }, (_, j) => record(program, 'salesforce, inc.', j)));
+        rows.push(record(program, 'salesforce.org', 0, { [programs[program].date]: new Date(2019, 0, 1) }));
         await Model.collection.insertMany(rows);
     }
+    const uscis = (employer, nameKey, fiscalYear, taxId) => ({ fiscalYear, employer, nameKey, taxId, zip: '94105', initialApprovals: 10, initialDenials: 0, continuingApprovals: 20, continuingDenials: 1 });
+    await connection.db.collection('uscis_h1b').insertMany([
+        ...[2019, 2020, 2021, 2022].map(year => uscis('SALESFORCE.COM INC', 'salesforce com inc', year, '0693')),
+        ...[2022, 2023, 2024, 2025].map(year => uscis('SALESFORCE INC', 'salesforce inc', year, '0693')),
+        uscis('SALESFORCE.ORG', 'salesforce org', 2019, '9769'), uscis('SALESFORCE.COM INC', 'salesforce com inc', 2020, '0269'),
+    ]);
     await refreshDirectory(connection.db, models);
     const result = await refreshIdentities(connection.db, models);
-    assert(result.feinLinks >= 1);
+    assert(result.feinLinks >= 1); assert.equal(result.taxIdLinks, 1);
     const identity = await findIdentity(connection.db, group.id);
     const expectedCount = 2 + 3 + 4 + 5 + 6;
 
@@ -88,6 +98,16 @@ test('employer identities combine spelling variants, FEIN-linked renames and rev
         assert(meta.grouping.evidence.every(item => item.url.startsWith('/cases/')));
         assert.equal((await findIdentity(connection.db, idFor('tiny typo employer llc'))).keys.length, 1);
         assert.equal((await findIdentity(connection.db, idFor('state university campus 1'))).keys.length, 1);
+    });
+    await t.test('a rename that predates FEINs combines through its USCIS tax ID and ZIP code', async () => {
+        const salesforce = await findIdentity(connection.db, idFor('salesforce.com, inc.'));
+        assert.deepEqual([...salesforce.keys].sort(), ['salesforce, inc.', 'salesforce.com, inc.']);
+        assert.equal(salesforce._id, idFor('salesforce, inc.'), 'the current name titles the identity');
+        assert.equal(salesforce.grouping.kind, 'automatic');
+        assert.match(salesforce.grouping.reason, /tax ID ending 0693 and ZIP code 94105/);
+        assert(salesforce.grouping.evidence.some(item => item.url.startsWith('/h1b-approvals?q=')));
+        assert.equal((await findIdentity(connection.db, idFor('salesforce.org'))).keys.length, 1, 'another tax ID stays separate');
+        assert.equal((await connection.db.collection('discovery_state').findOne({ _id: 'employer_identities' })).taxIdLinks, 1);
     });
     await t.test('old exact-name caches cannot become a combined profile', async () => {
         await connection.db.collection('employer_profiles').insertOne({ _id: group.id, version: 1, summaries: { h1b: { totalCount: 999 } }, updatedAt: new Date() });

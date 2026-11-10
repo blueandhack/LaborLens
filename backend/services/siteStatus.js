@@ -77,7 +77,7 @@ async function getSiteStatus(db) {
         employers: byId.employers ? { ready: Boolean(byId.employers.ready), building: Boolean(byId.employers.building), updatedAt: byId.employers.updatedAt || null,
             programs: byId.employers.programs || {} } : null,
         identities: byId.employer_identities ? { ready: Boolean(byId.employer_identities.ready), updatedAt: byId.employer_identities.updatedAt || null,
-            identities: byId.employer_identities.identities ?? null, combined: byId.employer_identities.combined ?? null, feinLinks: byId.employer_identities.feinLinks ?? null } : null,
+            identities: byId.employer_identities.identities ?? null, combined: byId.employer_identities.combined ?? null, feinLinks: byId.employer_identities.feinLinks ?? null, taxIdLinks: byId.employer_identities.taxIdLinks ?? null } : null,
         worksites: byId.worksites?.programs || {},
         insights: MAP_PROGRAMS.map(program => {
             const row = revisions[program];

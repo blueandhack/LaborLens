@@ -57,3 +57,43 @@ test('identity names normalize spelling and abbreviations but keep the legal for
     assert.deepEqual(pairs, ['facebook inc + meta platforms inc', 'fmr llc + fmr llc dba fidelity investments'], 'volume without a shared ZIP is not a link');
     assert.deepEqual(umbrellas.map(item => item.fein), ['500000001']);
 });
+
+test('USCIS tax-ID links join renames but not campuses, peers, umbrellas or conflicting FEINs', () => {
+    const { taxIdLinks, baseName, nested } = require('../services/employerIdentity');
+    assert.equal(baseName('salesforce com inc'), 'salesforce com');
+    assert(nested('anthropic pbc', 'anthropic pbc dba anthropic inc')); assert(!nested('salesforce org inc', 'salesforce com inc'));
+    const at = date => new Date(date).getTime();
+    const activity = new Map(Object.entries({
+        'salesforce com inc': { total: 17000, latest: at('2022-09-30') }, 'salesforce inc': { total: 13000, latest: at('2026-06-30') },
+        'salesforce com': { total: 3800, latest: at('2022-04-02') }, 'salesforce org inc': { total: 36, latest: at('2019-05-31') },
+        'anthropic pbc': { total: 351, latest: at('2026-06-01') }, 'anthropic pbc dba anthropic inc': { total: 35, latest: at('2026-05-01') },
+        'acme labs inc': { total: 400, latest: at('2026-06-01') }, 'acme robotics inc': { total: 300, latest: at('2026-05-01') },
+        'nova data inc': { total: 50, latest: at('2018-01-01') }, 'nova cloud inc': { total: 60, latest: at('2026-01-01') },
+        'university of x at north': { total: 900, latest: at('2021-01-01') }, 'university of x at south': { total: 300, latest: at('2026-01-01') },
+        'zeta one inc': { total: 10, latest: at('2015-01-01') }, 'zeta two inc': { total: 10, latest: at('2026-01-01') },
+        'omega a inc': { total: 10, latest: at('2015-01-01') }, 'omega b inc': { total: 10, latest: at('2026-01-01') },
+    }));
+    const name = (nameKey, first, last) => ({ nameKey, first, last });
+    const { links, umbrellas } = taxIdLinks([
+        // The rename (and the older suffix-less PERM spelling) share a tax ID; Salesforce.org reports its own.
+        { taxId: '0693', zip: '94105', names: [name('salesforce com inc', 2009, 2023), name('salesforce inc', 2022, 2026), name('salesforce com', 2009, 2013), name('salesforcecom inc', 2019, 2019)] },
+        { taxId: '9769', zip: '94105', names: [name('salesforce org inc', 2017, 2019), name('salesforce org', 2019, 2019)] },
+        // A dba used alongside the main name, a minor variant whose words the main name's extend.
+        { taxId: '6045', zip: '94104', names: [name('anthropic pbc', 2021, 2026), name('anthropic pbc dba anthropic inc', 2022, 2025)] },
+        // Two names filing side by side are peers, not a rename.
+        { taxId: '1111', zip: '10001', names: [name('acme labs inc', 2015, 2026), name('acme robotics inc', 2016, 2026)] },
+        // A hand-over with too many shared fiscal years.
+        { taxId: '2222', zip: '10002', names: [name('nova data inc', 2010, 2020), name('nova cloud inc', 2016, 2026)] },
+        // Campuses of a system never link as a rename.
+        { taxId: '3333', zip: '10003', names: [name('university of x at north', 2009, 2020), name('university of x at south', 2025, 2026)] },
+        // Many unrelated first words on one tax ID and ZIP: a shared office.
+        { taxId: '4444', zip: '10004', names: ['zeta one inc', 'zeta two inc', 'alpha inc', 'beta inc', 'gamma inc'].map(key => name(key, 2010, 2012)) },
+        // Different DOL FEINs veto the link.
+        { taxId: '5555', zip: '10005', names: [name('omega a inc', 2009, 2012), name('omega b inc', 2020, 2026)] },
+    ], activity, { dominantFein: new Map([['omega a inc', '111111111'], ['omega b inc', '222222222']]) });
+    const pairs = links.map(link => [link.a, link.b].sort().join(' + ')).sort();
+    assert.deepEqual(pairs, ['anthropic pbc + anthropic pbc dba anthropic inc', 'salesforce com + salesforce com inc', 'salesforce com inc + salesforce inc']);
+    assert.equal(umbrellas, 1);
+    const rename = links.find(link => link.b === 'salesforce inc');
+    assert.deepEqual([rename.taxId, rename.zip, rename.years], ['0693', '94105', [[2009, 2023], [2022, 2026]]]);
+});
