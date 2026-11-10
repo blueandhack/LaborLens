@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const models = require('../models/programModels');
 const { authMiddleware } = require('./admin');
+const { recordAdminEvent } = require('../services/adminEvents');
 const mongoose = require('mongoose');
 const { acquireImportLock } = require('../services/importLock');
 const { invalidateCache } = require('./search');
@@ -42,6 +43,7 @@ router.delete('/', authMiddleware, async (req, res) => {
         await noteInsightsChange(mongoose.connection.db, type, { clear: true });
         await clearEmployerProgram(mongoose.connection.db, type);
         invalidateCache();
+        recordAdminEvent(mongoose.connection.db, 'data-cleared', req, { username: req.adminUsername, program: type, records: result.deletedCount });
         res.json({ success: true, deletedCount: result.deletedCount, message: `Successfully deleted ${result.deletedCount} ${type.toUpperCase()} cases` });
     } catch (error) {
         console.error('Data clear error:', error);

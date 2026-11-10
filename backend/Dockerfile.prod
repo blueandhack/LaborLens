@@ -14,5 +14,8 @@ COPY backend/ ./
 COPY --from=profile-ui /usr/src/app/frontend/dist /usr/src/app/frontend/dist
 COPY --from=profile-ui /usr/src/app/frontend/dist-ssr /usr/src/app/frontend/dist-ssr
 COPY --from=profile-ui /usr/src/app/frontend/node_modules /usr/src/app/frontend/node_modules
+# The deployed commit, shown on the administration overview.
+ARG APP_VERSION=""
+ENV APP_VERSION=$APP_VERSION
 EXPOSE 5001
 CMD ["npm", "start"]

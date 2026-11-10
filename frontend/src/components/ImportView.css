@@ -14,8 +14,8 @@
 .admin-actions, .admin-form-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
 .admin-help { color: var(--text-secondary); font-size: 13px; line-height: 1.65; margin-top: 6px; overflow-wrap: anywhere; }
 .admin-text-button { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; border: 0; background: transparent; color: var(--focus-ring); padding: 4px 0; cursor: pointer; font-size: 12px; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
-.admin-sections { display: flex; gap: 8px; margin-block: 28px 30px; border-bottom: 1px solid var(--border-color-strong); }
-.admin-sections button { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 50px; min-width: 160px; padding: 12px 18px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; line-height: 1.4; cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
+.admin-sections { display: flex; gap: 8px; margin-block: 28px 30px; border-bottom: 1px solid var(--border-color-strong); overflow-x: auto; }
+.admin-sections button { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 50px; min-width: 140px; padding: 12px 18px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; line-height: 1.4; cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
 .admin-sections button:hover { color: var(--text-primary); background: var(--input-bg); }
 .admin-sections button[aria-pressed="true"] { border-bottom-color: var(--focus-ring); color: var(--text-primary); background: var(--input-bg); font-weight: 500; }
 .admin-sections svg { flex: 0 0 auto; width: 16px; height: 16px; }
@@ -154,7 +154,7 @@
     .admin-page-heading { gap: 16px; }
     .admin-page-heading p:last-child { font-size: 13px; }
     .admin-sign-out { padding: 9px 11px !important; }
-    .admin-sections { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-block: 24px; }
+    .admin-sections { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-block: 24px; }
     .admin-sections button { min-width: 0; min-height: 64px; padding: 10px 5px; flex-direction: column; gap: 5px; font-size: 12px; }
     .admin-sections button span { text-wrap: balance; }
     .admin-section-heading { flex-wrap: wrap; gap: 12px; }

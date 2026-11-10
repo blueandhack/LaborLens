@@ -132,6 +132,14 @@ class BackupTests(unittest.TestCase):
             self.assertFalse((Path(directory) / 'last-success.json').exists())
             self.assertEqual(list(Path(directory).glob('snapshot-*')), [])
 
+    def test_status_is_recorded_without_affecting_the_backup(self):
+        with patch('backup.command', side_effect=RuntimeError('cluster unreachable')) as run, \
+                patch('backup.next_scheduled_run', return_value='2026-12-01T12:05:00+00:00'):
+            backup.record_status({'state': 'running'})  # A failure to record is only logged.
+        args, kwargs = run.call_args
+        self.assertEqual(args[0][:6], ['kubectl', '-n', 'laborlens', 'exec', '-i', 'deployment/laborlens-backend'])
+        self.assertEqual(json.loads(kwargs['input']), {'state': 'running', 'nextRunAt': '2026-12-01T12:05:00+00:00'})
+
 
 if __name__ == '__main__':
     unittest.main()

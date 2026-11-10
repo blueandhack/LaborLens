@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import AutomaticImports from './AutomaticImports';
 import SiteDataStatus from './SiteDataStatus';
+import AdminOverview from './AdminOverview';
 import './ImportView.css';
-import { FiUploadCloud, FiLogOut, FiSettings, FiX, FiShield, FiUnlock, FiRefreshCw, FiDatabase } from 'react-icons/fi';
+import { FiUploadCloud, FiLogOut, FiSettings, FiX, FiShield, FiUnlock, FiRefreshCw, FiDatabase, FiGrid } from 'react-icons/fi';
 
 // Matches the server's rule (backend/models/Admin.js).
 const USERNAME_PATTERN = /^[A-Za-z0-9._@-]{3,64}$/;
@@ -11,7 +12,7 @@ const ImportView = () => {
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [isCheckingIPs, setIsCheckingIPs] = useState(false);
     const [blockedIPsError, setBlockedIPsError] = useState('');
-    const [section, setSection] = useState('automatic');
+    const [section, setSection] = useState('overview');
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [uploadError, setUploadError] = useState('');
     const [uploadStatus, setUploadStatus] = useState('idle');
@@ -145,7 +146,7 @@ const ImportView = () => {
         setLogs([]); setProgress({ processed: 0, total: 0, percentage: 0, inserted: 0, updated: 0 });
         setBlockedIPs([]);
         setAutoStatus(null);
-        setSection('automatic');
+        setSection('overview');
         setFile(null);
         setUploadStatus('idle');
         setShowChangePassword(false);
@@ -303,13 +304,14 @@ const ImportView = () => {
 
     return <div className="import-container admin-page">
         <header className="admin-page-heading">
-            <div><p className="section-kicker">Administration</p><h2>Data management</h2><p>Monitor DOL imports and inspect the quality of your datasets.</p></div>
+            <div><p className="section-kicker">Administration</p><h2>Data management</h2><p>Monitor the site’s data, background jobs, backups and access.</p></div>
             <button onClick={handleLogout} className="btn btn-secondary admin-sign-out"><FiLogOut aria-hidden="true" /> Sign out</button>
         </header>
         <nav className="admin-sections" aria-label="Administration sections">
-            {[['automatic', 'Automatic imports', <FiRefreshCw aria-hidden="true" />], ['data', 'Site data', <FiDatabase aria-hidden="true" />], ['manual', 'Manual upload', <FiUploadCloud aria-hidden="true" />], ['security', 'Access & security', <FiShield aria-hidden="true" />]].map(([id, label, icon]) => <button key={id} aria-pressed={section === id} onClick={() => setSection(id)}>{icon}<span>{label}</span></button>)}
+            {[['overview', 'Overview', <FiGrid aria-hidden="true" />], ['automatic', 'Automatic imports', <FiRefreshCw aria-hidden="true" />], ['data', 'Site data', <FiDatabase aria-hidden="true" />], ['manual', 'Manual upload', <FiUploadCloud aria-hidden="true" />], ['security', 'Access & security', <FiShield aria-hidden="true" />]].map(([id, label, icon]) => <button key={id} aria-pressed={section === id} onClick={() => setSection(id)}>{icon}<span>{label}</span></button>)}
         </nav>
 
+        {section === 'overview' && <AdminOverview onNavigate={setSection} />}
         {section === 'data' && <SiteDataStatus />}
         {section === 'automatic' && <AutomaticImports status={autoStatus} error={autoStatusError} refreshing={isRefreshing} onRefresh={fetchAutoStatus} />}
 

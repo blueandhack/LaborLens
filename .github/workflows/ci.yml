@@ -61,6 +61,8 @@ jobs:
         with:
           context: .
           file: ./backend/Dockerfile.prod
+          build-args: |
+            APP_VERSION=${{ github.sha }}
           push: true
           provenance: false
           sbom: false

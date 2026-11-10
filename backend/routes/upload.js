@@ -4,6 +4,7 @@ const fs = require('fs/promises');
 const mongoose = require('mongoose');
 const models = require('../models/programModels');
 const { authMiddleware } = require('./admin');
+const { recordAdminEvent } = require('../services/adminEvents');
 const { importWorkbook, VALIDATION_VERSION } = require('../services/importWorkbook');
 const { buildImportCoverage, normalizedSources } = require('../services/importCoverage');
 const { acquireImportLock } = require('../services/importLock');
@@ -73,6 +74,7 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
     }
     currentJob = { status: 'starting', processed: 0, total: 0, inserted: 0, updated: 0,
         logs: ['File accepted. Starting import stream...'], message: 'Starting import stream...' };
+    recordAdminEvent(mongoose.connection.db, 'upload', req, { username: req.adminUsername, program: type, filename: String(req.file.originalname || '').slice(0, 160), bytes: req.file.size });
     res.status(202).json({ message: 'File accepted. Beginning background processing.' });
     (async () => {
         try {

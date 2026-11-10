@@ -4,6 +4,9 @@ const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const Admin = require('../models/Admin');
 const { getSiteStatus } = require('../services/siteStatus');
+const { getAdminOverview } = require('../services/adminOverview');
+const { recordAdminEvent } = require('../services/adminEvents');
+const audit = (type, req, fields) => recordAdminEvent(mongoose.connection.db, type, req, fields);
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -121,6 +124,7 @@ async function reauthenticate(req, res) {
     const isMatch = typeof currentPassword === 'string' && currentPassword.length > 0 && await admin.comparePassword(currentPassword);
     if (!isMatch) {
         recordAccountFailure(req.adminId);
+        audit('password-check-failed', req, { username: admin.username });
         await slow();
         res.status(400).json({ error: 'Incorrect current password' });
         return null;
@@ -134,6 +138,7 @@ router.post('/login', async (req, res) => {
     const ip = getClientIP(req);
     const limit = checkRateLimit(ip);
     if (limit.blocked) {
+        audit('sign-in-blocked', req);
         return res.status(429).json({ error: `Too many failed attempts. Try again in ${limit.secsLeft} seconds.` });
     }
 
@@ -147,12 +152,16 @@ router.post('/login', async (req, res) => {
 
         if (!admin || !isMatch) {
             recordFailure(ip);
+            // The attempted name is kept only for a real account: a mistyped
+            // password entered as the username must not be stored.
+            audit('sign-in-failed', req, admin ? { username: admin.username } : { unknownAccount: true });
             // Constant-time delay to slow automated attacks
             await slow();
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         resetAttempts(ip);
+        audit('sign-in', req, { username: admin.username });
         res.json({ token: signToken(admin), username: admin.username });
     } catch (error) {
         console.error('Login error:', error);
@@ -185,6 +194,7 @@ router.post('/change-password', authMiddleware, async (req, res) => {
         admin.tokenVersion = (admin.tokenVersion || 0) + 1;
         await admin.save(); // Password will be hashed by pre-save hook
         console.log(JSON.stringify({ event: 'admin-password-changed', adminId: req.adminId, username: admin.username, ip: getClientIP(req), at: new Date().toISOString() }));
+        audit('password-changed', req, { username: admin.username });
 
         res.json({ message: 'Password updated successfully', token: signToken(admin), username: admin.username });
     } catch (error) {
@@ -223,12 +233,25 @@ router.post('/change-username', authMiddleware, async (req, res) => {
             return res.status(409).json({ error: 'Your account changed in the meantime. Please sign in again.' });
         }
         console.log(JSON.stringify({ event: 'admin-username-changed', adminId: req.adminId, from: admin.username, to: username, ip: getClientIP(req), at: new Date().toISOString() }));
+        audit('username-changed', req, { username, from: admin.username });
 
         res.json({ message: 'Username updated', token: signToken(updated), username: updated.username });
     } catch (error) {
         if (error?.code === 11000) return res.status(409).json({ error: 'That username is not available' });
         console.error('Change username error:', error);
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/admin/overview — the administration dashboard
+router.get('/overview', authMiddleware, async (req, res) => {
+    try {
+        const now = Date.now();
+        const blocked = [...loginAttempts.values()].filter(state => state.lockedUntil && now < state.lockedUntil);
+        res.set('Cache-Control', 'no-store').json({ ...(await getAdminOverview(mongoose.connection.db, { blocked })), viewer: req.adminUsername });
+    } catch (error) {
+        console.error('Admin overview error:', error.message);
+        res.status(503).set('Cache-Control', 'no-store').json({ error: 'The overview is temporarily unavailable.' });
     }
 });
 
@@ -265,6 +288,7 @@ router.delete('/blocked-ips/:ip', authMiddleware, (req, res) => {
     const ip = req.params.ip;
     if (loginAttempts.has(ip)) {
         loginAttempts.delete(ip);
+        audit('address-unblocked', req, { username: req.adminUsername, address: ip.slice(0, 64) });
         res.json({ message: `Unblocked ${ip}` });
     } else {
         res.status(404).json({ error: 'IP not found or not blocked' });

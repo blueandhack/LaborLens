@@ -82,6 +82,37 @@ test('administrators can change their username safely', { skip: !process.env.MON
         assert.equal((await call('/api/protected', { token: thirdToken })).status, 401);
     });
 
+    await t.test('the audit trail records sign-ins and changes, never an unknown typed name', async () => {
+        await call('/api/admin/login', { body: { username: 'my-secret-password', password: 'x' } });
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const events = await mongoose.connection.db.collection('admin_events').find({}, { projection: { _id: 0 } }).sort({ at: 1 }).toArray();
+        const types = events.map(event => event.type);
+        for (const type of ['sign-in', 'sign-in-failed', 'username-changed', 'password-changed', 'password-check-failed']) assert.ok(types.includes(type), type);
+        const unknown = events.filter(event => event.type === 'sign-in-failed' && event.unknownAccount);
+        assert.ok(unknown.length >= 1);
+        assert.ok(!JSON.stringify(events).includes('my-secret-password'), 'typed names of unknown accounts are not stored');
+        assert.ok(!JSON.stringify(events).includes(password), 'passwords are never stored');
+        assert.deepEqual(events.find(event => event.type === 'username-changed').from, 'admin');
+        const indexes = await mongoose.connection.db.collection('admin_events').indexes();
+        assert.equal(indexes.find(index => index.key.at === 1).expireAfterSeconds, 180 * 86400);
+    });
+
+    await t.test('the overview needs a sign-in and summarizes the site', async () => {
+        assert.equal((await call('/api/admin/overview')).status, 401);
+        const token = (await call('/api/admin/login', { body: { username: 'yoga.admin@example', password: 'a brand new password' } })).body.token;
+        await mongoose.connection.db.collection('discovery_state').insertOne({ _id: 'backup', state: 'succeeded', lastSuccess: { completedAt: new Date(), archiveBytes: 123 } });
+        const { status, body } = await call('/api/admin/overview', { token });
+        assert.equal(status, 200);
+        assert.deepEqual(body.datasets.map(row => row.program), ['pwd', 'perm', 'h1b']);
+        assert.equal(body.viewer, 'yoga.admin@example');
+        assert.equal(body.jobs.backup.lastSuccess.archiveBytes, 123);
+        assert.ok(body.database.collections >= 2 && body.server.node.startsWith('v'));
+        assert.ok(body.security.admins.some(admin => admin.username === 'yoga.admin@example'));
+        assert.ok(body.security.failedSignIns24h >= 1);
+        assert.ok(body.activity.some(item => item.type === 'username-changed'));
+        assert.ok(!JSON.stringify(body).includes('"password"'), 'no password hashes leave the server');
+    });
+
     await t.test('repeated wrong passwords lock that account’s changes', async () => {
         const other = (await call('/api/admin/login', { body: { username: 'Other.Admin', password: 'another password 123' } })).body.token;
         for (let i = 0; i < 5; i++) await call('/api/admin/change-username', { token: other, body: { currentPassword: 'guess' + i, newUsername: 'stolen' } });

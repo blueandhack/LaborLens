@@ -52,6 +52,49 @@ def command(args, **kwargs):
     return subprocess.run(args, check=True, timeout=kwargs.pop('timeout', 600), **kwargs)
 
 
+# Records the backup's state in the site database (discovery_state "backup") for
+# the administration overview. Runs in the backend container, like the lease, and
+# never affects the backup itself.
+STATUS_SCRIPT = r'''
+const { MongoClient } = require('mongodb');
+let input = '';
+process.stdin.on('data', chunk => { input += chunk; });
+process.stdin.on('end', async () => {
+    const fields = JSON.parse(input);
+    const dates = value => value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, /At$/.test(key) && typeof item === 'string' ? new Date(item) : dates(item)]))
+        : value;
+    const client = await MongoClient.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 10000 });
+    try {
+        await client.db().collection('discovery_state').updateOne({ _id: 'backup' }, { $set: { ...dates(fields), updatedAt: new Date() } }, { upsert: true });
+    } finally { await client.close(); }
+});
+'''
+
+
+def next_scheduled_run():
+    try:
+        value = subprocess.run(['systemctl', 'show', 'laborlens-backup.timer', '-p', 'NextElapseUSecRealtime', '--value'],
+                               capture_output=True, text=True, timeout=15).stdout.strip()
+        if value and value != 'n/a':
+            # For example "Mon 2026-12-01 04:05:00 PST".
+            stamp = ' '.join(value.split()[1:3])
+            local = dt.datetime.strptime(stamp, '%Y-%m-%d %H:%M:%S').replace(tzinfo=ZoneInfo('America/Los_Angeles'))
+            return local.astimezone(dt.timezone.utc).isoformat()
+    except Exception:
+        pass
+    return None
+
+
+def record_status(fields):
+    try:
+        fields = {**fields, 'nextRunAt': next_scheduled_run()}
+        command(['kubectl', '-n', 'laborlens', 'exec', '-i', 'deployment/laborlens-backend', '--', 'node', '-e', STATUS_SCRIPT],
+                input=json.dumps(fields), text=True, capture_output=True, timeout=90)
+    except Exception as error:
+        log(f'Backup status not recorded in the site database: {str(error)[:200]}')
+
+
 def stop(process):
     if process.poll() is None:
         process.terminate()
@@ -262,6 +305,9 @@ def backup(snapshot_only=None):
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (state / 'backup.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        started = dt.datetime.now(dt.timezone.utc)
+        if snapshot_only is None:
+            record_status({'state': 'running', 'startedAt': started.isoformat(), 'error': None})
         drive = Drive()
         if snapshot_only is None:
             drive.preflight()  # Fail before taking the application lease if OAuth is missing.
@@ -292,11 +338,15 @@ def backup(snapshot_only=None):
                 return
             drive.publish(folder, name)
             # Publication and verification must succeed before any retention runs.
-            (state / 'last-success.json').write_text(json.dumps({
+            success = {
                 'completedAt': dt.datetime.now(dt.timezone.utc).isoformat(),
                 'remote': f'{drive.remote}/{name}', 'archiveBytes': archive.stat().st_size,
                 'sha256': digest,
-            }, indent=2))
+            }
+            (state / 'last-success.json').write_text(json.dumps(success, indent=2))
+            record_status({'state': 'succeeded', 'finishedAt': success['completedAt'], 'error': None,
+                           'lastSuccess': {**success, 'startedAt': started.isoformat(),
+                                           'durationSeconds': round((dt.datetime.now(dt.timezone.utc) - started).total_seconds())}})
             log(f'Encrypted backup verified: {drive.remote}/{name}')
             drive.prune()
         log('Temporary server archive removed')
@@ -313,6 +363,10 @@ def main():
         backup(args.snapshot_only)
     except Exception as error:
         log(f'BACKUP FAILED: {error}')
+        if args.snapshot_only is None:
+            now = dt.datetime.now(dt.timezone.utc).isoformat()
+            record_status({'state': 'failed', 'finishedAt': now, 'error': str(error)[:300],
+                           'lastFailure': {'failedAt': now, 'error': str(error)[:300]}})
         return 1
     return 0
 
