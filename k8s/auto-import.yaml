@@ -23,7 +23,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: insights
-            image: ghcr.io/blueandhack/laborlens-backend:ca2d9ee1adad6bafc28b5117404c863182607471
+            image: ghcr.io/blueandhack/laborlens-backend:f82bf3af8b8794d46d4aecc5353c7eac8da7f06c
             imagePullPolicy: Always
             command: ["node", "scripts/refresh-insights.js"]
             env:
@@ -70,7 +70,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: importer
-            image: ghcr.io/blueandhack/laborlens-backend:ca2d9ee1adad6bafc28b5117404c863182607471
+            image: ghcr.io/blueandhack/laborlens-backend:f82bf3af8b8794d46d4aecc5353c7eac8da7f06c
             imagePullPolicy: Always
             command: ["node", "scripts/auto-import.js", "--max-files=6"]
             env:
@@ -127,7 +127,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: importer
-            image: ghcr.io/blueandhack/laborlens-backend:ca2d9ee1adad6bafc28b5117404c863182607471
+            image: ghcr.io/blueandhack/laborlens-backend:f82bf3af8b8794d46d4aecc5353c7eac8da7f06c
             imagePullPolicy: Always
             command: ["node", "scripts/auto-import.js", "--from-year=2008", "--max-files=2", "--backfill", "--programs=pwd,perm,h1b"]
             env:
@@ -178,7 +178,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: i140
-            image: ghcr.io/blueandhack/laborlens-backend:ca2d9ee1adad6bafc28b5117404c863182607471
+            image: ghcr.io/blueandhack/laborlens-backend:f82bf3af8b8794d46d4aecc5353c7eac8da7f06c
             imagePullPolicy: Always
             command: ["node", "scripts/import-i140.js"]
             env:
@@ -221,7 +221,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: uscis-h1b
-            image: ghcr.io/blueandhack/laborlens-backend:ca2d9ee1adad6bafc28b5117404c863182607471
+            image: ghcr.io/blueandhack/laborlens-backend:f82bf3af8b8794d46d4aecc5353c7eac8da7f06c
             imagePullPolicy: Always
             command: ["node", "scripts/import-uscis-h1b.js", "--hub-recent"]
             env:
