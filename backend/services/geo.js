@@ -5,9 +5,12 @@ const { metros: metroList } = require('../data/geo/metros.json');
 const { zips, prefixes } = require('../data/geo/zip-metros.json');
 const { states: stateList } = require('../data/geo/states.json');
 const occupations = require('../data/geo/occupations.json');
+const { counties: countyList } = require('../data/geo/counties.json');
+const { zips: zipPoints } = require('../data/geo/zips.json');
 
 const metros = new Map(metroList.map(metro => [metro.code, metro]));
 const states = new Map(stateList.map(state => [state.code, state]));
+const counties = new Map(countyList.map(county => [county.fips, county]));
 const stateCodes = new Map(stateList.flatMap(state => [[state.code.toLowerCase(), state.code], [state.name.toLowerCase(), state.code]]));
 stateCodes.set('washington dc', 'DC').set('washington, dc', 'DC').set('virgin islands', 'VI').set('d.c.', 'DC');
 
@@ -128,6 +131,80 @@ class CityMetros {
     toJSON() { return Object.fromEntries(this.map); }
 }
 
+// A worksite city within a state, for the zoomed map: punctuation, a trailing
+// state ("Austin, TX") and common abbreviations (St., Ft., Mt.) are ignored.
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function localCityKey(state, value) {
+    if (!state || typeof value !== 'string') return null;
+    const name = states.get(state)?.name.toLowerCase();
+    let text = value.toLowerCase().trim().replace(new RegExp(`,\\s*(?:${state.toLowerCase()}${name ? '|' + escapeRegExp(name) : ''})\\.?$`), '');
+    text = text.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/^st /, 'saint ').replace(/^ft /, 'fort ').replace(/^mt /, 'mount ');
+    if (state === 'NY' && text === 'new york city') text = 'new york';
+    return /\p{L}/u.test(text) ? text : null;
+}
+
+// A worksite ZIP's county and map point, when the ZIP is in the reported state.
+function zipPlace(value, state) {
+    const zip = zipCode(value), point = zip && zipPoints[zip];
+    if (!point || (state && counties.get(point[0])?.state !== state)) return null;
+    return { zip, county: point[0], x: point[1], y: point[2] };
+}
+
+const weightedMedian = (points, axis) => {
+    const sorted = points.filter(point => point[axis] !== null).sort((a, b) => a[axis] - b[axis]);
+    const half = sorted.reduce((sum, point) => sum + point.n, 0) / 2;
+    let seen = 0;
+    for (const point of sorted) if ((seen += point.n) >= half) return point[axis];
+    return null;
+};
+
+// Learns each worksite city's county, map point and usual spelling from cases
+// that also report a ZIP code: the county with most of those cases, and the
+// weighted median of their ZIP points within it.
+class CityPlaces {
+    constructor(entries = []) { this.map = new Map(entries.map(entry => [entry[0], entry])); this.tally = new Map(); }
+    learn(state, city, zip, count) {
+        const key = localCityKey(state, city), place = zipPlace(zip, state);
+        if (!key || !place) return;
+        const entry = this.tally.get(state + '|' + key) || { zips: new Map(), names: new Map() };
+        entry.zips.set(place.zip, (entry.zips.get(place.zip) || 0) + count);
+        const name = city.trim().replace(/\s+/g, ' ');
+        entry.names.set(name, (entry.names.get(name) || 0) + count);
+        this.tally.set(state + '|' + key, entry);
+    }
+    finish() {
+        for (const [id, entry] of this.tally) {
+            const byCounty = new Map(), points = [];
+            for (const [zip, n] of entry.zips) {
+                const [county, x, y] = zipPoints[zip];
+                byCounty.set(county, (byCounty.get(county) || 0) + n);
+                points.push({ county, x, y, n });
+            }
+            const county = [...byCounty].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0][0];
+            const within = points.filter(point => point.county === county);
+            const name = [...entry.names].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0][0];
+            this.map.set(id, [id, titleCase(name), county, weightedMedian(within, 'x'), weightedMedian(within, 'y')]);
+        }
+        this.tally.clear();
+        return this;
+    }
+    key(state, city) { return localCityKey(state, city); }
+    // [id, name, county, x, y] or null.
+    get(state, key) { return this.map.get(state + '|' + key) || null; }
+    forState(state) { return [...this.map.values()].filter(entry => entry[0].startsWith(state + '|')); }
+}
+const titleCase = text => text.toLowerCase().replace(/(^|[\s\-/'(.])(\p{L})/gu, (_, before, letter) => before + letter.toUpperCase());
+
+// Location of one cell within its state for the zoomed map: { state, county, city, zip }.
+function locateLocal(cell, cities) {
+    const state = stateCode(cell.s);
+    if (!state) return null;
+    const place = zipPlace(cell.z, state);
+    const city = localCityKey(state, cell.c);
+    const county = place?.county || (city && cities?.get(state, city)?.[2]) || null;
+    return { state, county, city, zip: place?.zip || null };
+}
+
 // Location of one reduced cell: { state, metro } (either may be null).
 function locate(cell, cities) {
     const state = stateCode(cell.s);
@@ -137,24 +214,26 @@ function locate(cell, cities) {
     return { state, metro };
 }
 
-// Wage histogram helpers. Medians interpolate within the $2,000 bin.
+// Wage histogram helpers. Medians interpolate within the $2,000 bin. A
+// histogram is a dense array of bin counts or, for small places, a Map of bin → count.
 const histogram = () => new Uint32Array(LAST_BIN + 1);
 function median(bins) {
+    const entries = bins instanceof Map ? [...bins].sort((a, b) => a[0] - b[0]) : [...bins.entries()];
     let total = 0;
-    for (const count of bins) total += count;
+    for (const [, count] of entries) total += count;
     if (!total) return null;
     let seen = 0;
     const half = total / 2;
-    for (let bin = 0; bin < bins.length; bin++) {
-        if (!bins[bin]) continue;
-        if (seen + bins[bin] >= half) {
-            const within = (half - seen) / bins[bin];
+    for (const [bin, count] of entries) {
+        if (!count) continue;
+        if (seen + count >= half) {
+            const within = (half - seen) / count;
             return Math.round((bin + within) * WAGE_BIN / 100) * 100;
         }
-        seen += bins[bin];
+        seen += count;
     }
     return null;
 }
 
-module.exports = { fields, metros, states, textExpression, wageBinExpression, cellProjection, stateCode, stateValues, zipCode,
+module.exports = { fields, metros, states, counties, zipPlace, localCityKey, CityPlaces, locateLocal, titleCase, textExpression, wageBinExpression, cellProjection, stateCode, stateValues, zipCode,
     metroForZip, occupationCode, occupationTitle, wageLevel, CityMetros, locate, histogram, median, WAGE_BIN, LAST_BIN };

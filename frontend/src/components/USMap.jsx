@@ -1,17 +1,16 @@
 import { memo, useEffect, useState } from 'react';
+import { loadStates, loadedStates } from '../utils/mapShapes';
 import './USMap.css';
 
 // State outlines (~35 kB gzipped) load on demand, outside the main bundle.
 const WIDTH = 975, HEIGHT = 610;
-let shapes = null, loading = null;
-const loadShapes = () => (loading ||= import('../data/usStates.json').then(module => (shapes = module.default.states)));
 
 // Albers USA SVG of the states (Alaska and Hawaii inset) with optional metro
 // bubbles. Fill steps 1–5 use the sequential ramp in USMap.css; 0 is no data.
 // Pointer handlers receive the hovered place (or null) for a tooltip.
 function USMap({ stateSteps = {}, bubbles = [], selected = null, onHover, onSelect, label, compact = false }) {
-  const [states, setStates] = useState(shapes);
-  useEffect(() => { if (!states) loadShapes().then(setStates).catch(() => {}); }, [states]);
+  const [states, setStates] = useState(loadedStates);
+  useEffect(() => { if (!states) loadStates().then(setStates).catch(() => {}); }, [states]);
   const enter = place => event => onHover?.(place, event);
   const leave = () => onHover?.(null);
   return (

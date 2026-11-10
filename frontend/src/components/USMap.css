@@ -40,3 +40,25 @@
   .us-map path { stroke: CanvasText; }
   .us-map circle { stroke: CanvasText; }
 }
+
+/* Zoomable map: strokes and rings keep their on-screen width at every zoom. */
+:root { --map-context: rgba(232, 228, 214, 0.04); --map-city: #141a1a; --map-city-ring: #e8e4d6; --map-label-halo: #1e2424; }
+[data-theme="light"] { --map-context: rgba(28, 35, 31, 0.035); --map-city: #1c231f; --map-city-ring: #f5f2e7; --map-label-halo: #f5f2e7; }
+.atlas-map path, .atlas-map circle { vector-effect: non-scaling-stroke; }
+.atlas-map path.is-context { fill: var(--map-context); stroke: var(--border-color-strong); }
+.atlas-map path.is-context:hover { fill: var(--map-empty); }
+.atlas-map .us-map-counties path { stroke-width: .7; }
+.atlas-map .us-map-counties path:hover { stroke-width: 1.6; }
+.atlas-map .us-map-counties path.is-dim { opacity: .4; }
+.atlas-map .us-map-counties path.is-selected { stroke: var(--text-primary); stroke-width: 2.4; opacity: 1; }
+.atlas-map path.us-map-outline { fill: none; stroke: var(--text-primary); stroke-opacity: .7; stroke-width: 1.3; pointer-events: none; }
+.atlas-map circle.is-neutral { fill: var(--map-city); fill-opacity: .7; stroke: var(--map-city-ring); stroke-width: 1.4; }
+.atlas-map circle.is-neutral:hover, .atlas-map circle.is-neutral.is-selected { fill-opacity: .95; stroke: var(--focus-ring); stroke-width: 2; }
+.atlas-map circle.is-dim { fill-opacity: .3; }
+.us-map-labels { pointer-events: none; font-family: inherit; font-weight: 600; }
+.us-map-labels text { fill: var(--text-primary); stroke: var(--map-label-halo); stroke-linejoin: round; paint-order: stroke; }
+@media (forced-colors: active) {
+  .atlas-map path.us-map-outline { stroke: CanvasText; }
+  .us-map-labels text { fill: CanvasText; stroke: Canvas; }
+}
+.us-map.atlas-map { overflow: hidden; }

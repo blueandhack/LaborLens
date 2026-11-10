@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const express = require('express');
 const { randomUUID } = require('node:crypto');
 const { programs, searchIndexes } = require('../services/searchConfig');
-const { refreshMap, getMap, getMapOptions, employerPlaces, invalidateMap } = require('../services/map');
+const { refreshMap, getMap, getMapOptions, getLocalMap, employerPlaces, invalidateMap } = require('../services/map');
 const { searchCases, countCases, invalidateCounts } = require('../services/caseSearch');
 const { computeInsights } = require('../services/searchInsights');
 const { createMapRoutes } = require('../routes/map');
@@ -85,6 +85,27 @@ test('map summarizes filings by worksite state and metro, occupation and year', 
         assert.equal(empty.total, 0); assert.equal(empty.occupationTitle, 'Software Developers');
         await assert.rejects(getMap(db, { program: 'h1b', year: 'x' }), /Invalid year/);
     });
+    await t.test('county and city detail within a state', async () => {
+        const wa = await getLocalMap(db, { program: 'h1b', state: 'wa' });
+        assert.equal(wa.ready, true); assert.equal(wa.state, 'WA'); assert.equal(wa.total, 12);
+        // Seattle (98101) is in King County, as is Redmond (98052); ZIP-less Seattle joins through its learned county.
+        assert.deepEqual(wa.counties.map(row => [row.fips, row.name, row.count]), [['53033', 'King County', 11]]);
+        assert.ok(wa.counties[0].perCapita > 0 && wa.counties[0].x > 0);
+        const seattle = wa.cities.find(row => row.key === 'seattle');
+        assert.equal(seattle.name, 'Seattle'); assert.equal(seattle.county, '53033'); assert.equal(seattle.count, 6);
+        assert.ok(seattle.x > 0 && seattle.y > 0);
+        assert.deepEqual(seattle.zips.map(row => [row.zip, row.count]), [], 'ZIPs are listed for cities with at least 10 filings');
+        const nowhere = wa.cities.find(row => row.key === 'nowhere');
+        assert.deepEqual([nowhere.name, nowhere.county, nowhere.x, nowhere.count], ['Nowhere', null, null, 1], 'a city without a ZIP has no map point');
+        assert.equal((await getLocalMap(db, { program: 'h1b', state: 'WA', year: '2024' })).total, 6);
+        const texas = await getLocalMap(db, { program: 'h1b', state: 'TX' });
+        assert.deepEqual(texas.cities.map(row => [row.name, row.county]), [['Austin', '48453']]);
+        assert.equal((await getLocalMap(db, { program: 'h1b', state: 'CA' })).total, 0);
+        const hartford = await getLocalMap(db, { program: 'pwd', state: 'CT' });
+        assert.equal(hartford.counties[0].name, 'Capitol Planning Region', 'Connecticut uses its 2022 planning regions');
+        await assert.rejects(getLocalMap(db, { program: 'h1b', state: 'Ontario' }), /Invalid state/);
+        await assert.rejects(getLocalMap(db, { program: 'h1b' }), /Invalid state/);
+    });
     await t.test('other programs and unchanged data', async () => {
         const perm = await getMap(db, { program: 'perm' });
         assert.equal(perm.metros[0].code, '35620'); assert.equal(perm.states[0].senior, null);
@@ -103,6 +124,9 @@ test('map summarizes filings by worksite state and metro, occupation and year', 
         assert.equal(developers.total, 50);
         assert.deepEqual(developers.metros.map(row => [row.code, row.count]).sort(), [['41940', 25], ['42660', 25]]);
         assert.equal((await getMap(db, { program: 'perm', occupation: '15-1252', year: '2024' })).total, 4);
+        const california = await getLocalMap(db, { program: 'perm', occupation: '15-1252', year: '2023', state: 'CA' });
+        assert.deepEqual(california.counties.map(row => [row.name, row.count]), [['Santa Clara County', 25]]);
+        assert.equal((await getLocalMap(db, { program: 'perm', occupation: '15-1252', state: 'NY' })).total, 4);
     });
     await t.test('employer worksite places', async () => {
         const places = await employerPlaces(db, models.h1b, 'h1b', ['acme corp']);
@@ -132,6 +156,9 @@ test('map summarizes filings by worksite state and metro, occupation and year', 
         const map = await fetch(base + '?program=pwd').then(response => response.json());
         assert.equal(map.total, 2);
         assert.equal((await fetch(base + '/options?program=h1b').then(response => response.json())).years.length, 2);
+        const local = await fetch(base + '/local?program=h1b&state=WA').then(response => response.json());
+        assert.equal(local.counties[0].name, 'King County');
+        assert.equal((await fetch(base + '/local?program=h1b&state=ZZ')).status, 400);
         const invalid = await fetch(base + '?program=nope');
         assert.equal(invalid.status, 400); assert.match((await invalid.json()).error, /Invalid program/);
     });

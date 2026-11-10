@@ -4,7 +4,7 @@ export const MAP_PROGRAMS = ['h1b', 'perm', 'pwd'];
 export const CLASS_COUNT = 5;
 // Rankings by a rate, median or share ignore places with few filings, where
 // one employer can dominate the value.
-export const RANK_MINIMUM = { states: 25, metros: 50 };
+export const RANK_MINIMUM = { states: 25, metros: 50, counties: 25, cities: 25 };
 
 export const wageNoun = program => program === 'pwd' ? 'prevailing wage' : 'offered wage';
 
@@ -71,7 +71,8 @@ export const bubbleRadius = (count, max, largest = 28) => max > 0 ? Math.max(2.2
 // "Seattle-Tacoma-Bellevue, WA" → "Seattle".
 export const principalCity = name => String(name).split(',')[0].split('-')[0].split('/')[0].trim();
 
-// Case search for a place: a state, or a metro's principal city within its state.
+// Case search for a place: a state, a city, or a metro's principal city within its state.
+// Counties have no case-search filter and search their state.
 export function placeSearchURL(program, place, { year, employer } = {}) {
   const config = programs[program];
   const params = new URLSearchParams();
@@ -80,7 +81,8 @@ export function placeSearchURL(program, place, { year, employer } = {}) {
     else params.set('employer', employer.key);
   }
   if (place.kind === 'metro') { params.set('worksiteState', place.state); params.set('worksite', principalCity(place.name)); }
-  else params.set('worksiteState', place.code);
+  else if (place.kind === 'city') { params.set('worksiteState', place.state); params.set('worksite', place.name); }
+  else params.set('worksiteState', place.kind === 'county' ? place.state : place.code);
   if (year && year !== 'all') params.set(config.yearKey, String(year));
   return (program === 'pwd' ? '/' : '/' + program) + '?' + params;
 }
@@ -91,7 +93,11 @@ export function readMapState(params) {
   const occupation = /^\d{2}-\d{4}$/.test(params.get('occupation') || '') ? params.get('occupation') : 'all';
   const metric = ['count', 'perCapita', 'median', 'senior'].includes(params.get('metric')) ? params.get('metric') : 'count';
   const view = params.get('view') === 'metros' ? 'metros' : 'states';
-  return { program, year, occupation, metric, view };
+  // Zoomed place: a state, then optionally one of its counties and cities.
+  const state = /^[A-Z]{2}$/.test(params.get('state') || '') ? params.get('state') : '';
+  const county = state && /^\d{5}$/.test(params.get('county') || '') ? params.get('county') : '';
+  const city = state ? (params.get('city') || '').trim().toLowerCase().slice(0, 80) : '';
+  return { program, year, occupation, metric, view, state, county, city };
 }
 export function writeMapState(state) {
   const params = new URLSearchParams();
@@ -100,7 +106,65 @@ export function writeMapState(state) {
   if (state.occupation !== 'all') params.set('occupation', state.occupation);
   if (state.metric !== 'count') params.set('metric', state.metric);
   if (state.view !== 'states') params.set('view', state.view);
+  if (state.state) params.set('state', state.state);
+  if (state.state && state.county) params.set('county', state.county);
+  if (state.state && state.city) params.set('city', state.city);
   return params;
+}
+
+// --- Zooming ---
+export const MAP_WIDTH = 975, MAP_HEIGHT = 610;
+export const FULL_VIEW = [0, 0, MAP_WIDTH, MAP_HEIGHT];
+
+// A viewBox [x, y, width, height] showing box [x0, y0, x1, y1] with padding,
+// at the map's aspect ratio and no smaller than minimum map units across
+// (one unit is about 4.6 km in the contiguous states).
+export function fitBox([x0, y0, x1, y1], { padding = 0.08, minimum = 4 } = {}) {
+  let width = Math.max(x1 - x0, minimum) * (1 + padding * 2), height = Math.max(y1 - y0, minimum * MAP_HEIGHT / MAP_WIDTH) * (1 + padding * 2);
+  if (width / height > MAP_WIDTH / MAP_HEIGHT) height = width * MAP_HEIGHT / MAP_WIDTH; else width = height * MAP_WIDTH / MAP_HEIGHT;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  return [cx - width / 2, cy - height / 2, width, height];
+}
+export const boundsOf = points => {
+  const xs = points.map(point => point[0]), ys = points.map(point => point[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+};
+
+// Smooth zoom between two viewBoxes (van Wijk and Nuij, "Smooth and efficient
+// zooming and panning"): returns t ∈ [0, 1] → viewBox and a duration in ms.
+export function zoomPath(from, to, rho = Math.SQRT2) {
+  const [ux0, uy0, w0] = [from[0] + from[2] / 2, from[1] + from[3] / 2, from[2]];
+  const [ux1, uy1, w1] = [to[0] + to[2] / 2, to[1] + to[3] / 2, to[2]];
+  const dx = ux1 - ux0, dy = uy1 - uy0, d2 = dx * dx + dy * dy, ratio = MAP_HEIGHT / MAP_WIDTH;
+  const box = (x, y, w) => [x - w / 2, y - w * ratio / 2, w, w * ratio];
+  let S, at;
+  if (d2 < 1e-12) {
+    S = Math.log(w1 / w0) / rho;
+    at = t => box(ux0, uy0, w0 * Math.exp(rho * t * S));
+  } else {
+    const d1 = Math.sqrt(d2), b0 = (w1 * w1 - w0 * w0 + rho ** 4 * d2) / (2 * w0 * rho * rho * d1), b1 = (w1 * w1 - w0 * w0 - rho ** 4 * d2) / (2 * w1 * rho * rho * d1);
+    const r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0), r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
+    S = (r1 - r0) / rho;
+    at = t => {
+      const s = t * S, coshr0 = Math.cosh(r0), u = w0 / (rho * rho * d1) * (coshr0 * Math.tanh(rho * s + r0) - Math.sinh(r0));
+      return box(ux0 + u * dx, uy0 + u * dy, w0 * coshr0 / Math.cosh(rho * s + r0));
+    };
+  }
+  return { at: t => t >= 1 ? to : at(t), duration: Math.min(1400, Math.max(450, Math.abs(S) * 420)) };
+}
+
+// Labels for the largest places that fit without overlapping, in map units:
+// font is the label size in map units; places are sorted largest first.
+export function placeLabels(places, { font, limit = 12, gap = 0.3 } = {}) {
+  const placed = [];
+  for (const place of places) {
+    if (placed.length >= limit) break;
+    const width = place.label.length * font * 0.56, x = place.x + place.r + font * 0.35, y = place.y + font * 0.35;
+    const box = [x - gap * font, y - font - gap * font, x + width + gap * font, y + gap * font];
+    if (placed.some(other => box[0] < other.box[2] && box[2] > other.box[0] && box[1] < other.box[3] && box[3] > other.box[1])) continue;
+    placed.push({ ...place, lx: x, ly: y, box });
+  }
+  return placed;
 }
 
 // Places ranked by a metric, largest first; rates need enough filings.

@@ -1,5 +1,5 @@
 const express = require('express');
-const { getMap, getMapOptions } = require('../services/map');
+const { getMap, getMapOptions, getLocalMap } = require('../services/map');
 
 function createMapRoutes({ db }) {
     const router = express.Router();
@@ -14,6 +14,7 @@ function createMapRoutes({ db }) {
     };
     router.get('/', respond(getMap));
     router.get('/options', respond(getMapOptions));
+    router.get('/local', respond(getLocalMap));
     return router;
 }
 module.exports = { createMapRoutes };
