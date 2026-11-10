@@ -62,3 +62,11 @@
   .us-map-labels text { fill: CanvasText; stroke: Canvas; }
 }
 .us-map.atlas-map { overflow: hidden; }
+/* Panning and zooming: the map takes touch gestures; dragging shows a grabbing hand. */
+.us-map.atlas-map { touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+.us-map.atlas-map.is-dragging, .us-map.atlas-map.is-dragging * { cursor: grabbing; }
+.map-zoom-controls { position: absolute; right: 8px; bottom: 8px; display: grid; gap: 1px; background: var(--border-color-strong); border: 1px solid var(--border-color-strong); border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-md); }
+.map-zoom-controls button { width: 40px; height: 40px; display: grid; place-items: center; border: 0; background: var(--surface-elevated); color: var(--text-primary); cursor: pointer; font: inherit; }
+.map-zoom-controls button:hover:not(:disabled) { background: var(--input-bg); }
+.map-zoom-controls button:disabled { color: var(--text-muted); cursor: default; }
+.map-zoom-controls button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }

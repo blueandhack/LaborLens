@@ -173,3 +173,20 @@ export function rankPlaces(rows, metric, kind, limit = 15) {
   return rows.filter(row => row[metric] !== null && row[metric] !== undefined && row.count >= minimum)
     .sort((a, b) => b[metric] - a[metric] || b.count - a.count || a.name.localeCompare(b.name)).slice(0, limit);
 }
+
+// --- Free panning and zooming ---
+// Widest view (a little beyond the whole country) and closest (about 5 km across).
+export const MAX_VIEW_WIDTH = MAP_WIDTH * 1.15, MIN_VIEW_WIDTH = 1.2;
+// Keeps a viewBox within the zoom limits and its center over the map.
+export function clampBox([x, y, width]) {
+  const w = Math.min(MAX_VIEW_WIDTH, Math.max(MIN_VIEW_WIDTH, width)), h = w * MAP_HEIGHT / MAP_WIDTH;
+  const cx = Math.min(MAP_WIDTH + 40, Math.max(-40, x + width / 2)), cy = Math.min(MAP_HEIGHT + 30, Math.max(-30, y + width * MAP_HEIGHT / MAP_WIDTH / 2));
+  return [cx - w / 2, cy - h / 2, w, h];
+}
+// Zooms by factor (> 1 zooms in) keeping map point [px, py] in place.
+export function zoomBoxAt(box, [px, py], factor) {
+  const next = clampBox([0, 0, box[2] / factor]), scale = next[2] / box[2];
+  return clampBox([px - (px - box[0]) * scale, py - (py - box[1]) * scale, next[2]]);
+}
+// Moves the view by dx, dy map units.
+export const panBox = (box, dx, dy) => clampBox([box[0] - dx, box[1] - dy, box[2]]);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classBreaks, classOf, rampStep, legendEntries, formatMetric, placeSearchURL, principalCity, readMapState, writeMapState, rankPlaces, bubbleRadius,
-  fitBox, zoomPath, placeLabels, FULL_VIEW } from '../src/utils/mapPresentation.js';
+  fitBox, zoomPath, placeLabels, FULL_VIEW, clampBox, zoomBoxAt, panBox, MAX_VIEW_WIDTH, MIN_VIEW_WIDTH } from '../src/utils/mapPresentation.js';
 import { readSearchState } from '../src/utils/searchState.js';
 import { getPageSEO } from '../src/utils/seo.js';
 
@@ -78,4 +78,18 @@ test('labels skip places that would overlap a larger place’s label', () => {
   ], { font: 10, limit: 5 });
   assert.deepEqual(labels.map(item => item.id), ['a', 'c']);
   assert.equal(placeLabels([{ id: 'a', x: 0, y: 0, r: 1, label: 'A' }, { id: 'c', x: 0, y: 300, r: 1, label: 'C' }], { font: 10, limit: 1 }).length, 1);
+});
+
+test('free zoom keeps the point under the pointer still and stays within limits', () => {
+  const box = [100, 100, 200, 200 * 610 / 975];
+  const zoomed = zoomBoxAt(box, [150, 120], 2);
+  assert.equal(zoomed[2], 100);
+  // The map point keeps its place in the view: (150 - x) / width is unchanged.
+  assert.ok(Math.abs((150 - zoomed[0]) / zoomed[2] - (150 - box[0]) / box[2]) < 1e-9);
+  assert.ok(Math.abs((120 - zoomed[1]) / zoomed[3] - (120 - box[1]) / box[3]) < 1e-9);
+  assert.equal(zoomBoxAt(FULL_VIEW, [487.5, 305], 0.01)[2], MAX_VIEW_WIDTH, 'cannot zoom out past the whole country');
+  assert.equal(zoomBoxAt(box, [150, 120], 1e6)[2], MIN_VIEW_WIDTH, 'nor in past about 5 km');
+  assert.deepEqual(panBox(box, 10, -5).slice(0, 2), [90, 105]);
+  const far = clampBox([5000, 5000, 100, 62.56]);
+  assert.ok(far[0] + far[2] / 2 <= 975 + 40 && far[1] + far[3] / 2 <= 610 + 30, 'the center stays over the map');
 });

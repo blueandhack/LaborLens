@@ -328,7 +328,7 @@ export default function MapView() {
         : data && !data.ready ? <div className="search-state" role="status"><h2>The map is being prepared</h2><p>Worksite summaries are built in the background after data imports. Please check back shortly; case search is available now.</p></div>
           : <div className="map-layout">
             <figure className={`map-figure${loading || localLoading ? ' is-loading' : ''}`} ref={figure} aria-busy={loading || localLoading}>
-              <figcaption><h2>{heading}</h2><p>{level === 'nation' ? metrics[metric].description : `Counties are shaded by ${metrics[metric].label.toLowerCase()}${metric === 'perCapita' ? ' (cities have no population estimate here)' : ''}. ${level === 'city' ? 'Circles show the ZIP codes this city’s filings report.' : 'Select a county or city to zoom in.'}`}</p></figcaption>
+              <figcaption><h2>{heading}</h2><p>{level === 'nation' ? metrics[metric].description : `Counties are shaded by ${metrics[metric].label.toLowerCase()}${metric === 'perCapita' ? ' (cities have no population estimate here)' : ''}. ${level === 'city' ? 'Circles show the ZIP codes this city’s filings report.' : 'Select a county or city to zoom in.'}`} Drag to move the map; scroll or pinch to zoom.</p></figcaption>
               <Breadcrumbs trail={trail} onZoomOut={zoomOut} />
               <div className="map-canvas">
                 <AtlasMap view={target} stateSteps={stateSteps} focusState={focusState} countyFile={file} countySteps={countySteps} focusCounty={focusCounty}

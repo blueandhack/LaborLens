@@ -3,7 +3,10 @@
 `/map` shows H-1B, PERM and PWD filings by reported worksite **state** and **metro area**
 (2023 Census CBSAs, metropolitan and micropolitan). Selecting a state zooms into its **counties**
 (shaded) and **cities** (circles); a county zooms to its cities, and a city to the ZIP codes its
-filings report. The zoom is in the URL (`state`, `county`, `city`), and Esc zooms out one level. Each employer profile also shows
+filings report. The zoom is in the URL (`state`, `county`, `city`), and Esc zooms out one level.
+Within any level the map can also be dragged to pan and zoomed with the mouse wheel, a trackpad
+or a pinch (zooming at the pointer), or with the + / − buttons; the reset button returns to the
+level's view. A drag never selects the place under it. Each employer profile also shows
 where that employer's filings are located.
 
 ## Measures
