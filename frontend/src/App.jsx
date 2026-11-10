@@ -1,6 +1,6 @@
 import { Component, lazy, Suspense, useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
-import { FiSun, FiMoon, FiGithub } from 'react-icons/fi';
+import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { FiGithub } from 'react-icons/fi';
 import SearchView from './components/SearchView';
 import PermSearchView from './components/PermSearchView';
 import H1bSearchView from './components/H1bSearchView';
@@ -12,6 +12,7 @@ import MapView from './components/MapView';
 import UscisView from './components/UscisView';
 import I140View from './components/I140View';
 import PageSEO from './components/PageSEO';
+import SiteHeader from './components/SiteHeader';
 import './index.css';
 
 const ImportView = lazy(() => import('./components/ImportView'));
@@ -32,31 +33,6 @@ class PageBoundary extends Component {
   }
 }
 
-const Navigation = () => {
-  const location = useLocation();
-  const isPerm = location.pathname === '/perm';
-  const isPwd = location.pathname === '/';
-  const isH1b = location.pathname === '/h1b';
-
-  return (
-    <nav className="nav-tabs" aria-label="Main navigation">
-      <Link to="/" className={`tab ${isPwd ? 'active' : ''}`} aria-current={isPwd ? 'page' : undefined}>
-        PWD Search
-      </Link>
-      <Link to="/perm" className={`tab ${isPerm ? 'active' : ''}`} aria-current={isPerm ? 'page' : undefined}>
-        PERM Search
-      </Link>
-      <Link to="/h1b" className={`tab ${isH1b ? 'active' : ''}`} aria-current={isH1b ? 'page' : undefined}>
-        H-1B Search
-      </Link>
-      <Link to="/h1b-approvals" className={`tab ${location.pathname === '/h1b-approvals' ? 'active' : ''}`} aria-current={location.pathname === '/h1b-approvals' ? 'page' : undefined}>H-1B Approvals</Link>
-      <Link to="/i140" className={`tab ${location.pathname === '/i140' ? 'active' : ''}`} aria-current={location.pathname === '/i140' ? 'page' : undefined}>I-140</Link>
-      <Link to="/map" className={`tab ${location.pathname === '/map' ? 'active' : ''}`} aria-current={location.pathname === '/map' ? 'page' : undefined}>Map</Link>
-      <Link to="/employers" className={`tab ${location.pathname.startsWith('/employers') ? 'active' : ''}`} aria-current={location.pathname.startsWith('/employers') ? 'page' : undefined}>Employers</Link>
-    </nav>
-  );
-};
-
 function App(props) {
   const { RouterComponent = Router, routerProps = {} } = props;
   const [theme, setTheme] = useState(() => typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
@@ -73,23 +49,7 @@ function App(props) {
       <PageSEO />
       <div className="app-container">
         <a className="skip-link" href="#main-content">Skip to content</a>
-        <header className="header">
-          <div>
-            <Link to={{ pathname: '/', search: '' }} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div className="brand-mark">
-                <span className="brand-seal" aria-hidden="true">LL</span>
-                <span className="brand-name">LaborLens</span>
-              </div>
-            </Link>
-            <p className="brand-subtitle">U.S. Department of Labor and USCIS disclosure records</p>
-          </div>
-          <div className="header-right">
-            <Navigation />
-            <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-              {theme === 'dark' ? <FiSun size={17} /> : <FiMoon size={17} />}
-            </button>
-          </div>
-        </header>
+        <SiteHeader theme={theme} onToggleTheme={toggleTheme} />
 
         <main id="main-content" className="glass-panel app-main" tabIndex={-1}>
           <PageBoundary>

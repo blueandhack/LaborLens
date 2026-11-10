@@ -94,19 +94,6 @@
 .insights-toggle[aria-expanded="true"] { background: var(--surface-elevated); }
 .insights-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 
-@media (max-width: 480px) {
-  .header-right { align-items: flex-start; }
-  .header-right .nav-tabs { flex-wrap: wrap; }
-  .nav-tabs .tab {
-    flex: 1 1 calc(50% - 2px);
-    white-space: nowrap;
-    min-height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-}
-
 *,
 *::before,
 *::after {
@@ -229,52 +216,6 @@ body {
 
 .footer-github-link:hover {
   color: var(--accent-primary);
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 36px;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* ─── Navigation ─── */
-.nav-tabs {
-  display: flex;
-  gap: 2px;
-  background: var(--nav-bg);
-  padding: 3px;
-  border-radius: 7px;
-  border: 1px solid var(--border-color);
-}
-
-.tab {
-  padding: 7px 14px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: "IBM Plex Mono", monospace;
-  font-weight: 500;
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-.tab.active {
-  background: var(--btn-bg);
-  color: var(--btn-text);
-  box-shadow: var(--shadow-sm);
-}
-
-.tab:hover:not(.active) {
-  color: var(--text-primary);
 }
 
 /* ─── Theme Toggle ─── */
@@ -499,28 +440,6 @@ select.search-input option {
     padding: 16px;
   }
 
-  .header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-
-  .header-right {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .nav-tabs {
-    flex: 1;
-    flex-wrap: wrap;
-  }
-  .tab {
-    flex: 1;
-    text-align: center;
-    font-size: 11px;
-  }
-
   .import-container {
     padding: 20px 12px;
   }
@@ -564,21 +483,10 @@ summary:focus-visible,
   padding: clamp(16px, 2vw, 28px);
   min-width: 0;
 }
-.header {
-  gap: 24px;
-  margin-bottom: 26px;
-}
-.header > div {
-  min-width: 0;
-}
 .brand-subtitle {
   letter-spacing: 0.04em;
   text-transform: none;
   font-size: 12px;
-}
-.tab {
-  text-decoration: none;
-  white-space: nowrap;
 }
 .site-footer {
   margin-top: 20px;
@@ -1279,15 +1187,6 @@ summary:focus-visible,
   .results-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .header {
-    align-items: flex-start;
-  }
-  .brand-subtitle {
-    max-width: 30ch;
-  }
-  .tab {
-    padding-inline: 10px;
-  }
 }
 @media (max-width: 768px) {
   .app-container {
@@ -1295,23 +1194,6 @@ summary:focus-visible,
   }
   .app-main {
     padding: 16px;
-  }
-  .header {
-    gap: 18px;
-    margin-bottom: 20px;
-  }
-  .header-right {
-    width: 100%;
-  }
-  .nav-tabs {
-    flex-wrap: nowrap;
-  }
-  .tab {
-    font-size: 10px;
-    padding: 9px 7px;
-  }
-  .brand-subtitle {
-    max-width: none;
   }
   .search-page-heading {
     flex-direction: column;
@@ -1414,9 +1296,6 @@ summary:focus-visible,
 @media (max-width: 430px) {
   .app-main {
     padding: 12px;
-  }
-  .tab {
-    letter-spacing: 0;
   }
   .case-card {
     padding: 16px;
@@ -1702,11 +1581,6 @@ summary:focus-visible,
   transition:
     background-color 160ms ease,
     border-color 160ms ease;
-}
-@media (min-width: 360px) and (max-width: 768px) {
-  .tab {
-    font-size: 11px;
-  }
 }
 @media (max-width: 768px) {
   .result-controls {
