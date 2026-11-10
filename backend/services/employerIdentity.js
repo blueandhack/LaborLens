@@ -129,7 +129,8 @@ function nested(a, b) {
 //    share a tax ID file side by side; a renamed employer hands over.)
 //  - names of universities, schools, hospitals and governments link only when
 //    one's words contain the other's (a campus never links to another campus).
-// buckets: [{ taxId, zip, names: [{ nameKey, first, last }] }] from collectTaxIdRows.
+// buckets: [{ taxId, zip, names: [{ nameKey, first, last, weight }] }] from collectTaxIdRows,
+// weight being the name's petitions at that ZIP; a link cites the ZIP where both names have the most.
 // activity: Map nameKey → { total, latest (ms) } for directory names.
 function taxIdLinks(buckets, activity, { dominantFein = new Map() } = {}) {
     const compatible = (x, y) => {
@@ -141,7 +142,7 @@ function taxIdLinks(buckets, activity, { dominantFein = new Map() } = {}) {
         if (Math.min(x.last, y.last) - Math.max(x.first, y.first) + 1 > MAX_SHARED_YEARS) return false;
         return Boolean(x.latest && y.latest) && Math.abs(x.latest - y.latest) >= CONCURRENT_DAYS * DAY;
     };
-    const seen = new Set(), links = [];
+    const seen = new Map(), links = [];
     let umbrellas = 0;
     for (const bucket of buckets) {
         const words = new Map();
@@ -158,11 +159,12 @@ function taxIdLinks(buckets, activity, { dominantFein = new Map() } = {}) {
             for (const other of others) {
                 if (!kept.every(member => compatible(member, other))) continue;
                 kept.push(other);
-                const pair = [anchor.nameKey, other.nameKey].sort().join('|');
-                if (seen.has(pair)) continue;
-                seen.add(pair);
-                links.push({ source: 'uscis', a: anchor.nameKey, b: other.nameKey, taxId: bucket.taxId, zip: bucket.zip, counts: [anchor.total, other.total],
-                    years: [[anchor.first, anchor.last], [other.first, other.last]] });
+                const pair = [anchor.nameKey, other.nameKey].sort().join('|'), weight = Math.min(anchor.weight || 0, other.weight || 0);
+                const found = seen.get(pair);
+                if (found) { if (weight > found.weight) Object.assign(found, { zip: bucket.zip, weight }); continue; }
+                const link = { source: 'uscis', a: anchor.nameKey, b: other.nameKey, taxId: bucket.taxId, zip: bucket.zip, weight, counts: [anchor.total, other.total],
+                    years: [[anchor.first, anchor.last], [other.first, other.last]] };
+                seen.set(pair, link); links.push(link);
             }
         }
     }
@@ -326,15 +328,16 @@ async function collectTaxIdRows(db, { signal } = {}) {
     const cursor = db.collection(ROWS).aggregate([
         { $match: { taxId: { $regex: /^\d{4}$/ }, zip: { $type: 'string' }, nameKey: { $type: 'string', $ne: '' } } },
         // Weighted by petitions, so a stray tax ID on a few small rows does not dilute the main one.
-        { $group: { _id: { n: '$nameKey', t: '$taxId' }, rows: { $sum: { $max: [1, { $add: [{ $ifNull: ['$initialApprovals', 0] }, { $ifNull: ['$initialDenials', 0] },
-            { $ifNull: ['$continuingApprovals', 0] }, { $ifNull: ['$continuingDenials', 0] }] }] } }, zips: { $addToSet: '$zip' }, first: { $min: '$fiscalYear' }, last: { $max: '$fiscalYear' } } },
+        { $group: { _id: { n: '$nameKey', t: '$taxId', z: '$zip' }, weight: { $sum: { $max: [1, { $add: [{ $ifNull: ['$initialApprovals', 0] }, { $ifNull: ['$initialDenials', 0] },
+            { $ifNull: ['$continuingApprovals', 0] }, { $ifNull: ['$continuingDenials', 0] }] }] } }, first: { $min: '$fiscalYear' }, last: { $max: '$fiscalYear' } } },
+        { $group: { _id: { n: '$_id.n', t: '$_id.t' }, rows: { $sum: '$weight' }, zips: { $push: { z: '$_id.z', w: '$weight' } }, first: { $min: '$first' }, last: { $max: '$last' } } },
         { $sort: { rows: -1, '_id.t': 1 } },
         { $group: { _id: '$_id.n', total: { $sum: '$rows' }, taxId: { $first: '$_id.t' }, rows: { $first: '$rows' }, zips: { $first: '$zips' },
             first: { $first: '$first' }, last: { $first: '$last' } } },
         { $match: { $expr: { $gte: ['$rows', { $multiply: [TAX_SHARE, '$total'] }] } } },
-        { $project: { taxId: 1, first: 1, last: 1, zips: { $slice: ['$zips', 20] } } },
+        { $project: { taxId: 1, first: 1, last: 1, zips: { $slice: [{ $sortArray: { input: '$zips', sortBy: { w: -1, z: 1 } } }, 20] } } },
         { $unwind: '$zips' },
-        { $group: { _id: { t: '$taxId', z: '$zips' }, names: { $push: { nameKey: '$_id', first: '$first', last: '$last' } } } },
+        { $group: { _id: { t: '$taxId', z: '$zips.z' }, names: { $push: { nameKey: '$_id', first: '$first', last: '$last', weight: '$zips.w' } } } },
         { $match: { 'names.1': { $exists: true } } },
     ], { allowDiskUse: true, maxTimeMS: 60 * 60 * 1000, signal, comment: 'laborlens-employer-identities' });
     const buckets = [];

@@ -76,7 +76,9 @@ test('USCIS tax-ID links join renames but not campuses, peers, umbrellas or conf
     const name = (nameKey, first, last) => ({ nameKey, first, last });
     const { links, umbrellas } = taxIdLinks([
         // The rename (and the older suffix-less PERM spelling) share a tax ID; Salesforce.org reports its own.
-        { taxId: '0693', zip: '94105', names: [name('salesforce com inc', 2009, 2023), name('salesforce inc', 2022, 2026), name('salesforce com', 2009, 2013), name('salesforcecom inc', 2019, 2019)] },
+        // A branch office ZIP is shared too, but the link cites the ZIP where both names petition most.
+        { taxId: '0693', zip: '22102', names: [{ ...name('salesforce com inc', 2009, 2023), weight: 3 }, { ...name('salesforce inc', 2022, 2026), weight: 2 }] },
+        { taxId: '0693', zip: '94105', names: [{ ...name('salesforce com inc', 2009, 2023), weight: 900 }, { ...name('salesforce inc', 2022, 2026), weight: 700 }, name('salesforce com', 2009, 2013), name('salesforcecom inc', 2019, 2019)] },
         { taxId: '9769', zip: '94105', names: [name('salesforce org inc', 2017, 2019), name('salesforce org', 2019, 2019)] },
         // A dba used alongside the main name, a minor variant whose words the main name's extend.
         { taxId: '6045', zip: '94104', names: [name('anthropic pbc', 2021, 2026), name('anthropic pbc dba anthropic inc', 2022, 2025)] },
