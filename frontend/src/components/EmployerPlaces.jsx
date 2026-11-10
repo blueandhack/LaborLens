@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import USMap from './USMap';
+import AtlasMap from './AtlasMap';
 import { programs } from '../utils/programs';
-import { bubbleRadius, formatMetric, placeSearchURL, wageNoun } from '../utils/mapPresentation';
+import { bubbleRadius, formatMetric, placeSearchURL, principalCity, wageNoun } from '../utils/mapPresentation';
 
 const number = value => Number(value || 0).toLocaleString('en-US');
 
@@ -15,7 +15,7 @@ export default function EmployerPlaces({ employer, program, places }) {
   const metros = places.metros.map(row => ({ ...row, kind: 'metro' }));
   const drawn = metros.filter(row => row.x !== null);
   const max = Math.max(0, ...drawn.map(row => row.count));
-  const bubbles = drawn.map(row => ({ code: row.code, x: row.x, y: row.y, r: bubbleRadius(row.count, max, 24), place: row }));
+  const bubbles = drawn.map(row => ({ id: 'metro:' + row.code, x: row.x, y: row.y, r: bubbleRadius(row.count, max, 24), place: row, label: principalCity(row.name) }));
   const top = metros.slice(0, 8);
   const onHover = (place, event) => {
     if (!place || place.kind !== 'metro' || !figure.current || event?.pointerType === 'touch') { setHover(null); return; }
@@ -27,9 +27,9 @@ export default function EmployerPlaces({ employer, program, places }) {
     <section className="employer-places" aria-labelledby={'employer-places-' + program}>
       <div className="employer-places-map" ref={figure}>
         <h3 id={'employer-places-' + program}>Where these filings are located</h3>
-        <p>Reported primary worksites by metro area. Circle area shows the number of filings.</p>
+        <p>Reported primary worksites by metro area. Circle area shows the number of filings. Drag to move the map; scroll or pinch to zoom.</p>
         <div className="map-canvas">
-          <USMap compact bubbles={bubbles} onHover={onHover} label={`Map of ${config.label} filing worksites by metro area. The list beside it names the largest areas.`} />
+          <AtlasMap compact bubbles={bubbles} labelLimit={5} onHover={onHover} label={`Map of ${config.label} filing worksites by metro area. The list beside it names the largest areas.`} />
           {hover && <div className="map-tooltip" role="presentation" style={{ left: Math.min(hover.x + 14, hover.width - 230), top: hover.y + 14 }}>
             <strong>{hover.place.name}</strong>
             <dl><div><dt>Filings</dt><dd>{number(hover.place.count)}</dd></div>

@@ -149,10 +149,11 @@ const Counties = memo(function Counties({ file, steps, focus, selected, enter, o
   );
 });
 
-// Albers USA map that zooms from the nation to a state, county or city.
+// Albers USA map that zooms from the nation to a state, county or city, and
+// that readers can pan and zoom. compact: a map without state shading or selection.
 // bubbles: { id, x, y, r (radius at full view, in map units), step, neutral, place, label }.
 function AtlasMap({ view = FULL_VIEW, stateSteps = {}, focusState = '', countyFile = null, countySteps = {}, focusCounty = '',
-  bubbles = [], labelLimit = 0, selected = null, onHover, onSelect, label }) {
+  bubbles = [], labelLimit = 0, selected = null, onHover, onSelect, label, compact = false }) {
   const handlers = useRef({ onHover, onSelect });
   const [shapes, setShapes] = useState(loadedStates);
   useEffect(() => { if (!shapes) loadStates().then(setShapes).catch(() => {}); }, [shapes]);
@@ -174,7 +175,7 @@ function AtlasMap({ view = FULL_VIEW, stateSteps = {}, focusState = '', countyFi
   const showCounties = countyFile && focusState && countyFile.code === focusState;
   const zoomBy = factor => zoom.set(zoomBoxAt(box, [box[0] + box[2] / 2, box[1] + box[3] / 2], factor));
   return (<>
-    <svg ref={svg} className={`us-map atlas-map${focusState ? ' is-zoomed' : ''}`} viewBox={box.join(' ')} role="img" aria-label={label}
+    <svg ref={svg} className={`us-map atlas-map${focusState ? ' is-zoomed' : ''}${compact ? ' us-map-compact' : ''}`} viewBox={box.join(' ')} role="img" aria-label={label}
       onPointerLeave={() => onHover?.(null)}>
       {shapes && <States shapes={shapes} steps={stateSteps} focus={showCounties ? focusState : ''} selected={selected} enter={enter} onSelect={select} />}
       {showCounties && <Counties file={countyFile} steps={countySteps} focus={focusCounty} selected={selected} enter={enter} onSelect={select} />}

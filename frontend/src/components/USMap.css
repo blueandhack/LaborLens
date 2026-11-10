@@ -35,7 +35,7 @@
 .us-map circle { fill: var(--map-bubble-neutral); fill-opacity: .88; stroke: var(--map-border); stroke-width: 1.5; cursor: pointer; }
 .us-map circle[data-step="0"] { fill: var(--text-muted); fill-opacity: .5; }
 .us-map circle:hover, .us-map circle.is-selected { stroke: var(--text-primary); stroke-width: 2.2; fill-opacity: 1; }
-.us-map-compact path { cursor: default; }
+.us-map-compact path, .us-map-compact circle { cursor: inherit; }
 @media (forced-colors: active) {
   .us-map path { stroke: CanvasText; }
   .us-map circle { stroke: CanvasText; }
