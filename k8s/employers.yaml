@@ -25,7 +25,7 @@ spec:
             kubernetes.io/hostname: skycat
           containers:
           - name: refresh
-            image: ghcr.io/blueandhack/laborlens-backend:f82bf3af8b8794d46d4aecc5353c7eac8da7f06c
+            image: ghcr.io/blueandhack/laborlens-backend:4f96ed16e25665731f02f40e897cb72d4790bf1a
             imagePullPolicy: Always
             command: ["node", "scripts/refresh-employers.js", "--worksites", "--directory", "--map", "--profiles"]
             env:
