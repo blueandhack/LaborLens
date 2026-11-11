@@ -68,22 +68,21 @@ async function certificationIds(collection, spec, signal) {
         current.hint = certificateHint; current.branches = null; current.intersection = null; current.skipTrial = true;
     }
     if (!current.hint || current.hint === indexNames.received) current.hint = spec.filters.worksite || spec.filters.worksiteState ? indexNames.worksiteRecent : indexNames.recent;
+    // Place-only searches check the place, state and status while scanning an index,
+    // which holds them all, so only matching applications go on. Checked afterwards,
+    // every application in the range went through the pipeline first: about four
+    // seconds for a rare place, and past the time limit for Sunnyvale, WA.
+    const byPlace = certificateHint === indexNames.certification && Boolean(spec.filters.worksite || spec.filters.worksiteState || spec.filters.location);
+    const placeFields = ['_WORKSITE_CITY_LOWER', '_WORKSITE_STATE_LOWER', spec.config.city, spec.config.state, 'CASE_STATUS', '$or'];
     const original = constrained({ ...spec, branches: null, intersection: null, hint: certificateHint,
         sort: { ORIGINAL_CERT_DATE: spec.direction, _id: -spec.direction }, sortField: 'ORIGINAL_CERT_DATE',
         recentHint: certificateHint === indexNames.certification ? indexNames.certification : undefined,
-        leadingFields: ['ORIGINAL_CERT_DATE'], forceMetadata: true },
+        leadingFields: ['ORIGINAL_CERT_DATE', ...(byPlace ? placeFields : [])], forceMetadata: true },
     { ORIGINAL_CERT_DATE: dateRange() }, { CASE_STATUS: { $not: certified } });
     const end = spec.skip + spec.limit;
-    // A place-only search tries the date-ordered scan first (quick when the place is
-    // common), then falls back to the place's own index. Walking every application
-    // in date order to find a rare place (Sunnyvale, WA) ran past the time limit.
-    const byPlace = certificateHint === indexNames.certification && Boolean(spec.filters.worksite || spec.filters.worksiteState || spec.filters.location);
-    const originalPage = byPlace ? { ...constrained({ ...spec, sort: original.sort, sortField: original.sortField, recentHint: original.recentHint,
-        leadingFields: original.leadingFields, forceMetadata: true }, { ORIGINAL_CERT_DATE: dateRange() }, { CASE_STATUS: { $not: certified } }),
-    hint: spec.hint } : original;
     let rows;
     if (end <= 2000) {
-        const [a, b] = await Promise.all([selectIds(collection, { ...originalPage, skip: 0, limit: end }, null, signal),
+        const [a, b] = await Promise.all([selectIds(collection, { ...original, skip: 0, limit: end }, null, signal),
             selectIds(collection, { ...current, skip: 0, limit: end }, null, signal)]);
         rows = [...a.map(row => ({ ...row, _certificationSort: row.ORIGINAL_CERT_DATE })),
             ...b.map(row => ({ ...row, _certificationSort: row.DECISION_DATE }))]
@@ -139,8 +138,9 @@ async function certificationIds(collection, spec, signal) {
         { CASE_STATUS: { $not: certified }, ORIGINAL_CERT_DATE: dateRange() }] };
     let missing = constrained({ ...spec, branches: null, intersection: null, hint: certificateHint }, undated);
     // Empty or sparse place searches look for undated applications through the place's
-    // index rather than scan all history. This runs only when a page comes up short.
-    if (byPlace) missing = constrained(spec, undated);
+    // index, checking its state and status before loading any (the index lacks
+    // ORIGINAL_CERT_DATE). This runs only when a page comes up short.
+    if (byPlace) missing = { ...constrained(spec, undated), leadingFields: placeFields };
     else if (certificateHint === indexNames.certification && !rows.length && !spec.skip && spec.filters.caseNumber) missing.hint = 'CASE_NUMBER_1';
     return appendUndated(collection, spec, rows, async () => {
         const [a, b] = await Promise.all([selectionCount(collection, original, signal), selectionCount(collection, current, signal)]);
