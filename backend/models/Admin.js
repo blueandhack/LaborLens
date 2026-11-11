@@ -17,7 +17,22 @@ const adminSchema = new mongoose.Schema({
     tokenVersion: {
         type: Number,
         default: 0
-    }
+    },
+    passwordChangedAt: Date,
+    // Authenticator-app sign-in. The secret is encrypted (services/adminSecurity),
+    // recovery codes are stored only as keyed hashes, and lastStep stops a code
+    // from being used twice.
+    twoFactor: {
+        secret: String,
+        enabledAt: Date,
+        lastStep: { type: Number, default: -1 },
+        recoveryCodes: { type: [String], default: undefined },
+    },
+    // A secret being set up, kept until it is confirmed with a code.
+    pendingTwoFactor: {
+        secret: String,
+        createdAt: Date,
+    },
 }, { timestamps: true });
 
 // Usernames: 3–64 ASCII letters, digits and . _ @ - (no spaces or look-alike characters).
@@ -28,11 +43,18 @@ adminSchema.statics.normalizeUsername = function (value) {
     return USERNAME_PATTERN.test(username) ? username : null;
 };
 
+// bcrypt work factor. Hashes made with a lower one are upgraded at the next sign-in.
+const BCRYPT_COST = 12;
+adminSchema.statics.BCRYPT_COST = BCRYPT_COST;
+adminSchema.methods.needsRehash = function () {
+    try { return bcrypt.getRounds(this.password) < BCRYPT_COST; } catch { return false; }
+};
+
 // Hash password before saving
 adminSchema.pre('save', async function () {
     if (!this.isModified('password')) return;
 
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(BCRYPT_COST);
     this.password = await bcrypt.hash(this.password, salt);
 });
 

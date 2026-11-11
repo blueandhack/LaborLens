@@ -35,7 +35,10 @@ test('authenticated import status reports live program and quarterly coverage wi
     // Tokens are only accepted for an existing administrator account.
     const admin = await require('../models/Admin').create({ username: 'status-admin', password: 'status admin password' });
     assert.equal((await fetch(endpoint, { headers: { Authorization: `Bearer ${jwt.sign({ id: 'test-admin' }, process.env.JWT_SECRET)}` } })).status, 401);
-    const token = jwt.sign({ id: String(admin._id), v: 0 }, process.env.JWT_SECRET, { expiresIn: '5m' });
+    // A signed token alone is not enough: it must refer to an open session.
+    assert.equal((await fetch(endpoint, { headers: { Authorization: `Bearer ${jwt.sign({ id: String(admin._id), v: 0 }, process.env.JWT_SECRET)}` } })).status, 401);
+    const session = await require('../services/adminSessions').createSession(mongoose.connection.db, admin._id, { get: () => undefined, socket: {} });
+    const token = jwt.sign({ id: String(admin._id), v: 0, sid: session._id }, process.env.JWT_SECRET, { expiresIn: '5m' });
     const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
     assert.equal(response.status, 200);
     const data = await response.json();

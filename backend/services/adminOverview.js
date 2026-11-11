@@ -123,11 +123,11 @@ async function security(db, { blocked = [] } = {}) {
     const since = new Date(Date.now() - 86400000);
     const events = db.collection('admin_events');
     const [admins, failures, lastSignIn] = await Promise.all([
-        db.collection('admins').find({}, { projection: { username: 1, createdAt: 1, updatedAt: 1, tokenVersion: 1 }, sort: { createdAt: 1 }, maxTimeMS: 2000 }).toArray(),
+        db.collection('admins').find({}, { projection: { username: 1, createdAt: 1, updatedAt: 1, tokenVersion: 1, 'twoFactor.enabledAt': 1 }, sort: { createdAt: 1 }, maxTimeMS: 2000 }).toArray(),
         quietly(events.countDocuments({ type: 'sign-in-failed', at: { $gte: since } }, { maxTimeMS: 2000 }), 0),
         quietly(events.findOne({ type: 'sign-in' }, { projection: { _id: 0 }, sort: { at: -1 }, maxTimeMS: 2000 })),
     ]);
-    return { admins: admins.map(admin => ({ username: admin.username, createdAt: admin.createdAt || null, updatedAt: admin.updatedAt || null, sessionVersion: admin.tokenVersion || 0 })),
+    return { admins: admins.map(admin => ({ username: admin.username, createdAt: admin.createdAt || null, updatedAt: admin.updatedAt || null, sessionVersion: admin.tokenVersion || 0, twoFactor: Boolean(admin.twoFactor?.enabledAt) })),
         failedSignIns24h: failures, lastSignIn, blockedAddresses: blocked.length };
 }
 

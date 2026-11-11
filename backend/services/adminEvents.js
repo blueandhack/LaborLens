@@ -3,11 +3,12 @@
 const COLLECTION = 'admin_events';
 const RETENTION_DAYS = 180;
 
-// The visitor's address as reported by the ingress proxy (display only: it can
-// be forged, so it must never decide access), and the socket address.
+const { clientAddress } = require('./adminSecurity');
+
+// The visitor's address as Cloudflare reports it (display only: a request that
+// bypasses Cloudflare can forge it, so it must never decide access alone).
 function requestInfo(req) {
-    const forwarded = String(req.get?.('x-forwarded-for') || '').split(',')[0].trim().slice(0, 64);
-    return { ip: forwarded || req.socket?.remoteAddress || null, userAgent: String(req.get?.('user-agent') || '').slice(0, 200) || null };
+    return { ip: clientAddress(req).slice(0, 64), userAgent: String(req.get?.('user-agent') || '').slice(0, 200) || null };
 }
 
 let indexed = null;
