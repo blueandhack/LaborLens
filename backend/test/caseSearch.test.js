@@ -128,3 +128,25 @@ test('expensive total concurrency is bounded without blocking case retrieval', a
     assert.equal((await searchCases(Model, 'pwd', { company: 'one', count: 'deferred' })).totalCount, 0);
     invalidateCounts();
 });
+
+test('employer states match their filed forms exactly, so long names stay on the index', () => {
+    const state = input => buildSearch('h1b', { location: input }).query.$and[0].$or[1].EMPLOYER_STATE;
+    assert.deepEqual(state('Oklahoma').$in.sort(), ['OK', 'OKLAHOMA', 'Ok', 'Oklahoma', 'oK', 'ok', 'oklahoma'], 'a whole name means the state however it was filed');
+    assert.ok(state('ca').$in.includes('California') && state('ca').$in.includes('cA'));
+    assert.ok(state('o').$in.includes('Oregon') && !state('o').$in.includes('Texas'), 'prefixes keep their meaning');
+    assert.deepEqual(state('Zzyzx Road'), { $in: [] }, 'text that is no state matches no state, without a scan');
+    assert.ok(!JSON.stringify(buildSearch('h1b', { location: 'Pennsylvania Avenue' }).query).includes('$options'), 'no case-insensitive regex');
+});
+
+test('"City, ST" in a location box means that city in that state', () => {
+    for (const input of ['Tulsa, OK', 'Tulsa OK', 'tulsa, oklahoma', 'Tulsa, OK 74103']) {
+        const spec = buildSearch('h1b', { location: input });
+        assert.deepEqual(spec.query.$and[0], { EMPLOYER_CITY_LOWER: { $regex: '^tulsa' } }, input);
+        assert.ok(spec.query.$and[1].EMPLOYER_STATE.$in.includes('OK'), input);
+        assert.equal(spec.hint, 'search_city_v4');
+    }
+    const worksite = buildSearch('h1b', { worksite: 'Salt Lake City, UT' });
+    assert.deepEqual([worksite.filters.worksite, worksite.filters.worksiteState, worksite.hint], ['Salt Lake City', 'UT', 'search_worksite_city_v2']);
+    assert.equal(buildSearch('h1b', { worksite: 'New York' }).filters.worksiteState, '', 'a two-word city is not split');
+    assert.equal(buildSearch('h1b', { worksite: 'Austin', worksiteState: 'TX' }).filters.worksite, 'Austin', 'a chosen state is kept');
+});

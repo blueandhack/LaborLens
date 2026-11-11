@@ -2,7 +2,7 @@ const { programs, indexNames } = require('./searchConfig');
 const { BoundedCache } = require('./boundedCache');
 const { findIdentity, identityForQuery, profileSlugs, slugFor } = require('./employerIdentity');
 const { groupForQuery } = require('./employerGroups');
-const { stateValues } = require('./geo');
+const { stateValues, stateCode, states } = require('./geo');
 const { hintFor } = require('./indexHints');
 // Runs a query with its physical index hint, in the same tick when the name is known.
 const withHint = (collection, hint, run) => { const name = hintFor(collection, hint); return name instanceof Promise ? name.then(run) : run(name); };
@@ -200,6 +200,35 @@ function insensitivePrefix(value) {
     return { $in: prefixes.map(prefix => new RegExp(`^${escapeRegex(prefix)}`)) };
 }
 
+// Employer states are stored as filed ("OK", "Ok", "Oklahoma", "OKLAHOMA"). Matches
+// the stored forms of every state whose code, name or alias starts with the text,
+// exactly and in any usual capitalization, so the state index is used. A
+// case-insensitive regex here cannot use the index once the text is longer than a
+// few letters, and scanned every H-1B disclosure until the query timed out.
+const capitalized = value => value.replace(/\b\p{L}/gu, char => char.toUpperCase());
+function caseForms(value) {
+    const forms = [value, value.toUpperCase(), capitalized(value), capitalized(value).replace(/\b(Of|And|The)\b/g, word => word.toLowerCase())];
+    if (value.length === 2) forms.push(value[0].toUpperCase() + value[1], value[0] + value[1].toUpperCase());
+    return forms;
+}
+const stateForms = code => [...new Set(stateValues(code).flatMap(caseForms))];
+function storedStateMatch(text) {
+    const typed = text.trim().toLowerCase().replace(/\s+/g, ' ');
+    // A whole state name or code means that state however it was filed ("Oklahoma" also finds "OK").
+    const exact = stateCode(typed);
+    const forms = [...states.keys()].flatMap(code => code === exact ? stateValues(code) : stateValues(code).filter(form => form.startsWith(typed)));
+    return forms.length ? { $in: [...new Set(forms.flatMap(caseForms))] } : null;
+}
+
+// "Tulsa, OK", "Tulsa OK", "Tulsa, Oklahoma 74103" → a city and a state code.
+function cityAndState(value) {
+    const text = value.replace(/\s+\d{5}(?:-\d{4})?$/, '').trim();
+    const comma = text.lastIndexOf(',');
+    const [city, state] = comma > 0 ? [text.slice(0, comma), text.slice(comma + 1)] : (text.match(/^(.+?)\s+([A-Za-z]{2})$/) || []).slice(1);
+    const code = state && stateCode(state);
+    return code && city?.trim() ? { city: city.trim(), code } : null;
+}
+
 function buildSearch(program, input, group = null) {
     const config = programs[program];
     if (!config) throw badRequest('Invalid case program');
@@ -238,8 +267,14 @@ function buildSearch(program, input, group = null) {
         }
         conditions.push({ CASE_NUMBER: match });
     }
-    const employerLocation = filters.location ? [
-        { [config.city]: prefix(filters.location) }, { [config.state]: insensitivePrefix(filters.location) },
+    // "City, ST" in a location box means that city in that state.
+    const worksitePlace = filters.worksite && !filters.worksiteState ? cityAndState(filters.worksite) : null;
+    if (worksitePlace) { filters.worksite = worksitePlace.city; filters.worksiteState = worksitePlace.code; }
+    const employerPlace = filters.location ? cityAndState(filters.location) : null;
+    if (employerPlace) conditions.push({ [config.city]: prefix(employerPlace.city) }, { [config.state]: { $in: stateForms(employerPlace.code) } });
+    // Text that is no state's prefix keeps an empty state branch: it matches nothing, at no cost.
+    const employerLocation = filters.location && !employerPlace ? [
+        { [config.city]: prefix(filters.location) }, { [config.state]: storedStateMatch(filters.location) || { $in: [] } },
     ] : null;
     // A worksite state is an exact state (postal code or name, as reported).
     // With a state, the worksite text matches the worksite city only.
@@ -266,6 +301,7 @@ function buildSearch(program, input, group = null) {
     else if (filters.jobTitle) hint = indexNames.title;
     else if (filters.caseNumber.length >= 10) hint = 'CASE_NUMBER_1';
     else if (filters.receivedYear) hint = indexNames.received;
+    else if (employerPlace && !location) hint = indexNames.city;
     else if (cityOnly && !location) hint = indexNames.worksiteCity;
     else if (worksiteStates && !location) hint = indexNames.worksiteState;
     else if (!location) hint = indexNames.recent;
