@@ -33,14 +33,19 @@ test('server sorting keeps certification semantics, missing dates, filters and s
             RECEIVED_DATE: i % 17 ? new Date(Date.UTC(2020 + i % 5, 0, 1)) : null,
             CASE_STATUS: ['Certified', ' Certified ', 'Certified-Withdrawn', 'Denied', 'Withdrawn'][i % 5],
             ORIGINAL_CERT_DATE: i % 5 === 2 && i % 11 ? new Date(Date.UTC(2010 + i % 14, 0, 1)) : null,
-            WORKSITE_CITY: i % 2 ? 'California City' : 'San Jose', WORKSITE_STATE: 'CA', PRIMARY_WORKSITE_CITY: 'San Jose', PRIMARY_WORKSITE_STATE: 'CA',
+            // About 25 rows sit in Fargo, ND: a rare place with every status and missing dates.
+            WORKSITE_CITY: i % 97 === 0 ? 'Fargo' : i % 2 ? 'California City' : 'San Jose', WORKSITE_STATE: i % 97 === 0 ? 'ND' : 'CA',
+            PRIMARY_WORKSITE_CITY: i % 97 === 0 ? 'Fargo' : 'San Jose', PRIMARY_WORKSITE_STATE: i % 97 === 0 ? 'ND' : 'CA',
             _DOL_ALTERNATE_RECORDS: [{ note: 'x'.repeat(2048) }],
         }, program)));
     }
     await t.test('all programs sort the entire match set in both directions, including deep and undated pages', async () => {
         for (const [program, Model] of Object.entries(models)) {
             const sorts = ['event_desc', 'event_asc', 'received_desc', 'received_asc', ...(program === 'h1b' ? ['certification_desc', 'certification_asc'] : [])];
-            for (const sort of sorts) for (const filters of [{}, { company: 'example', worksite: 'CA', location: 'TX' }, { receivedYear: '2024' }, { company: 'only undated' }, { company: 'absent employer' }]) {
+            for (const sort of sorts) for (const filters of [{}, { company: 'example', worksite: 'CA', location: 'TX' }, { receivedYear: '2024' }, { company: 'only undated' }, { company: 'absent employer' },
+                // Place-only searches (no employer or title) take the place's index when the place is rare.
+                { worksite: 'San Jose', worksiteState: 'CA' }, { worksiteState: 'CA' }, { location: 'TX' }, { location: 'aus' }, { worksite: 'Sunnyvale', worksiteState: 'WA' },
+                { worksite: 'Fargo', worksiteState: 'ND' }, { worksiteState: 'ND' }]) {
                 const spec = buildSearch(program, { ...filters, sort });
                 const matches = await Model.collection.find(spec.query).toArray();
                 let expected;

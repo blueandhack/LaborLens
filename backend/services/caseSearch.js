@@ -74,9 +74,16 @@ async function certificationIds(collection, spec, signal) {
         leadingFields: ['ORIGINAL_CERT_DATE'], forceMetadata: true },
     { ORIGINAL_CERT_DATE: dateRange() }, { CASE_STATUS: { $not: certified } });
     const end = spec.skip + spec.limit;
+    // A place-only search tries the date-ordered scan first (quick when the place is
+    // common), then falls back to the place's own index. Walking every application
+    // in date order to find a rare place (Sunnyvale, WA) ran past the time limit.
+    const byPlace = certificateHint === indexNames.certification && Boolean(spec.filters.worksite || spec.filters.worksiteState || spec.filters.location);
+    const originalPage = byPlace ? { ...constrained({ ...spec, sort: original.sort, sortField: original.sortField, recentHint: original.recentHint,
+        leadingFields: original.leadingFields, forceMetadata: true }, { ORIGINAL_CERT_DATE: dateRange() }, { CASE_STATUS: { $not: certified } }),
+    hint: spec.hint } : original;
     let rows;
     if (end <= 2000) {
-        const [a, b] = await Promise.all([selectIds(collection, { ...original, skip: 0, limit: end }, null, signal),
+        const [a, b] = await Promise.all([selectIds(collection, { ...originalPage, skip: 0, limit: end }, null, signal),
             selectIds(collection, { ...current, skip: 0, limit: end }, null, signal)]);
         rows = [...a.map(row => ({ ...row, _certificationSort: row.ORIGINAL_CERT_DATE })),
             ...b.map(row => ({ ...row, _certificationSort: row.DECISION_DATE }))]
@@ -131,12 +138,10 @@ async function certificationIds(collection, spec, signal) {
     const undated = { $nor: [{ CASE_STATUS: certified, DECISION_DATE: dateRange() },
         { CASE_STATUS: { $not: certified }, ORIGINAL_CERT_DATE: dateRange() }] };
     let missing = constrained({ ...spec, branches: null, intersection: null, hint: certificateHint }, undated);
-    if (certificateHint === indexNames.certification && !rows.length && !spec.skip) {
-        // Empty/sparse location and case-number searches should establish that
-        // absence through their prefix index, rather than scan all history.
-        if (spec.filters.worksite || spec.filters.worksiteState || spec.filters.location) missing = constrained(spec, undated);
-        else if (spec.filters.caseNumber) missing.hint = 'CASE_NUMBER_1';
-    }
+    // Empty or sparse place searches look for undated applications through the place's
+    // index rather than scan all history. This runs only when a page comes up short.
+    if (byPlace) missing = constrained(spec, undated);
+    else if (certificateHint === indexNames.certification && !rows.length && !spec.skip && spec.filters.caseNumber) missing.hint = 'CASE_NUMBER_1';
     return appendUndated(collection, spec, rows, async () => {
         const [a, b] = await Promise.all([selectionCount(collection, original, signal), selectionCount(collection, current, signal)]);
         return a + b;
