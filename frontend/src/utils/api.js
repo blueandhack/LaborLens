@@ -13,13 +13,32 @@ const listeners = new Set();
 const notify = () => listeners.forEach(listener => listener(waiting));
 export function subscribeLoading(listener) { listeners.add(listener); listener(waiting); return () => listeners.delete(listener); }
 
+// A server restarting for a deploy can briefly drop a connection or answer through the
+// proxy with a non-JSON error page (502, 503, 504). Those are retried quietly; real
+// answers, including the API's own JSON errors, are not.
+export const RETRY_DELAYS_MS = [400, 1200];
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function request(url) {
+  for (let attempt = 0; ; attempt++) {
+    let response = null, data;
+    try {
+      response = await fetch(url, { headers: { Accept: "application/json" } });
+      data = await response.json();
+    } catch (error) {
+      if (attempt < RETRY_DELAYS_MS.length) { await wait(RETRY_DELAYS_MS[attempt]); continue; }
+      throw Object.assign(new Error("Unable to load this page"), { status: response?.status || 0, cause: error });
+    }
+    if (!response.ok && [502, 504].includes(response.status) && attempt < RETRY_DELAYS_MS.length) { await wait(RETRY_DELAYS_MS[attempt]); continue; }
+    if (!response.ok) throw Object.assign(new Error(data.error || "Unable to load this page"), { status: response.status });
+    return data;
+  }
+}
+
 function load(url) {
   const entry = responses.get(url);
   if (entry?.promise) return entry.promise;
   if (entry && Date.now() - entry.at < FRESH_MS) return Promise.resolve(entry.data);
-  const promise = fetch(url, { headers: { Accept: "application/json" } }).then(async response => {
-    const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error(data.error || "Unable to load this page"), { status: response.status });
+  const promise = request(url).then(data => {
     responses.delete(url);
     responses.set(url, { at: Date.now(), data });
     while (responses.size > MAX_ENTRIES) responses.delete(responses.keys().next().value);

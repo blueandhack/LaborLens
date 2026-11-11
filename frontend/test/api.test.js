@@ -58,3 +58,23 @@ test('leaving a page stops its wait but not a request another page shares; prefe
   assert.equal(Math.max(...counts), 2);
   unsubscribe();
 });
+
+test('a restart blip (dropped connection, proxy error page, 502) is retried; the API’s own errors are not', async () => {
+  const replies = [() => Promise.reject(new TypeError('Failed to fetch')),
+    () => Promise.resolve(new Response('<html>Bad Gateway</html>', { status: 502 })),
+    () => Promise.resolve(new Response(JSON.stringify({ ok: 1 }), { status: 200 }))];
+  let calls = 0;
+  globalThis.fetch = () => replies[calls++]();
+  assert.deepEqual(await getJSON('/api/retry-blip'), { ok: 1 });
+  assert.equal(calls, 3);
+
+  calls = 0;
+  globalThis.fetch = () => { calls++; return Promise.resolve(new Response(JSON.stringify({ error: 'This search is taking too long.' }), { status: 503 })); };
+  await assert.rejects(getJSON('/api/retry-real-error'), { message: 'This search is taking too long.', status: 503 });
+  assert.equal(calls, 1, 'a real answer is shown at once');
+
+  calls = 0;
+  globalThis.fetch = () => { calls++; return Promise.reject(new TypeError('Failed to fetch')); };
+  await assert.rejects(getJSON('/api/retry-down'), { message: 'Unable to load this page' });
+  assert.equal(calls, 3, 'gives up after two retries');
+});
