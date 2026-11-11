@@ -16,7 +16,9 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/pwd_cases'
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.get('/api/health', (_req, res) => res.status(mongoose.connection.readyState === 1 ? 200 : 503).json({ ready: mongoose.connection.readyState === 1 }));
+// Not ready while shutting down, so the ingress stops sending new requests here.
+let shuttingDown = false;
+app.get('/api/health', (_req, res) => { const ready = !shuttingDown && mongoose.connection.readyState === 1; res.status(ready ? 200 : 503).json({ ready }); });
 
 // Routes
 app.use('/api/upload', uploadRoute);
@@ -57,6 +59,24 @@ mongoose.connect(MONGO_URI, { autoIndex: process.env.NODE_ENV !== 'production', 
     .catch(err => console.error('MongoDB connection error:', err));
 
 // Start server
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+// Graceful shutdown for deploys. Kubernetes sends SIGTERM while the ingress may still
+// route here for a few seconds; exiting at once failed those requests (pages showed
+// "could not load"). Keep serving briefly, then stop taking connections, let requests
+// in progress finish, and exit. Kubernetes allows 30 seconds before forcing it.
+const DRAIN_DELAY_MS = 5000, FINISH_MS = 20000;
+function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal}: finishing requests before exit`);
+    setTimeout(() => {
+        server.close(() => mongoose.disconnect().catch(() => {}).finally(() => process.exit(0)));
+        server.closeIdleConnections();
+        setTimeout(() => process.exit(0), FINISH_MS).unref();
+    }, DRAIN_DELAY_MS).unref();
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
