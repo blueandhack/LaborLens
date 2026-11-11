@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FiArrowRight, FiRefreshCw } from 'react-icons/fi';
-import { getJSON } from '../utils/api';
+import { cachedJSON, getJSON } from '../utils/api';
+import { PageSkeleton } from './Loading';
 import { stateName } from '../utils/states';
 import {
-  SERIES, USCIS_SORTS, apiQuery, coverageLabel, formatCount, formatRate, fyLabel, location, rate, readUscisState, seriesValues, writeUscisState,
+  SERIES, USCIS_SORTS, coverageLabel, formatCount, formatRate, fyLabel, location, rate, readUscisState, seriesValues, uscisEmployersURL, uscisOverviewURL, writeUscisState,
 } from '../utils/uscisPresentation';
 import { ApprovalsChart, DenialRateChart, TrendTable } from './UscisCharts';
 import YearRange from './YearRange';
@@ -21,16 +22,19 @@ function useJSON(url) {
       .catch(error => { if (!controller.signal.aborted) setResponse({ url, data: null, error: error.status === 400 ? error.message : 'USCIS approval data could not load. Please try again.' }); });
     return () => controller.abort();
   }, [url, retry]);
-  const loading = response.url !== url;
-  return { ...response, loading, retry: () => setRetry(value => value + 1) };
+  const retryLoad = () => setRetry(value => value + 1);
+  // A kept or prefetched response shows on the first paint, without a loading state.
+  const cached = response.url === url ? undefined : cachedJSON(url);
+  if (cached !== undefined) return { url, data: cached, error: null, loading: false, retry: retryLoad };
+  return { ...response, loading: response.url !== url, retry: retryLoad };
 }
 
 function Stat({ label, value, detail }) {
   return <div className="uscis-stat"><dt>{label}</dt><dd>{value}</dd><small>{detail}</small></div>;
 }
 
-function Employers({ state, update, industries, range }) {
-  const { data, error, loading, retry } = useJSON('/api/uscis-h1b/employers?' + apiQuery(state, ['from', 'to', 'state', 'industry', 'q', 'sort', 'page']));
+function Employers({ employers, state, update, industries, range }) {
+  const { data, error, loading, retry } = employers;
   const [draft, setDraft] = useState(state.q);
   const [shownQ, setShownQ] = useState(state.q);
   // The URL changed (back/forward or a cleared filter): show its query in the box.
@@ -77,7 +81,9 @@ export default function UscisView() {
   const state = readUscisState(params);
   const update = changes => setParams(writeUscisState({ ...state, page: 1, ...changes }));
   // While a new selection loads, the previous one stays on screen (dimmed).
-  const overview = useJSON('/api/uscis-h1b?' + apiQuery(state, ['from', 'to', 'state', 'industry']));
+  const overview = useJSON(uscisOverviewURL(state));
+  // Requested together with the overview, not after it: the table needs only the URL's filters.
+  const employers = useJSON(uscisEmployersURL(state));
   const data = overview.data;
   const [hover, setHover] = useState(null);
 
@@ -89,7 +95,7 @@ export default function UscisView() {
 
   if (!data) return <article className="uscis-page">{intro}
     {overview.error ? <div className="search-state" role="alert"><p>{overview.error}</p><button className="btn" type="button" onClick={overview.retry}><FiRefreshCw aria-hidden="true" /> Try again</button></div>
-      : <div className="employer-loading" role="status">Loading USCIS decisions…</div>}</article>;
+      : <PageSkeleton label="Loading USCIS decisions…" controls={3} stats={4} chart rows={8} />}</article>;
   if (!data.available) return <article className="uscis-page">{intro}<div className="search-state"><h2>USCIS data is being prepared</h2><p>The H-1B Employer Data Hub files have not been imported yet. Please check back soon.</p></div></article>;
 
   const years = data.years;
@@ -146,7 +152,7 @@ export default function UscisView() {
       <TrendTable rows={trend} />
     </section>
 
-    <Employers state={state} industries={data.industries} range={range} update={changes => setParams(writeUscisState({ ...state, ...changes }))} />
+    <Employers employers={employers} state={state} industries={data.industries} range={range} update={changes => setParams(writeUscisState({ ...state, ...changes }))} />
 
     <section className="uscis-method" aria-labelledby="uscis-method-title">
       <h2 id="uscis-method-title">What these numbers mean</h2>

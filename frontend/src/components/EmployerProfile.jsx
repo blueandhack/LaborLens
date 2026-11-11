@@ -53,7 +53,7 @@ export default function EmployerProfile({ initialProfile }) {
   useEffect(() => {
     if (initialProfile?.slug === slug && initialProfile.ready && attempt === 0) return;
     const controller = new AbortController(); let timer, polls = 0;
-    const load = () => getJSON('/api/employers/' + encodeURIComponent(slug), { signal: controller.signal })
+    const load = () => getJSON('/api/employers/' + encodeURIComponent(slug), { signal: controller.signal, fresh: polls > 0 })
       .then(data => {
         if (controller.signal.aborted) return;
         setResponse({ slug, profile: data, error: null });

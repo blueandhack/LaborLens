@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FiArrowRight, FiRefreshCw } from 'react-icons/fi';
-import { getJSON } from '../utils/api';
+import { cachedJSON, getJSON } from '../utils/api';
+import { PageSkeleton } from './Loading';
 import { STATES } from '../utils/states';
 import { compact, formatCount, formatRate } from '../utils/uscisPresentation';
 import { INCOMPLETE_SHARE, denialRate, levelOf, quarterLabel, quarterMonths, readI140State, titleCase, writeI140State } from '../utils/i140Presentation';
@@ -41,7 +42,8 @@ export default function I140View() {
   const [params, setParams] = useSearchParams();
   const state = readI140State(params);
   const update = changes => setParams(writeI140State({ ...state, ...changes }));
-  const [response, setResponse] = useState({ data: null, error: null });
+  // A kept or prefetched response shows on the first paint.
+  const [response, setResponse] = useState(() => ({ data: cachedJSON('/api/i140') ?? null, error: null }));
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
@@ -57,7 +59,7 @@ export default function I140View() {
   </header>;
   const { data, error } = response;
   if (!data) return <article className="uscis-page">{intro}{error ? <div className="search-state" role="alert"><p>{error}</p><button className="btn" type="button" onClick={() => setRetry(value => value + 1)}><FiRefreshCw aria-hidden="true" /> Try again</button></div>
-    : <div className="employer-loading" role="status">Loading I-140 statistics…</div>}</article>;
+    : <PageSkeleton label="Loading I-140 statistics…" controls={2} stats={4} chart rows={6} />}</article>;
   if (!data.available) return <article className="uscis-page">{intro}<div className="search-state"><h2>I-140 statistics are being prepared</h2><p>Please check back soon.</p></div></article>;
 
   const category = state.category, categoryLabel = data.categories.find(item => item.code === category)?.label;

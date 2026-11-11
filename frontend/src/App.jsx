@@ -13,6 +13,7 @@ import UscisView from './components/UscisView';
 import I140View from './components/I140View';
 import PageSEO from './components/PageSEO';
 import SiteHeader from './components/SiteHeader';
+import { LoadingBar } from './components/Loading';
 import './index.css';
 
 const ImportView = lazy(() => import('./components/ImportView'));
@@ -49,6 +50,7 @@ function App(props) {
       <PageSEO />
       <div className="app-container">
         <a className="skip-link" href="#main-content">Skip to content</a>
+        <LoadingBar />
         <SiteHeader theme={theme} onToggleTheme={toggleTheme} />
 
         <main id="main-content" className="glass-panel app-main" tabIndex={-1}>

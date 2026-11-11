@@ -79,3 +79,7 @@ export function coverageLabel(years, { excludePartial = false } = {}) {
   if (!shown.length) return '';
   return shown.length === 1 ? fyLabel(shown[0]) : `${fyLabel(Math.min(...shown))}–${fyLabel(Math.max(...shown))}`;
 }
+
+// The page's two requests, shared with link prefetching so the URLs match exactly.
+export const uscisOverviewURL = state => '/api/uscis-h1b?' + apiQuery(state, ['from', 'to', 'state', 'industry']);
+export const uscisEmployersURL = state => '/api/uscis-h1b/employers?' + apiQuery(state, ['from', 'to', 'state', 'industry', 'q', 'sort', 'page']);

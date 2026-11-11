@@ -43,3 +43,20 @@ export function writeSearchState(filters, page, limit, view, sort) {
   if (sort) params.set('sort', sort);
   return params;
 }
+
+// The API requests a case search makes, shared with link prefetching so both use
+// the same URLs (a prefetched response is found by its exact URL).
+export function searchRequests(program, { filters, page, limit, sort }) {
+  const endpoint = programs[program].endpoint;
+  const apiParams = writeSearchState(filters, page, limit, undefined, sort);
+  apiParams.set("page", String(page));
+  apiParams.set("limit", String(limit));
+  const query = apiParams.toString();
+  const countQuery = writeSearchState(filters, 1, DEFAULT_LIMIT).toString();
+  return {
+    query, countQuery,
+    results: `${endpoint}?${query}&count=deferred`,
+    count: `${endpoint}/count${countQuery ? `?${countQuery}` : ""}`,
+    years: `${endpoint}/years`,
+  };
+}

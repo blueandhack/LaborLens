@@ -21,6 +21,7 @@ import { programs } from "../utils/programs";
 import {
   PAGE_SIZES,
   readSearchState,
+  searchRequests,
   writeSearchState,
 } from "../utils/searchState";
 
@@ -243,12 +244,9 @@ export default function CaseSearchView({ program }) {
   const filtersPanel = useRef(null);
   const config = programs[program];
   const endpoint = config.endpoint;
-  const apiParams = writeSearchState(filters, page, limit, undefined, sort);
-  apiParams.set("page", String(page));
-  apiParams.set("limit", String(limit));
-  const query = apiParams.toString();
+  const requests = searchRequests(program, { filters, page, limit, sort });
+  const { query, countQuery } = requests;
   const requestKey = `${endpoint}?${query}&retry=${retry}`;
-  const countQuery = writeSearchState(filters, 1, 24).toString();
   const countKey = `${endpoint}?${countQuery}&retry=${retry}`;
   const loading = response.key !== requestKey;
   const error = !loading && response.error;
@@ -283,7 +281,7 @@ export default function CaseSearchView({ program }) {
   useEffect(() => {
     const controller = new AbortController();
     let timer;
-    const load = () => getJSON('/api/employers/status', { signal: controller.signal }).then(data => {
+    const load = () => getJSON('/api/employers/status', { signal: controller.signal, fresh: true }).then(data => {
       if (controller.signal.aborted) return;
       setWorksites(data.worksites || {});
       if (!data.worksites?.[program]?.ready) timer = setTimeout(load, 15000);
@@ -308,7 +306,7 @@ export default function CaseSearchView({ program }) {
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
-    getJSON(`${endpoint}?${query}&count=deferred`, {
+    getJSON(requests.results, {
         signal: controller.signal,
       })
       .then((result) => {
@@ -330,12 +328,12 @@ export default function CaseSearchView({ program }) {
       current = false;
       controller.abort();
     };
-  }, [endpoint, query, requestKey, countKey]);
+  }, [requests.results, requestKey, countKey]);
 
   useEffect(() => {
     if (!countEligible) return;
     const controller = new AbortController();
-    getJSON(`${endpoint}/count${countQuery ? `?${countQuery}` : ""}`, { signal: controller.signal })
+    getJSON(requests.count, { signal: controller.signal })
       .then((result) => {
         if (!controller.signal.aborted) setCountResponse({ key: countKey, totalCount: result.totalCount, error: null });
       })
@@ -344,11 +342,11 @@ export default function CaseSearchView({ program }) {
           error: "Total unavailable. You can still browse these results." });
       });
     return () => controller.abort();
-  }, [endpoint, countQuery, countKey, countEligible, countRetry]);
+  }, [requests.count, countKey, countEligible, countRetry]);
 
   useEffect(() => {
     const controller = new AbortController();
-    getJSON(`${endpoint}/years`, { signal: controller.signal })
+    getJSON(requests.years, { signal: controller.signal })
       .then((result) => {
         setYears(result);
         setYearsError(false);
@@ -357,7 +355,7 @@ export default function CaseSearchView({ program }) {
         if (!controller.signal.aborted) setYearsError(true);
       });
     return () => controller.abort();
-  }, [endpoint]);
+  }, [requests.years]);
 
   const update = (
     nextFilters = filters,

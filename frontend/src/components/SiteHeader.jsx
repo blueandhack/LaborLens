@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { FiAward, FiBriefcase, FiCheckCircle, FiClipboard, FiDollarSign, FiFileText, FiMap, FiMenu, FiMoon, FiSun, FiX } from 'react-icons/fi';
 import { NAV_GROUPS, MENU_LINKS, activeNavItem, currentPageLabel } from '../utils/navigation.js';
 import './SiteHeader.css';
+import { prefetchRoute } from '../utils/prefetch';
 
 const ICONS = { '/': FiDollarSign, '/perm': FiFileText, '/h1b': FiClipboard, '/h1b-approvals': FiCheckCircle, '/i140': FiAward, '/employers': FiBriefcase, '/map': FiMap };
 // Must match the small-screen breakpoint in SiteHeader.css.
@@ -67,7 +68,8 @@ export default function SiteHeader({ theme, onToggleTheme }) {
                   const current = active?.to === item.to;
                   return (
                     <li key={item.to}>
-                      <Link to={item.to} className="nav-link" title={item.description} aria-current={current ? 'page' : undefined} onClick={close}>
+                      <Link to={item.to} className="nav-link" title={item.description} aria-current={current ? 'page' : undefined} onClick={close}
+                        onPointerEnter={() => prefetchRoute(item.to)} onFocus={() => prefetchRoute(item.to)} onTouchStart={() => prefetchRoute(item.to)}>
                         <Icon className="nav-link-icon" aria-hidden="true" />
                         <span className="nav-link-label">{item.label}</span>
                         <span className="nav-link-description">{item.description}</span>
