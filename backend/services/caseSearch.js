@@ -59,7 +59,11 @@ async function certificationIds(collection, spec, signal) {
     const certified = /^\s*certified\s*$/i;
     const certificateHint = spec.filters.employer || spec.filters.employerGroup || spec.filters.company ? indexNames.certificationCompany
         : spec.filters.jobTitle ? indexNames.certificationTitle : spec.filters.caseNumber.length >= 10 ? 'CASE_NUMBER_1' : indexNames.certification;
-    const current = constrained({ ...spec, sortKey: 'event_' + (spec.direction === 1 ? 'asc' : 'desc') },
+    const byPlace = certificateHint === indexNames.certification && Boolean(spec.filters.worksite || spec.filters.worksiteState || spec.filters.location);
+    // Place-only searches check these indexed fields while scanning, so only matching
+    // applications go on: "sunnyvale" in WA must not push every Sunnyvale, CA row through.
+    const placeFields = ['_WORKSITE_CITY_LOWER', '_WORKSITE_STATE_LOWER', spec.config.city, spec.config.state, 'CASE_STATUS'];
+    const current = constrained({ ...spec, sortKey: 'event_' + (spec.direction === 1 ? 'asc' : 'desc'), ...(byPlace ? { fallbackLeadingFields: placeFields } : {}) },
         { CASE_STATUS: certified }, { DECISION_DATE: dateRange() });
     if (certificateHint === 'CASE_NUMBER_1') current.skipTrial = true;
     if (spec.filters.worksite && [indexNames.certificationCompany, indexNames.certificationTitle, 'CASE_NUMBER_1'].includes(certificateHint)) {
@@ -68,21 +72,24 @@ async function certificationIds(collection, spec, signal) {
         current.hint = certificateHint; current.branches = null; current.intersection = null; current.skipTrial = true;
     }
     if (!current.hint || current.hint === indexNames.received) current.hint = spec.filters.worksite || spec.filters.worksiteState ? indexNames.worksiteRecent : indexNames.recent;
-    // Place-only searches check the place, state and status while scanning an index,
-    // which holds them all, so only matching applications go on. Checked afterwards,
-    // every application in the range went through the pipeline first: about four
-    // seconds for a rare place, and past the time limit for Sunnyvale, WA.
-    const byPlace = certificateHint === indexNames.certification && Boolean(spec.filters.worksite || spec.filters.worksiteState || spec.filters.location);
-    const placeFields = ['_WORKSITE_CITY_LOWER', '_WORKSITE_STATE_LOWER', spec.config.city, spec.config.state, 'CASE_STATUS', '$or'];
     const original = constrained({ ...spec, branches: null, intersection: null, hint: certificateHint,
         sort: { ORIGINAL_CERT_DATE: spec.direction, _id: -spec.direction }, sortField: 'ORIGINAL_CERT_DATE',
         recentHint: certificateHint === indexNames.certification ? indexNames.certification : undefined,
-        leadingFields: ['ORIGINAL_CERT_DATE', ...(byPlace ? placeFields : [])], forceMetadata: true },
+        leadingFields: ['ORIGINAL_CERT_DATE'], forceMetadata: true },
     { ORIGINAL_CERT_DATE: dateRange() }, { CASE_STATUS: { $not: certified } });
     const end = spec.skip + spec.limit;
+    // A place-only search first tries the date-ordered certification index (quick for a
+    // common place; the trial is capped at 500 ms), then reads the place's own index,
+    // which is small for a rare place. That index lacks ORIGINAL_CERT_DATE, so its city,
+    // state and status are checked before any disclosure is loaded: "sunnyvale" in WA
+    // must not load every Sunnyvale, CA application. Scanning the certification index
+    // to the end instead took seconds in production, and timed out for some places.
+    const originalPage = byPlace ? { ...constrained({ ...spec, sort: original.sort, sortField: original.sortField, recentHint: original.recentHint,
+        leadingFields: original.leadingFields, fallbackLeadingFields: [...original.leadingFields, ...placeFields], forceMetadata: true }, { ORIGINAL_CERT_DATE: dateRange() }, { CASE_STATUS: { $not: certified } }),
+    hint: spec.hint } : original;
     let rows;
     if (end <= 2000) {
-        const [a, b] = await Promise.all([selectIds(collection, { ...original, skip: 0, limit: end }, null, signal),
+        const [a, b] = await Promise.all([selectIds(collection, { ...originalPage, skip: 0, limit: end }, null, signal),
             selectIds(collection, { ...current, skip: 0, limit: end }, null, signal)]);
         rows = [...a.map(row => ({ ...row, _certificationSort: row.ORIGINAL_CERT_DATE })),
             ...b.map(row => ({ ...row, _certificationSort: row.DECISION_DATE }))]
@@ -456,7 +463,10 @@ async function selectIds(collection, selection, totalCount, signal) {
                 if (error.code !== 50 || signal?.aborted) throw error;
             }
         }
-        if (!ids) ids = await (spec.branches ? locationPage(collection, selection, signal) : pageIds(collection, query, selection, signal, hint));
+        // The quick trial reads a date-ordered window and gives up early; the fallback
+        // may check extra indexed fields while scanning its (narrower) index.
+        const fallback = spec.fallbackLeadingFields ? { ...selection, leadingFields: spec.fallbackLeadingFields } : selection;
+        if (!ids) ids = await (spec.branches ? locationPage(collection, fallback, signal) : pageIds(collection, query, fallback, signal, hint));
     }
     return ids;
 }
