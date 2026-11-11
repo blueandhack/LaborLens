@@ -29,3 +29,13 @@ test('the small-screen menu button names the current page', () => {
   assert.equal(currentPageLabel('/cases/0123'), 'Case');
   assert.equal(currentPageLabel('/nowhere'), 'Menu');
 });
+
+test('administration sections are linkable URLs that fall back to the overview', async () => {
+  const { ADMIN_SECTIONS, adminSection, adminSectionPath } = await import('../src/utils/navigation.js');
+  assert.equal(adminSectionPath('overview'), '/admin/data');
+  for (const section of ADMIN_SECTIONS) {
+    assert.equal(adminSection(new URL(adminSectionPath(section), 'https://laborlens.fyi').search), section);
+  }
+  assert.equal(adminSection(''), 'overview');
+  assert.equal(adminSection('?section=unknown'), 'overview');
+});

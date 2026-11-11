@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatBytes, formatCompact, formatDuration, timeAgo, healthChecks, overallLevel, describeActivity } from '../src/utils/adminOverview.js';
+import { formatBytes, formatCompact, formatDuration, timeAgo, healthChecks, overallLevel, describeActivity, groupActivity } from '../src/utils/adminOverview.js';
 
 const now = Date.parse('2026-11-10T12:00:00Z');
 const hoursAgo = hours => new Date(now - hours * 3600000).toISOString();
@@ -38,4 +38,27 @@ test('activity entries describe imports, refreshes and admin events', () => {
   assert.deepEqual(describeActivity({ kind: 'admin', type: 'username-changed', username: 'yoga', from: 'admin' }), { tone: 'ok', title: 'Username changed', detail: 'admin → yoga' });
   assert.deepEqual(describeActivity({ kind: 'admin', type: 'sign-in-failed', unknownAccount: true }), { tone: 'error', title: 'Failed sign-in', detail: 'unknown account' });
   assert.equal(describeActivity({ kind: 'refresh', outcome: 'succeeded', steps: ['Worksite map'] }).detail, 'Worksite map');
+});
+
+test('back-to-back activity that reads the same folds into one counted entry', () => {
+  const run = hours => ({ kind: 'import', mode: 'backfill', at: hoursAgo(hours), files: 78, outcomes: { 'already-imported': 78 } });
+  const failed = (hours, ip) => ({ kind: 'admin', type: 'sign-in-failed', at: hoursAgo(hours), username: 'admin', ip, userAgent: 'curl' });
+  const groups = groupActivity([run(1), run(2), run(3), { kind: 'refresh', at: hoursAgo(4), outcome: 'succeeded', steps: ['Worksite map'] }, run(5),
+    failed(6, '203.0.113.1'), failed(7, '203.0.113.1'), failed(8, '203.0.113.2')]);
+  assert.deepEqual(groups.map(group => [group.title, group.count]), [
+    ['Automatic import (backfill)', 3], ['Background refresh', 1], ['Automatic import (backfill)', 1], ['Failed sign-in', 2], ['Failed sign-in', 1]]);
+  assert.equal(groups[0].newest, hoursAgo(1));
+  assert.equal(groups[0].oldest, hoursAgo(3));
+  assert.deepEqual(groupActivity([]), []);
+});
+
+test('the status lists administrators without two-factor sign-in, and new account events read plainly', () => {
+  const base = { jobs: {}, security: { failedSignIns24h: 0, blockedAddresses: 0 } };
+  const off = healthChecks({ ...base, security: { ...base.security, admins: [{ username: 'yoga', twoFactor: true }, { username: 'ops', twoFactor: false }] } }, now);
+  assert.deepEqual(off.find(check => check.id === 'two-factor'), { id: 'two-factor', level: 'warning', label: 'Two-factor sign-in', detail: 'Off for ops' });
+  const on = healthChecks({ ...base, security: { ...base.security, admins: [{ username: 'yoga', twoFactor: true }] } }, now);
+  assert.equal(on.find(check => check.id === 'two-factor').level, 'ok');
+  assert.deepEqual(describeActivity({ kind: 'admin', type: 'sign-out', username: 'yoga' }), { tone: 'ok', title: 'Signed out', detail: 'yoga' });
+  assert.equal(describeActivity({ kind: 'admin', type: 'two-factor-disabled', username: 'yoga' }).tone, 'warning');
+  assert.deepEqual(describeActivity({ kind: 'admin', type: 'data-cleared', username: 'yoga', program: 'pwd', records: 1200 }), { tone: 'warning', title: 'Data cleared', detail: 'yoga · PWD · 1,200 records' });
 });

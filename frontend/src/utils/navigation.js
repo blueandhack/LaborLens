@@ -33,6 +33,15 @@ export const MENU_LINKS = [
   { to: '/admin/data', label: 'Administration' },
 ];
 
+// Administration sections live in the URL so each can be linked, bookmarked,
+// opened in a new tab, and reached with the back button.
+export const ADMIN_SECTIONS = ['overview', 'automatic', 'data', 'manual', 'security'];
+export const adminSection = search => {
+  const section = new URLSearchParams(search).get('section');
+  return ADMIN_SECTIONS.includes(section) ? section : 'overview';
+};
+export const adminSectionPath = section => section === 'overview' ? '/admin/data' : `/admin/data?section=${section}`;
+
 const normalize = pathname => (pathname || '/').replace(/\/+$/, '') || '/';
 
 export function activeNavItem(pathname) {

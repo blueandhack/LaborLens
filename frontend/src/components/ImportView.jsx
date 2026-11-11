@@ -1,18 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { adminSection, adminSectionPath } from '../utils/navigation';
 import AutomaticImports from './AutomaticImports';
 import SiteDataStatus from './SiteDataStatus';
 import AdminOverview from './AdminOverview';
+import AccessSecurity, { CodeField } from './AccessSecurity';
+import { adminRequest, SESSION_ENDED_EVENT } from '../utils/adminSecurity';
 import './ImportView.css';
-import { FiUploadCloud, FiLogOut, FiSettings, FiX, FiShield, FiUnlock, FiRefreshCw, FiDatabase, FiGrid } from 'react-icons/fi';
+import { FiUploadCloud, FiLogOut, FiShield, FiRefreshCw, FiDatabase, FiGrid, FiArrowLeft } from 'react-icons/fi';
 
-// Matches the server's rule (backend/models/Admin.js).
-const USERNAME_PATTERN = /^[A-Za-z0-9._@-]{3,64}$/;
 
 const ImportView = () => {
     const [isSigningIn, setIsSigningIn] = useState(false);
-    const [isCheckingIPs, setIsCheckingIPs] = useState(false);
-    const [blockedIPsError, setBlockedIPsError] = useState('');
-    const [section, setSection] = useState('overview');
+    const section = adminSection(useLocation().search);
+    const navigate = useNavigate();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [uploadError, setUploadError] = useState('');
     const [uploadStatus, setUploadStatus] = useState('idle');
@@ -25,16 +26,13 @@ const ImportView = () => {
     const [progress, setProgress]                   = useState({ processed: 0, total: 0, percentage: 0, inserted: 0, updated: 0 });
     const [isAuthenticated, setIsAuthenticated]     = useState(false);
     const [isCheckingAuth, setIsCheckingAuth]       = useState(true);
-    const [showChangePassword, setShowChangePassword] = useState(false);
-    const [showChangeUsername, setShowChangeUsername] = useState(false);
-    const [usernameForm, setUsernameForm]           = useState({ newUsername: '', currentPassword: '' });
-    const [usernameMessage, setUsernameMessage]     = useState({ type: '', text: '' });
-    const [adminUsername, setAdminUsername]         = useState(() => (typeof localStorage === 'undefined' ? '' : localStorage.getItem('adminUsername') || ''));
+    const [, setAdminUsername]                      = useState(() => (typeof localStorage === 'undefined' ? '' : localStorage.getItem('adminUsername') || ''));
     const [loginForm, setLoginForm]                 = useState({ username: '', password: '' });
-    const [passwordForm, setPasswordForm]           = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
     const [authError, setAuthError]                 = useState('');
-    const [pwdMessage, setPwdMessage]               = useState({ type: '', text: '' });
-    const [blockedIPs, setBlockedIPs]               = useState([]);
+    // Second sign-in step when two-factor sign-in is on: the server's short-lived challenge.
+    const [challenge, setChallenge]                 = useState(null);
+    const [loginCode, setLoginCode]                 = useState('');
+    const [adminNotice, setAdminNotice]             = useState('');
     const [autoStatus, setAutoStatus]               = useState(null);
     const [autoStatusError, setAutoStatusError]     = useState('');
 
@@ -128,43 +126,53 @@ const ImportView = () => {
         }
     };
 
+    const signedIn = data => {
+        localStorage.setItem('adminToken', data.token); localStorage.setItem('adminUsername', data.username); setAdminUsername(data.username);
+        setChallenge(null); setLoginCode(''); setLoginForm({ username: '', password: '' }); setIsAuthenticated(true);
+        if (data.recoveryCodesLeft !== undefined) setAdminNotice(`You signed in with a recovery code. ${data.recoveryCodesLeft} left${data.recoveryCodesLeft <= 3 ? ': create new ones in Access & security' : ''}.`);
+    };
     const handleLogin = async (e) => {
         e.preventDefault(); setAuthError('');
         setIsSigningIn(true);
         try {
-            const res  = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginForm) });
-            const data = await res.json();
-            if (res.ok) { localStorage.setItem('adminToken', data.token); localStorage.setItem('adminUsername', data.username); setAdminUsername(data.username); setIsAuthenticated(true); }
-            else setAuthError(data.error || 'Login failed');
-        } catch { setAuthError('Network error. Please try again.'); }
+            const data = await adminRequest('/api/admin/login', { body: loginForm });
+            if (data.twoFactorRequired) { setChallenge(data.challenge); setLoginCode(''); }
+            else signedIn(data);
+        } catch (error) { setAuthError(error.status ? error.message : 'Network error. Please try again.'); }
+        finally { setIsSigningIn(false); }
+    };
+    const handleTwoFactor = async (e) => {
+        e.preventDefault(); setAuthError('');
+        setIsSigningIn(true);
+        try { signedIn(await adminRequest('/api/admin/login/two-factor', { body: { challenge, code: loginCode } })); }
+        catch (error) {
+            setAuthError(error.status ? error.message : 'Network error. Please try again.');
+            if (error.data?.restart) { setChallenge(null); setLoginCode(''); setLoginForm(form => ({ ...form, password: '' })); }
+        }
         finally { setIsSigningIn(false); }
     };
 
-    const handleLogout = () => {
+    // Clears this browser's sign-in. `message` explains why when the server ended the session.
+    const clearSignIn = useCallback((message = '') => {
         localStorage.removeItem('adminToken'); localStorage.removeItem('adminUsername');
         setIsAuthenticated(false); setLoginForm({ username: '', password: '' }); setAdminUsername('');
+        setChallenge(null); setLoginCode(''); setAdminNotice(''); setAuthError(message);
         setLogs([]); setProgress({ processed: 0, total: 0, percentage: 0, inserted: 0, updated: 0 });
-        setBlockedIPs([]);
         setAutoStatus(null);
-        setSection('overview');
+        navigate(adminSectionPath('overview'), { replace: true });
         setFile(null);
         setUploadStatus('idle');
-        setShowChangePassword(false);
-        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        setBlockedIPsError('');
+    }, [navigate]);
+    // Signing out ends the session on the server too, so the token stops working everywhere.
+    const handleLogout = async () => {
+        try { await adminRequest('/api/admin/logout', { body: {} }); } catch { /* already ended or offline: clear locally anyway */ }
+        clearSignIn();
     };
-
-    const fetchBlockedIPs = useCallback(async () => {
-        setIsCheckingIPs(true);
-        try {
-            const token = localStorage.getItem('adminToken');
-            const res = await fetch('/api/admin/blocked-ips', { headers: { 'Authorization': `Bearer ${token}` } });
-            if (!res.ok) throw new Error('Unable to load blocked addresses. Refresh to try again.');
-            setBlockedIPs(await res.json());
-            setBlockedIPsError('');
-        } catch { setBlockedIPsError('Unable to load blocked addresses. Refresh to try again.'); }
-        finally { setIsCheckingIPs(false); }
-    }, []);
+    useEffect(() => {
+        const ended = () => clearSignIn('Your session has ended. Please sign in again.');
+        window.addEventListener(SESSION_ENDED_EVENT, ended);
+        return () => window.removeEventListener(SESSION_ENDED_EVENT, ended);
+    }, [clearSignIn]);
 
     const fetchAutoStatus = useCallback(async () => {
         setIsRefreshing(true);
@@ -176,55 +184,6 @@ const ImportView = () => {
         } catch (error) { setAutoStatusError(error.message); }
         finally { setIsRefreshing(false); }
     }, []);
-
-    const handleUnblock = async (ip) => {
-        try {
-            const token = localStorage.getItem('adminToken');
-            await fetch(`/api/admin/blocked-ips/${encodeURIComponent(ip)}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-            fetchBlockedIPs();
-        } catch { /* ignore */ }
-    };
-
-    const handleChangePassword = async (e) => {
-        e.preventDefault(); setPwdMessage({ type: '', text: '' });
-        if (passwordForm.newPassword !== passwordForm.confirmPassword) { setPwdMessage({ type: 'error', text: 'New passwords do not match' }); return; }
-        try {
-            const token = localStorage.getItem('adminToken');
-            const res   = await fetch('/api/admin/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword }) });
-            const data  = await res.json();
-            if (res.ok) {
-                // The change signs out every other session; this one continues with the new token.
-                if (data.token) localStorage.setItem('adminToken', data.token);
-                setPwdMessage({ type: 'success', text: 'Password updated. Other signed-in sessions have been signed out.' });
-                setTimeout(() => { setShowChangePassword(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPwdMessage({ type: '', text: '' }); }, 2000);
-            } else setPwdMessage({ type: 'error', text: data.error || 'Failed to update password' });
-        } catch { setPwdMessage({ type: 'error', text: 'Network error. Please try again.' }); }
-    };
-
-    const handleChangeUsername = async (e) => {
-        e.preventDefault(); setUsernameMessage({ type: '', text: '' });
-        const newUsername = usernameForm.newUsername.trim();
-        if (!USERNAME_PATTERN.test(newUsername)) { setUsernameMessage({ type: 'error', text: 'Use 3 to 64 characters: letters, digits, and . _ @ - only.' }); return; }
-        if (newUsername === adminUsername) { setUsernameMessage({ type: 'error', text: 'That is already your username.' }); return; }
-        try {
-            const token = localStorage.getItem('adminToken');
-            const res   = await fetch('/api/admin/change-username', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ newUsername, currentPassword: usernameForm.currentPassword }) });
-            const data  = await res.json().catch(() => ({}));
-            if (res.ok) {
-                localStorage.setItem('adminToken', data.token); localStorage.setItem('adminUsername', data.username); setAdminUsername(data.username);
-                setUsernameForm({ newUsername: '', currentPassword: '' });
-                setUsernameMessage({ type: 'success', text: `Your username is now ${data.username}. Use it the next time you sign in. Other signed-in sessions have been signed out.` });
-            } else if (res.status === 401) {
-                localStorage.removeItem('adminToken'); localStorage.removeItem('adminUsername'); setIsAuthenticated(false);
-            } else setUsernameMessage({ type: 'error', text: data.error || 'Failed to update username' });
-        } catch { setUsernameMessage({ type: 'error', text: 'Network error. Please try again.' }); }
-    };
-    const closeUsernameForm = () => {
-        setShowChangeUsername(false);
-        setUsernameForm({ newUsername: '', currentPassword: '' });
-        setUsernameMessage(message => message.type === 'success' ? message : { type: '', text: '' });
-        requestAnimationFrame(() => document.getElementById('admin-change-username-toggle')?.focus());
-    };
 
     const onClearData = async () => {
         if (!window.confirm(`Delete ALL ${dataType.toUpperCase()} cases? This cannot be undone.`)) return;
@@ -252,24 +211,10 @@ const ImportView = () => {
 
     useEffect(() => {
         if (!isAuthenticated) return;
-        fetchBlockedIPs();
-        const iv = setInterval(fetchBlockedIPs, 30000);
-        return () => clearInterval(iv);
-    }, [isAuthenticated, fetchBlockedIPs]);
-
-    useEffect(() => {
-        if (!isAuthenticated) return;
         fetchAutoStatus();
         const iv = setInterval(fetchAutoStatus, 15000);
         return () => clearInterval(iv);
     }, [isAuthenticated, fetchAutoStatus]);
-
-    const closePasswordForm = () => {
-        setShowChangePassword(false);
-        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        setPwdMessage({ type: '', text: '' });
-        requestAnimationFrame(() => document.getElementById('admin-change-password-toggle')?.focus());
-    };
 
     if (isCheckingAuth) {
         return <div className="loading-overlay" role="status"><div className="spinner-large" /><p>Checking authentication…</p></div>;
@@ -290,14 +235,20 @@ const ImportView = () => {
             </section>
             <section className="admin-login-form" aria-labelledby="admin-sign-in-heading">
                 <FiShield aria-hidden="true" className="admin-form-icon" />
-                <h3 id="admin-sign-in-heading">Administrator sign-in</h3>
-                <p className="admin-help">Use your LaborLens administrator account.</p>
+                <h3 id="admin-sign-in-heading">{challenge ? 'Two-factor sign-in' : 'Administrator sign-in'}</h3>
+                <p className="admin-help">{challenge ? 'Enter the six-digit code from your authenticator app.' : 'Use your LaborLens administrator account.'}</p>
                 {authError && <p className="import-notice error" role="alert">{authError}</p>}
-                <form onSubmit={handleLogin} className="admin-form-stack">
-                    <label htmlFor="admin-username">Username<input id="admin-username" type="text" autoComplete="username" className="search-input" value={loginForm.username} onChange={event => setLoginForm({ ...loginForm, username: event.target.value })} required /></label>
+                {!challenge && <form onSubmit={handleLogin} className="admin-form-stack">
+                    <label htmlFor="admin-username">Username<input id="admin-username" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} className="search-input" value={loginForm.username} onChange={event => setLoginForm({ ...loginForm, username: event.target.value })} required /></label>
                     <label htmlFor="admin-password">Password<input id="admin-password" type="password" autoComplete="current-password" className="search-input" value={loginForm.password} onChange={event => setLoginForm({ ...loginForm, password: event.target.value })} required /></label>
                     <button type="submit" className="btn" disabled={isSigningIn}>{isSigningIn ? 'Signing in…' : 'Sign in'}</button>
-                </form>
+                </form>}
+                {challenge && <form onSubmit={handleTwoFactor} className="admin-form-stack">
+                    <CodeField id="admin-login-code" value={loginCode} onChange={setLoginCode} allowRecovery autoFocus />
+                    <button type="submit" className="btn" disabled={isSigningIn || !loginCode.trim()}>{isSigningIn ? 'Checking…' : 'Verify'}</button>
+                    <button type="button" className="btn btn-secondary" onClick={() => { setChallenge(null); setLoginCode(''); setAuthError(''); setLoginForm(form => ({ ...form, password: '' })); }}>
+                        <FiArrowLeft aria-hidden="true" /> Back</button>
+                </form>}
             </section>
         </div>;
     }
@@ -307,11 +258,12 @@ const ImportView = () => {
             <div><p className="section-kicker">Administration</p><h2>Data management</h2><p>Monitor the site’s data, background jobs, backups and access.</p></div>
             <button onClick={handleLogout} className="btn btn-secondary admin-sign-out"><FiLogOut aria-hidden="true" /> Sign out</button>
         </header>
+        {adminNotice && <p className="import-notice warning" role="status">{adminNotice} <button type="button" className="sec-text-button" onClick={() => setAdminNotice('')}>Dismiss</button></p>}
         <nav className="admin-sections" aria-label="Administration sections">
-            {[['overview', 'Overview', <FiGrid aria-hidden="true" />], ['automatic', 'Automatic imports', <FiRefreshCw aria-hidden="true" />], ['data', 'Site data', <FiDatabase aria-hidden="true" />], ['manual', 'Manual upload', <FiUploadCloud aria-hidden="true" />], ['security', 'Access & security', <FiShield aria-hidden="true" />]].map(([id, label, icon]) => <button key={id} aria-pressed={section === id} onClick={() => setSection(id)}>{icon}<span>{label}</span></button>)}
+            {[['overview', 'Overview', <FiGrid aria-hidden="true" />], ['automatic', 'Automatic imports', <FiRefreshCw aria-hidden="true" />], ['data', 'Site data', <FiDatabase aria-hidden="true" />], ['manual', 'Manual upload', <FiUploadCloud aria-hidden="true" />], ['security', 'Access & security', <FiShield aria-hidden="true" />]].map(([id, label, icon]) => <Link key={id} to={adminSectionPath(id)} aria-current={section === id ? 'page' : undefined}>{icon}<span>{label}</span></Link>)}
         </nav>
 
-        {section === 'overview' && <AdminOverview onNavigate={setSection} />}
+        {section === 'overview' && <AdminOverview />}
         {section === 'data' && <SiteDataStatus />}
         {section === 'automatic' && <AutomaticImports status={autoStatus} error={autoStatusError} refreshing={isRefreshing} onRefresh={fetchAutoStatus} />}
 
@@ -346,39 +298,11 @@ const ImportView = () => {
             </div>
         </section>
 
-        <section aria-labelledby="access-security-heading" hidden={section !== 'security'}>
-            <div className="admin-section-heading"><div><p className="section-kicker">Administrator controls</p><h3 id="access-security-heading">Access & security</h3><p className="admin-help">Manage your username and password and review blocked sign-in attempts.</p></div></div>
-            <div className="admin-security-layout">
-                <section className="admin-account-panel" aria-labelledby="admin-account-heading">
-                    <FiSettings className="admin-form-icon" aria-hidden="true" /><h4 id="admin-account-heading">Your administrator account</h4><p className="admin-help">{adminUsername ? <>Signed in as <strong>{adminUsername}</strong>. </> : null}Update the username and password used to access data management.</p>
-                    {!showChangeUsername && usernameMessage.type === 'success' && <p className="import-notice success" role="status">{usernameMessage.text}</p>}
-                    {!showChangeUsername && <button id="admin-change-username-toggle" onClick={() => { setShowChangeUsername(true); setUsernameMessage({ type: '', text: '' }); requestAnimationFrame(() => document.getElementById('admin-new-username')?.focus()); }} className="btn btn-secondary" aria-expanded={false}>Change username</button>}
-                    {showChangeUsername && <form onSubmit={handleChangeUsername} className="admin-form-stack" aria-label="Change username">
-                        {usernameMessage.text && <p className={`import-notice ${usernameMessage.type}`} role={usernameMessage.type === 'error' ? 'alert' : 'status'}>{usernameMessage.text}</p>}
-                        <label htmlFor="admin-new-username">New username<input id="admin-new-username" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} maxLength={64} className="search-input" value={usernameForm.newUsername} onChange={event => setUsernameForm({ ...usernameForm, newUsername: event.target.value })} aria-describedby="admin-new-username-help" required /></label>
-                        <p id="admin-new-username-help" className="admin-help">3 to 64 characters: letters, digits, and . _ @ -. Changing it signs out every other session.</p>
-                        <label htmlFor="admin-username-password">Current password<input id="admin-username-password" type="password" autoComplete="current-password" className="search-input" value={usernameForm.currentPassword} onChange={event => setUsernameForm({ ...usernameForm, currentPassword: event.target.value })} required /></label>
-                        <div className="admin-form-actions"><button type="submit" className="btn">Update username</button><button type="button" onClick={closeUsernameForm} className="btn btn-secondary"><FiX aria-hidden="true" /> Cancel</button></div>
-                    </form>}
-                    {!showChangePassword && <button id="admin-change-password-toggle" onClick={() => { setShowChangePassword(true); requestAnimationFrame(() => document.getElementById('admin-current-password')?.focus()); }} className="btn btn-secondary" aria-expanded={false}>Change password</button>}
-                    {showChangePassword && <form onSubmit={handleChangePassword} className="admin-form-stack">
-                        {pwdMessage.text && <p className={`import-notice ${pwdMessage.type}`} role={pwdMessage.type === 'error' ? 'alert' : 'status'}>{pwdMessage.text}</p>}
-                        <label htmlFor="admin-current-password">Current password<input id="admin-current-password" type="password" autoComplete="current-password" className="search-input" value={passwordForm.currentPassword} onChange={event => setPasswordForm({ ...passwordForm, currentPassword: event.target.value })} required /></label>
-                        <label htmlFor="admin-new-password">New password<input id="admin-new-password" type="password" autoComplete="new-password" className="search-input" value={passwordForm.newPassword} onChange={event => setPasswordForm({ ...passwordForm, newPassword: event.target.value })} required /></label>
-                        <label htmlFor="admin-confirm-password">Confirm new password<input id="admin-confirm-password" type="password" autoComplete="new-password" className="search-input" value={passwordForm.confirmPassword} onChange={event => setPasswordForm({ ...passwordForm, confirmPassword: event.target.value })} required /></label>
-                        <div className="admin-form-actions"><button type="submit" className="btn">Update password</button><button type="button" onClick={closePasswordForm} className="btn btn-secondary"><FiX aria-hidden="true" /> Cancel</button></div>
-                    </form>}
-                </section>
-                <section className="admin-blocked-panel" aria-labelledby="blocked-addresses-heading">
-                    <div className="admin-section-heading"><div><h4 id="blocked-addresses-heading">Blocked addresses</h4><p className="admin-help">Addresses temporarily blocked after repeated failed sign-ins.</p></div><button onClick={fetchBlockedIPs} className="btn btn-secondary" disabled={isCheckingIPs}><FiRefreshCw className={isCheckingIPs ? 'is-refreshing' : ''} aria-hidden="true" />{isCheckingIPs ? 'Refreshing…' : 'Refresh addresses'}</button></div>
-                    {blockedIPsError && <p className="import-notice error" role="alert">{blockedIPsError}</p>}
-                    {isCheckingIPs && blockedIPs.length === 0 ? <p className="admin-empty" role="status">Checking blocked addresses…</p> : !blockedIPsError && blockedIPs.length === 0 ? <div className="admin-empty admin-security-empty"><FiShield aria-hidden="true" /><h4>No blocked addresses</h4><p>No sign-in addresses are currently blocked.</p></div> : null}
-                    {blockedIPs.length > 0 && <ul className="admin-blocked-list">{blockedIPs.map(({ ip, attempts, secsLeft }) => <li key={ip}>
-                        <code className="admin-blocked-ip">{ip}</code><dl><div><dt>Attempts</dt><dd>{attempts}</dd></div><div><dt>Time remaining</dt><dd>{Math.floor(secsLeft / 60) > 0 ? `${Math.floor(secsLeft / 60)}m ` : ''}{secsLeft % 60}s</dd></div></dl><button onClick={() => handleUnblock(ip)} className="btn btn-secondary"><FiUnlock aria-hidden="true" /> Unblock</button>
-                    </li>)}</ul>}
-                </section>
-            </div>
-        </section>
+        {section === 'security' && <section aria-labelledby="access-security-heading">
+            <div className="admin-section-heading"><div><p className="section-kicker">Administrator controls</p><h3 id="access-security-heading">Access & security</h3><p className="admin-help">Your account, two-factor sign-in, signed-in sessions and sign-in history.</p></div></div>
+            <AccessSecurity onSignOut={handleLogout}
+                onTokenChange={(token, username) => { localStorage.setItem('adminToken', token); localStorage.setItem('adminUsername', username); setAdminUsername(username); }} />
+        </section>}
     </div>;
 };
 

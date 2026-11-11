@@ -1,12 +1,12 @@
 /* Administration overview. Status colors carry an icon and a label, never color alone. */
 .ov { --ov-ok: var(--status-certified); --ov-warning: var(--status-withdrawn); --ov-error: var(--status-denied); --ov-bar: var(--map-step-3, #5598e7); --ov-index: var(--map-step-5, #cde2fb);
-  display: grid; gap: 28px; min-width: 0; }
+  display: grid; gap: 28px; min-width: 0; container-type: inline-size; }
 [data-theme="light"] .ov { --ov-bar: #256abf; --ov-index: #86b6ef; }
 .ov h3 { font-size: 17px; margin: 0; }
 .ov-muted { color: var(--text-secondary); font-size: 12px; line-height: 1.6; margin: 0; }
 .ov-chip { display: inline-flex; align-items: center; padding: 3px 9px; border: 1px solid var(--border-color-strong); border-radius: 999px; font-size: 11px; color: var(--text-secondary); white-space: nowrap; text-decoration: none; font-variant-numeric: tabular-nums; }
 a.ov-chip:hover { color: var(--focus-ring); border-color: var(--focus-ring); }
-.ov-link { border: 0; background: none; padding: 6px 0; min-height: 32px; color: var(--focus-ring); font: inherit; font-size: 13px; cursor: pointer; }
+.ov-link { display: inline-flex; align-items: center; text-decoration: none; border: 0; background: none; padding: 6px 0; min-height: 32px; color: var(--focus-ring); font: inherit; font-size: 13px; cursor: pointer; }
 .ov-link:hover { text-decoration: underline; }
 .ov-skeleton { padding: 60px 0; text-align: center; color: var(--text-secondary); }
 
@@ -22,7 +22,7 @@ a.ov-chip:hover { color: var(--focus-ring); border-color: var(--focus-ring); }
 .ov-hero-status h3 { font-size: 24px; letter-spacing: -.02em; margin: 2px 0 4px; }
 .ov-hero-status p:not(.section-kicker) { margin: 0; color: var(--text-secondary); font-size: 13px; }
 .ov-hero-status .btn { display: inline-flex; gap: 8px; align-items: center; }
-.ov-checks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.ov-checks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .ov-checks li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; background: var(--input-bg); border: 1px solid var(--border-color); }
 .ov-checks svg { width: 16px; height: 16px; margin-top: 2px; flex: 0 0 auto; }
 .ov-checks .is-ok svg { color: var(--ov-ok); }
@@ -33,7 +33,7 @@ a.ov-chip:hover { color: var(--focus-ring); border-color: var(--focus-ring); }
 .ov-checks span { display: block; font-size: 12px; color: var(--text-secondary); line-height: 1.5; overflow-wrap: anywhere; }
 
 /* Tiles */
-.ov-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.ov-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .ov-tile { border: 1px solid var(--border-color-strong); border-radius: 10px; padding: 16px; background: var(--surface-elevated); display: grid; gap: 6px; align-content: start;
   transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
 .ov-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--focus-ring); }
@@ -48,7 +48,7 @@ a.ov-chip:hover { color: var(--focus-ring); border-color: var(--focus-ring); }
 .ov-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: -14px; }
 
 /* Datasets */
-.ov-datasets { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.ov-datasets { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .ov-dataset { border: 1px solid var(--border-color-strong); border-radius: 10px; padding: 16px; background: var(--surface-elevated); display: grid; gap: 14px; align-content: start; min-width: 0; }
 .ov-dataset header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .ov-dataset h4 { margin: 0; font-size: 15px; }
@@ -67,8 +67,33 @@ a.ov-chip:hover { color: var(--focus-ring); border-color: var(--focus-ring); }
 .ov-facts dd small { color: var(--text-secondary); font-size: 11px; }
 
 /* Panels */
-.ov-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.ov-grid-wide { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.ov-grid, .ov-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.ov-grid > .ov-panel { align-content: start; }
+.ov-stack { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.ov-activity { display: flex; flex-direction: column; }
+.ov-activity .ov-timeline { max-height: 420px; }
+
+/* Rows hold a fixed number of cards per width (checks 6/3/2, tiles 4/2, datasets 4/2/1)
+   so a row is always full or evenly split, never a lone card on its own line. */
+@container (min-width: 520px) {
+  .ov-datasets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (min-width: 640px) {
+  .ov-checks { grid-template-columns: repeat(var(--ov-half, 3), minmax(0, 1fr)); }
+}
+@container (min-width: 760px) {
+  .ov-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+/* Both panel rows share one column split so their edges line up. Activity on the left
+   takes the height of the jobs and access column, scrolling inside it. */
+@container (min-width: 820px) {
+  .ov-grid, .ov-layout { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+  .ov-activity .ov-timeline { flex: 1 1 0; min-height: 280px; max-height: none; }
+}
+@container (min-width: 1000px) {
+  .ov-checks { grid-template-columns: repeat(var(--ov-count, 6), minmax(0, 1fr)); }
+  .ov-datasets { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .ov-panel { border: 1px solid var(--border-color-strong); border-radius: 12px; padding: 20px; background: var(--surface-elevated); display: grid; gap: 16px; min-width: 0; }
 .ov-panel > header { display: flex; align-items: center; gap: 10px; }
 .ov-panel > header > svg { width: 18px; height: 18px; color: var(--focus-ring); }
@@ -99,26 +124,31 @@ a.ov-chip:hover { color: var(--focus-ring); border-color: var(--focus-ring); }
 .ov-legend .is-index { margin-left: 8px; }
 
 .ov-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.ov-jobs li { display: grid; grid-template-columns: 70px minmax(0, auto) 1fr; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+.ov-jobs li { display: grid; grid-template-columns: 64px minmax(0, auto) minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+.ov-jobs li:last-child { border-bottom: 0; }
 .ov-jobs span { color: var(--text-secondary); font-size: 12px; }
 .ov-jobs strong { font-weight: 500; text-transform: capitalize; }
 .ov-jobs strong.is-error { color: var(--ov-error); }
 .ov-jobs small { color: var(--text-secondary); font-size: 12px; text-align: right; }
+.ov-runs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ov-runs-label { font-size: 12px; color: var(--text-secondary); }
 .ov-runs { display: flex; gap: 4px; flex-wrap: wrap; }
-.ov-runs span { width: 18px; height: 18px; border-radius: 4px; background: var(--ov-ok); opacity: .85; }
+.ov-runs span { width: 14px; height: 14px; border-radius: 4px; background: var(--ov-ok); opacity: .85; }
 .ov-runs span.is-error { background: var(--ov-error); }
 .ov-runs span.is-warning { background: var(--ov-warning); }
 
 /* Activity */
 .ov-timeline { list-style: none; margin: 0; padding: 0; display: grid; max-height: 520px; overflow-y: auto; }
 .ov-timeline li { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px 4px 10px 0; }
-.ov-timeline li + li::before { content: ''; position: absolute; left: 14px; top: -10px; height: 20px; border-left: 1px solid var(--border-color-strong); }
+/* The connector runs from below each icon to the top of the next, however tall the entry's text. */
+.ov-timeline li:not(:last-child)::after { content: ''; position: absolute; left: 14px; top: 40px; bottom: -10px; border-left: 1px solid var(--border-color-strong); }
 .ov-timeline-icon { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--input-bg); border: 1px solid var(--border-color-strong); color: var(--ov-ok); }
 .ov-timeline .is-error .ov-timeline-icon { color: var(--ov-error); border-color: var(--ov-error); }
 .ov-timeline .is-warning .ov-timeline-icon { color: var(--ov-warning); border-color: var(--ov-warning); }
 .ov-timeline-icon svg { width: 14px; height: 14px; }
 .ov-timeline strong { display: block; font-size: 13px; font-weight: 600; }
-.ov-timeline span, .ov-timeline small { display: block; font-size: 12px; color: var(--text-secondary); line-height: 1.5; overflow-wrap: anywhere; }
+/* Text only: a bare `.ov-timeline span` would also restyle the icon's span and push its glyph off-center. */
+.ov-timeline li > div > span, .ov-timeline small { display: block; font-size: 12px; color: var(--text-secondary); line-height: 1.5; overflow-wrap: anywhere; }
 .ov-timeline small { color: var(--text-muted); }
 .ov-timeline time { font-size: 12px; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
@@ -132,9 +162,6 @@ a.ov-chip:hover { color: var(--focus-ring); border-color: var(--focus-ring); }
 @media (prefers-reduced-motion: reduce) {
   .ov-tile, .ov-meter-track span { transition: none; }
   .ov-tile:hover { transform: none; }
-}
-@media (max-width: 900px) {
-  .ov-grid, .ov-grid-wide { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 560px) {
   .ov-hero { padding: 18px 16px; }

@@ -1,3 +1,5 @@
+import { describeSecurityEvent } from './adminSecurity.js';
+
 // Formatting and health checks for the administration overview.
 export const REPOSITORY = 'https://github.com/blueandhack/LaborLens';
 
@@ -71,6 +73,12 @@ export function healthChecks(overview, now = Date.now()) {
     const used = share(container.used, container.limit);
     checks.push({ id: 'server', level: used > 0.85 ? 'warning' : 'ok', label: 'Web server memory', detail: `${Math.round(used * 100)}% of its limit` });
   }
+  const admins = overview.security?.admins;
+  if (admins?.length) {
+    const without = admins.filter(admin => !admin.twoFactor).map(admin => admin.username);
+    checks.push(without.length ? { id: 'two-factor', level: 'warning', label: 'Two-factor sign-in', detail: `Off for ${without.join(', ')}` }
+      : { id: 'two-factor', level: 'ok', label: 'Two-factor sign-in', detail: 'On for every administrator' });
+  }
   const failed = overview.security?.failedSignIns24h || 0;
   checks.push({ id: 'security', level: overview.security?.blockedAddresses ? 'warning' : failed >= 10 ? 'warning' : 'ok', label: 'Sign-ins',
     detail: `${failed} failed in 24 hours${overview.security?.blockedAddresses ? ` · ${overview.security.blockedAddresses} blocked` : ''}` });
@@ -79,11 +87,9 @@ export function healthChecks(overview, now = Date.now()) {
 
 export const overallLevel = checks => checks.some(check => check.level === 'error') ? 'error' : checks.some(check => check.level === 'warning') ? 'warning' : 'ok';
 
-// Labels for the activity timeline.
-const EVENT_LABELS = {
-  'sign-in': 'Signed in', 'sign-in-failed': 'Failed sign-in', 'sign-in-blocked': 'Sign-in blocked', 'password-check-failed': 'Wrong current password',
-  'password-changed': 'Password changed', 'username-changed': 'Username changed', upload: 'Manual upload', 'data-cleared': 'Data cleared', 'address-unblocked': 'Address unblocked',
-};
+// Labels for the activity timeline. Account and sign-in events share the
+// Access & security tab's wording; uploads and data clears are described here.
+const DATA_EVENTS = { upload: 'Manual upload', 'data-cleared': 'Data cleared' };
 export function describeActivity(item) {
   if (item.kind === 'import') {
     const imported = item.outcomes?.imported || 0, errors = item.outcomes?.error || 0, review = item.outcomes?.['source-review-required'] || 0;
@@ -93,12 +99,26 @@ export function describeActivity(item) {
   }
   if (item.kind === 'refresh') return { tone: item.outcome === 'failed' ? 'error' : 'ok', title: 'Background refresh',
     detail: item.error || (item.steps?.length ? item.steps.join(', ') : item.outcome || '') };
-  const title = EVENT_LABELS[item.type] || item.type;
-  const who = item.username ? item.username : item.unknownAccount ? 'unknown account' : '';
-  const detail = item.type === 'username-changed' ? `${item.from} → ${item.username}`
-    : item.type === 'upload' ? `${item.username} · ${String(item.program || '').toUpperCase()} · ${item.filename}`
-      : item.type === 'data-cleared' ? `${item.username} · ${String(item.program || '').toUpperCase()} · ${formatCount(item.records)} records`
-        : item.type === 'address-unblocked' ? `${item.username} · ${item.address}` : who;
-  const tone = /failed|blocked|cleared/.test(item.type) ? (item.type === 'data-cleared' ? 'warning' : 'error') : 'ok';
-  return { tone, title, detail };
+  if (!DATA_EVENTS[item.type]) {
+    const { label, tone, detail } = describeSecurityEvent(item);
+    return { tone, title: label, detail };
+  }
+  const detail = item.type === 'upload' ? `${item.username} · ${String(item.program || '').toUpperCase()} · ${item.filename}`
+    : `${item.username} · ${String(item.program || '').toUpperCase()} · ${formatCount(item.records)} records`;
+  const tone = item.type === 'data-cleared' ? 'warning' : 'ok';
+  return { tone, title: DATA_EVENTS[item.type], detail };
+}
+
+// Folds back-to-back entries that read the same (an hourly import that found nothing new,
+// repeated failed sign-ins from one address) into one line with a count. Items are newest first.
+export function groupActivity(items) {
+  const groups = [];
+  for (const item of items) {
+    const described = describeActivity(item);
+    const key = [item.kind, described.tone, described.title, described.detail, item.kind === 'admin' ? `${item.ip}|${item.userAgent}` : ''].join('\u0000');
+    const last = groups.at(-1);
+    if (last?.key === key) { last.count++; last.oldest = item.at; continue; }
+    groups.push({ key, item, ...described, count: 1, newest: item.at, oldest: item.at });
+  }
+  return groups;
 }
