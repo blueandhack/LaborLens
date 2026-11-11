@@ -17,7 +17,7 @@ export function renderEmployerDocument(path, profile, template, employers) {
   const initial = { employer: profile || null, ...(employers ? { employers } : {}) };
   const head = `<title>${escape(metadata.title)}</title><meta name="description" content="${escape(metadata.description)}"><meta name="robots" content="${metadata.robots}">`
     + (metadata.canonical ? `<link rel="canonical" href="${escape(metadata.canonical)}"><meta property="og:url" content="${escape(metadata.canonical)}">` : '')
-    + `<meta property="og:type" content="website"><meta property="og:title" content="${escape(metadata.title)}"><meta property="og:description" content="${escape(metadata.description)}"><meta property="og:image" content="https://laborlens.fyi/icon.png">`
+    + `<meta property="og:type" content="website"><meta property="og:site_name" content="LaborLens"><meta property="og:title" content="${escape(metadata.title)}"><meta property="og:description" content="${escape(metadata.description)}"><meta property="og:image" content="https://laborlens.fyi/icon.png">`
     + (metadata.structuredData ? `<script id="seo-structured-data" type="application/ld+json">${json(metadata.structuredData)}</script>` : '');
   return template.replace(/<!--seo:start-->[\s\S]*?<!--seo:end-->/, () => head)
     .replace('<div id="root"></div>', () => `<div id="root">${render(path, initial)}</div><script id="employer-bootstrap" type="application/json">${json(initial)}</script>`);

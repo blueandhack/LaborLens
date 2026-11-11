@@ -74,20 +74,24 @@ function App(props) {
         </main>
 
         <footer className="site-footer">
-          <a
-            href="https://github.com/blueandhack/LaborLens"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="footer-github-link"
-          >
-            <FiGithub size={16} />
-            <span>Open source on GitHub</span>
-          </a>
-          <Link to="/admin/data" className="footer-github-link">Administration</Link>
-          <Link to="/data" className="footer-github-link">Data sources & methodology</Link>
-          <a href="/backups/" className="footer-github-link">LaborLens Backups</a>
-          <a href="/privacy/" className="footer-github-link">Privacy</a>
-          <a href="/terms/" className="footer-github-link">Terms</a>
+          <p className="site-footer-about">
+            LaborLens is a free, open-source search of public U.S. Department of Labor and USCIS records on H-1B, PERM, and prevailing wages.
+          </p>
+          <nav className="footer-nav" aria-label="Footer">
+            <Link to="/data" className="footer-link">Data sources</Link>
+            <a href="/privacy/" className="footer-link">Privacy</a>
+            <a href="/terms/" className="footer-link">Terms</a>
+            <a href="https://github.com/blueandhack/LaborLens" target="_blank" rel="noopener noreferrer" className="footer-link">
+              <FiGithub size={15} aria-hidden="true" />
+              <span>GitHub</span>
+            </a>
+          </nav>
+          {/* Operator-only tools stay linked (Google's OAuth review needs the backups page reachable) but sit apart from reader links. */}
+          <nav className="footer-nav footer-nav-operator" aria-label="Site operator">
+            <span className="footer-nav-label">Operator</span>
+            <Link to="/admin/data" className="footer-link">Administration</Link>
+            <a href="/backups/" className="footer-link">Backups</a>
+          </nav>
         </footer>
       </div>
     </RouterComponent>

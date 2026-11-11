@@ -44,3 +44,16 @@ test('case metadata describes an hourly LCA as reported and uses a stable case c
   assert.equal(page.robots, 'index, follow');
   assert.equal(getPageSEO('/cases/abcdef1234567890abcdef12').canonical, null);
 });
+
+test('the homepage leads with the brand and describes the site and its publisher for name searches', () => {
+  const home = getPageSEO('/');
+  assert.match(home.title, /^LaborLens:/);
+  assert.match(home.description, /^LaborLens /);
+  const [website, , organization] = home.structuredData['@graph'];
+  assert.equal(website.name, 'LaborLens');
+  assert(website.alternateName.includes('Labor Lens'));
+  assert.equal(organization['@type'], 'Organization');
+  assert.equal(website.publisher['@id'], organization['@id']);
+  assert.match(getPageSEO('/h1b').title, /\| LaborLens$/);
+  assert.doesNotMatch(getPageSEO('/', '?company=Google').title, /^LaborLens:/);
+});

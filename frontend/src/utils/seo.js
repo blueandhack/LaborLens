@@ -2,6 +2,13 @@ import { programs } from './programs.js';
 import { presentCase } from './casePresentation.js';
 
 export const SITE_ORIGIN = 'https://laborlens.fyi';
+export const SITE_NAME = 'LaborLens';
+// Several unrelated products share the name, so the site and its publisher are
+// described explicitly for search engines' site-name and entity matching.
+const SITE_ENTITIES = [
+  { '@type': 'WebSite', '@id': `${SITE_ORIGIN}/#website`, url: SITE_ORIGIN + '/', name: SITE_NAME, alternateName: ['Labor Lens', 'laborlens.fyi'], publisher: { '@id': `${SITE_ORIGIN}/#organization` } },
+  { '@type': 'Organization', '@id': `${SITE_ORIGIN}/#organization`, name: SITE_NAME, url: SITE_ORIGIN + '/', logo: SITE_ORIGIN + '/icon.png', sameAs: ['https://github.com/blueandhack/LaborLens'] },
+];
 export const PUBLIC_PATHS = ['/', '/h1b', '/perm', '/h1b-approvals', '/i140', '/map', '/employers', '/data', '/privacy/', '/terms/'];
 export const SEARCH_RESULT_KEYS = ['company', 'employer', 'employerGroup', 'jobTitle', 'location', 'worksite', 'worksiteState', 'caseNumber', 'determinationYear', 'decisionYear', 'receivedYear', 'page', 'sort'];
 const searchPrograms = { '/': 'pwd', '/perm': 'perm', '/h1b': 'h1b' };
@@ -19,11 +26,14 @@ export function getPageSEO(pathname, search = '') {
     || path === '/map' && ['program', 'year', 'occupation', 'metric', 'view'].some(key => params.get(key))
     || path === '/h1b-approvals' && ['from', 'to', 'fy', 'state', 'industry', 'q', 'sort', 'page'].some(key => params.get(key))
     || path === '/i140' && ['category', 'country', 'from', 'to'].some(key => params.get(key)));
-  const title = program ? `${program === 'h1b' ? 'H1B Salary Database & LCA Search' : program === 'perm' ? 'PERM Database & Employer Case Search' : 'Prevailing Wage Determination Search'} | LaborLens`
+  // The homepage leads with the brand so a search for the name finds it.
+  const title = path === '/' && !filtered ? 'LaborLens: H-1B, PERM & Prevailing Wage Data Search' : program ? `${program === 'h1b' ? 'H1B Salary Database & LCA Search' : program === 'perm' ? 'PERM Database & Employer Case Search' : 'Prevailing Wage Determination Search'} | LaborLens`
     : path === '/employers' ? 'Employer H1B, PERM & Wage Profiles | LaborLens' : path === '/map' ? 'H1B, PERM & Prevailing Wage Map by State and Metro | LaborLens' : path === '/h1b-approvals' ? 'H1B Approval & Denial Rates by Employer (USCIS Data) | LaborLens' : path === '/i140' ? 'I-140 Approval & Denial Rates, Pending Petitions and Visa Backlog | LaborLens' : path === '/data' ? 'DOL Data Sources & Methodology | LaborLens'
       : ['/admin/data', '/import'].includes(path) ? 'Administration | LaborLens'
         : /^\/cases\/[a-f\d]{24}$/i.test(path) ? 'Case Disclosure | LaborLens' : 'Page Not Found | LaborLens';
-  const description = program ? descriptions[program] : path === '/i140'
+  const description = path === '/' && !filtered
+    ? 'LaborLens is a free search of public DOL prevailing wage determinations, H-1B LCA salaries, and PERM labor certifications by employer, job title, location, and case number.'
+    : program ? descriptions[program] : path === '/i140'
     ? 'USCIS Form I-140 statistics: petitions received, approved, denied and pending by quarter and EB-1, EB-2, NIW and EB-3 category, outcomes by year filed, and approved petitions awaiting a visa.'
     : path === '/h1b-approvals'
     ? 'USCIS H-1B petition approvals and denials by fiscal year, employer, state and industry. Compare initial and continuing denial rates from the H-1B Employer Data Hub.'
@@ -39,8 +49,9 @@ export function getPageSEO(pathname, search = '') {
     robots: indexable || casePage ? 'index, follow' : 'noindex, follow',
     structuredData: indexable ? {
       '@context': 'https://schema.org', '@graph': [
-        { '@type': 'WebSite', '@id': `${SITE_ORIGIN}/#website`, url: SITE_ORIGIN + '/', name: 'LaborLens' },
+        SITE_ENTITIES[0],
         { '@type': 'WebPage', '@id': SITE_ORIGIN + path, url: SITE_ORIGIN + path, name: title, description, inLanguage: 'en', isPartOf: { '@id': `${SITE_ORIGIN}/#website` } },
+        SITE_ENTITIES[1],
       ],
     } : null,
   };
@@ -75,7 +86,7 @@ export function applyPageSEO(metadata) {
   };
   meta('name', 'description', metadata.description);
   meta('name', 'robots', metadata.robots);
-  for (const [key, value] of Object.entries({ 'og:type': 'website', 'og:title': metadata.title, 'og:description': metadata.description, 'og:image': SITE_ORIGIN + '/icon.png', 'twitter:card': 'summary', 'twitter:title': metadata.title, 'twitter:description': metadata.description })) meta(key.startsWith('og:') ? 'property' : 'name', key, value);
+  for (const [key, value] of Object.entries({ 'og:type': 'website', 'og:site_name': SITE_NAME, 'og:title': metadata.title, 'og:description': metadata.description, 'og:image': SITE_ORIGIN + '/icon.png', 'twitter:card': 'summary', 'twitter:title': metadata.title, 'twitter:description': metadata.description })) meta(key.startsWith('og:') ? 'property' : 'name', key, value);
   let canonical = document.head.querySelector('link[rel="canonical"]');
   if (metadata.canonical) {
     if (!canonical) { canonical = document.createElement('link'); canonical.rel = 'canonical'; document.head.append(canonical); }

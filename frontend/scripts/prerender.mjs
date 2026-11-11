@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { render } from '../dist-ssr/entry-server.js';
-import { getPageSEO, SITE_ORIGIN } from '../src/utils/seo.js';
+import { getPageSEO, SITE_NAME, SITE_ORIGIN } from '../src/utils/seo.js';
 
 const dist = new URL('../dist/', import.meta.url);
 const template = await readFile(new URL('index.html', dist), 'utf8');
@@ -12,6 +12,7 @@ const head = metadata => [
   `<meta name="robots" content="${metadata.robots}">`,
   ...(metadata.canonical ? [`<link rel="canonical" href="${escape(metadata.canonical)}">`, `<meta property="og:url" content="${escape(metadata.canonical)}">`] : []),
   '<meta property="og:type" content="website">',
+  `<meta property="og:site_name" content="${SITE_NAME}">`,
   `<meta property="og:title" content="${escape(metadata.title)}">`,
   `<meta property="og:description" content="${escape(metadata.description)}">`,
   `<meta property="og:image" content="${SITE_ORIGIN}/icon.png">`,
