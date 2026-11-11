@@ -35,6 +35,8 @@ mongoose.connect(MONGO_URI, { autoIndex: process.env.NODE_ENV !== 'production', 
     minPoolSize: 0, maxIdleTimeMS: 60000, waitQueueTimeoutMS: 5000, serverSelectionTimeoutMS: 10000 })
     .then(async () => {
         console.log('Connected to MongoDB');
+        // The USCIS approvals page's unfiltered totals take seconds to add up; build them before visitors ask.
+        require('./services/uscisH1b').warmUscisCache(() => mongoose.connection.db);
         // Seed default admin if none exists
         try {
             const adminCount = await Admin.countDocuments();

@@ -308,7 +308,7 @@ async function rebuildUscisEmployers(db, { onProgress = () => {} } = {}) {
     const meta = await db.collection('discovery_state').findOneAndUpdate({ _id: STATE_ID },
         { $set: { employers, linked, states: (await db.collection(ROWS).distinct('state')).filter(Boolean).sort(), updatedAt: new Date() }, $inc: { revision: 1 } },
         { upsert: true, returnDocument: 'after' });
-    cache.clear();
+    clearCaches();
     return meta;
 }
 
@@ -360,13 +360,17 @@ async function linkUscisEmployers(db, { signal, onProgress = () => {} } = {}) {
         if (batch.length) await flush();
     } finally { await cursor.close(); }
     await db.collection('discovery_state').updateOne({ _id: STATE_ID }, { $set: { linked, linkedAt: new Date() } });
-    cache.clear();
+    clearCaches();
     return linked;
 }
 
 // ---------------------------------------------------------------- Reading
 
 const cache = new BoundedCache({ capacity: 300, ttlMs: 10 * 60 * 1000 });
+// Yearly totals depend only on the data revision (part of each key), so they are kept
+// a day. The unfiltered one sums every row (about 1.1M) and takes seconds to build.
+const trends = new BoundedCache({ capacity: 200, ttlMs: 24 * 60 * 60 * 1000 });
+function clearCaches() { cache.clear(); trends.clear(); }
 const invalid = message => Object.assign(new Error(message), { status: 400 });
 
 async function meta(db) {
@@ -411,7 +415,7 @@ async function getUscisOverview(db, input = {}) {
     const info = await meta(db);
     if (!info) return { available: false, industries: INDUSTRIES.map(({ code, label }) => ({ code, label })) };
     const filters = filtersOf(input, info);
-    const trend = await cache.get(`trend|${info.revision}|${filters.state}|${filters.industry}`, () => db.collection(ROWS).aggregate([
+    const trend = await trends.get(`trend|${info.revision}|${filters.state}|${filters.industry}`, () => db.collection(ROWS).aggregate([
         { $match: rowMatch({ ...filters, whole: true }) }, { $group: { _id: '$fiscalYear', ...sumStage } }, { $sort: { _id: 1 } },
     ], { maxTimeMS: 15000, allowDiskUse: true }).toArray());
     const years = new Map(info.years.map(year => [year.fiscalYear, year]));
@@ -497,4 +501,13 @@ async function getUscisStatus(db) {
 
 module.exports = { parseCsv: records, decodeText: decode, ROWS, EMPLOYERS, STATE_ID, OFFICIAL_URL, OFFICIAL_YEARS, PARTIAL_YEARS, INDUSTRIES, industryOf, expanded,
     parseUscisFile, parseUscisStream, HUB_CSV_URL, importUscisRows, recomputeUscisTotals, rebuildUscisEmployers, linkUscisEmployers, ensureUscisIndexes,
-    getUscisOverview, listUscisEmployers, uscisForIdentity, getUscisStatus, clearUscisCache: () => cache.clear() };
+    getUscisOverview, listUscisEmployers, uscisForIdentity, getUscisStatus, clearUscisCache: clearCaches, warmUscisCache };
+
+// Builds the default page's data ahead of visitors: at start-up, then every ten
+// minutes, which is a cache hit unless an import (another process) changed the data.
+function warmUscisCache(db, { everyMs = 10 * 60 * 1000 } = {}) {
+    const warm = () => Promise.all([getUscisOverview(db()), listUscisEmployers(db())])
+        .catch(error => console.error('USCIS cache warm-up failed:', error.message));
+    warm();
+    return setInterval(warm, everyMs).unref();
+}
