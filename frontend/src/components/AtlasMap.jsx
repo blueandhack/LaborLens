@@ -17,12 +17,18 @@ function useZoom(target) {
   // Whether the reader has moved away from the target view.
   const [free, setFree] = useState(false);
   const key = target.map(value => value.toFixed(3)).join(' ');
+  // A new target returns the view to it, so the reader is no longer away.
+  const [shownKey, setShownKey] = useState(key);
+  if (shownKey !== key) { setShownKey(key); setFree(false); }
   useEffect(() => {
     const from = current.current;
     cancelAnimationFrame(frame.current);
-    setFree(false);
     if (same(from, target)) return undefined;
-    if (reducedMotion()) { current.current = target; setBox(target); return undefined; }
+    if (reducedMotion()) {
+      // Jump straight to the target on the next frame instead of animating.
+      frame.current = requestAnimationFrame(() => { current.current = target; setBox(target); });
+      return () => cancelAnimationFrame(frame.current);
+    }
     const path = zoomPath(from, target);
     let start = null;
     const step = now => {
@@ -41,7 +47,7 @@ function useZoom(target) {
     get: () => current.current,
     // Immediate change from the reader's gestures; stops any running animation.
     set: next => { cancelAnimationFrame(frame.current); current.current = next; setBox(next); setFree(true); },
-    reset: () => setReset(value => value + 1),
+    reset: () => { setFree(false); setReset(value => value + 1); },
   }), []);
   return [box, controls, free];
 }
