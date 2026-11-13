@@ -1,28 +1,103 @@
+<div align="center">
+
 # LaborLens
 
-A web application for searching U.S. Department of Labor Prevailing Wage Determination (PWD) and PERM labor certification cases. Built with React, Express/Node.js, and MongoDB.
+**Search U.S. Department of Labor PWD, PERM and H-1B LCA disclosure data — plus USCIS H-1B and I-140 statistics — in one place.**
+
+[![Live site](https://img.shields.io/badge/live-laborlens.fyi-2ea44f?logo=googlechrome&logoColor=white)](https://laborlens.fyi)
+[![Build](https://img.shields.io/github/actions/workflow/status/blueandhack/LaborLens/ci.yml?branch=main&label=build&logo=githubactions&logoColor=white)](https://github.com/blueandhack/LaborLens/actions/workflows/ci.yml)
+[![Last commit](https://img.shields.io/github/last-commit/blueandhack/LaborLens?logo=git&logoColor=white)](https://github.com/blueandhack/LaborLens/commits/main)
+[![GitHub stars](https://img.shields.io/github/stars/blueandhack/LaborLens?style=flat&logo=github)](https://github.com/blueandhack/LaborLens/stargazers)
+[![Issues](https://img.shields.io/github/issues/blueandhack/LaborLens?logo=github)](https://github.com/blueandhack/LaborLens/issues)
+
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vite.dev)
+[![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)](https://expressjs.com)
+[![MongoDB](https://img.shields.io/badge/MongoDB-9.0-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
+[![Kubernetes](https://img.shields.io/badge/k3s-ArgoCD-326CE5?logo=kubernetes&logoColor=white)](k8s/)
+
+[Live site](https://laborlens.fyi) · [Data guide](https://laborlens.fyi/data) · [Documentation](#documentation) · [Report an issue](https://github.com/blueandhack/LaborLens/issues)
+
+</div>
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Data sources](#data-sources)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [Testing](#testing)
+- [Data imports](#data-imports)
+- [Deployment](#deployment)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
 
 ## Features
 
-- **PWD & PERM Search** — filter by company, job title, case number, location, and year
-- **Comparison table & cards** — wide-screen tables with sticky headers and employer columns, plus responsive cards and a saved layout preference
-- **Case Detail View** — wage and date summaries, grouped disclosure fields, original source values, and related PWD lookups
-- **Excel Import** — stream-process large DOL `.xlsx` disclosure files into MongoDB with real-time progress
-- **Admin Auth** — JWT-protected import and data management endpoints
+| Area | Route | What it does |
+|---|---|---|
+| **PWD search** | `/` | Prevailing Wage Determinations, filtered by employer, job title, case number, location and year |
+| **PERM search** | `/perm` | PERM labor certifications, with related PWD lookups |
+| **H-1B LCA search** | `/h1b` | DOL H-1B Labor Condition Applications (H-1B1/E-3 excluded) |
+| **Case details** | `/cases/:id` | Wage and date summaries, grouped disclosure fields, original source values and alternate records |
+| **Employers** | `/employers` | Employer identities merged across programs by normalized name, FEIN and USCIS tax ID |
+| **Worksite map** | `/map` | Filings by state, metro, county, city and ZIP, with pan and zoom |
+| **USCIS H-1B decisions** | `/h1b-approvals` | Initial and continuing approvals and denials from the USCIS H-1B Employer Data Hub |
+| **I-140 statistics** | `/i140` | National USCIS Form I-140 counts |
+| **Insights** | on each search | Calendar-year trends and outcome shares for any filter set |
+| **Administration** | `/admin/data` | Admin-only uploads, automatic import status, coverage grid and validation reports |
 
-Search filters, page size, pagination, and explicit layout choices stay in the URL. Employer, job-title, city/state, and case-number searches match the beginning of the reported value. Year filters use recorded calendar dates; missing dates are never inferred from fiscal years. PWD rates and PERM offered wages retain their reported pay periods.
+- **Shareable state.** Search filters, page size, sort, pagination and layout choice all live in the URL.
+- **Prefix search.** Employer, job-title, city/state and case-number searches match the beginning of the reported value; employer names tolerate punctuation and spacing differences.
+- **Honest data.** Year filters use recorded calendar dates and never infer them from fiscal years. Wages keep their reported pay periods and are never silently annualized. Invalid source values are flagged and kept, not guessed.
+- **Fast results.** Pages render before the total count is known; totals arrive separately. See [search performance](docs/performance.md).
+- **Table or cards.** Wide-screen comparison tables with sticky headers, responsive cards on mobile, and a saved layout preference.
 
-## Local Development
+## Data sources
 
-MongoDB is pinned to 9.0.4 and the backend uses Node 24. See the [MongoDB migration and recovery notes](docs/mongodb-upgrade.md) before reusing an older database volume.
+All case data comes from public U.S. government disclosures:
 
-Optional encrypted Google Drive backup and isolated restore utilities are documented in the [backup setup and recovery guide](docs/google-drive-backup.md).
+- [DOL OFLC performance data](https://www.dol.gov/agencies/eta/foreign-labor/performance) — PWD, PERM and H-1B LCA disclosure files
+- [USCIS H-1B Employer Data Hub](https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub) — H-1B petition decisions
+- [USCIS Immigration and Citizenship Data](https://www.uscis.gov/tools/reports-and-studies/immigration-and-citizenship-data) — I-140 statistics
 
-The **H-1B Search** tab at `/h1b` covers H-1B Labor Condition Applications from DOL disclosure data. It supports the same search, details, and Insights views as PWD/PERM. See [H-1B data coverage and import notes](docs/h1b-data.md).
+Coverage: PERM and H-1B from FY2008, PWD from FY2010 (DOL links no national PWD files for FY2008–FY2009). LaborLens is an independent project and is not affiliated with the U.S. Department of Labor or USCIS.
 
-### Docker (recommended)
+## Tech stack
+
+```
+Browser ──► Frontend :3000 ──/api──► Backend :5001 ──► MongoDB :27017
+           React 19 + Vite 7        Express 5 + Mongoose 9   MongoDB 9.0.4
+           (build-time prerender)   (Node 24)
+```
+
+| Directory | Contents |
+|---|---|
+| [`frontend/`](frontend/) | React SPA with React Router; public pages are prerendered at build time for SEO |
+| [`backend/`](backend/) | Express API (`routes/`, `models/`, `services/`) and the DOL import scripts |
+| [`k8s/`](k8s/) | Kubernetes manifests, import CronJobs and the ArgoCD application |
+| [`ops/`](ops/) | Optional encrypted Google Drive backup utilities |
+| [`docs/`](docs/) | Design notes and data-coverage documentation |
+
+## Getting started
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) with Docker Compose, **or**
+- Node.js 24 and MongoDB 9.0.4
+
+MongoDB is pinned to 9.0.4. Read the [MongoDB migration and recovery notes](docs/mongodb-upgrade.md) before reusing an older database volume.
+
+### With Docker (recommended)
 
 ```bash
+git clone https://github.com/blueandhack/LaborLens.git
+cd LaborLens
 docker-compose up --build -d
 ```
 
@@ -39,149 +114,101 @@ docker-compose up --build -d
 cd backend
 cp .env.example .env   # fill in values
 npm install
-npm run dev
+npm run dev            # http://localhost:5001
 
-# Frontend (separate terminal)
+# Frontend (in a second terminal)
 cd frontend
 npm install
-npm run dev
+npm run dev            # http://localhost:3000
 ```
 
-## Environment Variables
+The database starts empty. Sign in to **Administration** (footer link, `/admin/data`) with the initial admin password to upload a DOL `.xlsx` file, or run the [importer](#data-imports).
 
-See `backend/.env.example` for all required variables:
+## Configuration
 
-| Variable | Description |
-|---|---|
-| `MONGO_URI` | MongoDB connection string |
-| `JWT_SECRET` | Secret for signing JWT tokens |
-| `ADMIN_INIT_PASSWORD` | Password for the initial admin account (used only when no admin exists) |
+See [`backend/.env.example`](backend/.env.example):
+
+| Variable | Service | Description | Default |
+|---|---|---|---|
+| `PORT` | Backend | API port | `5001` |
+| `MONGO_URI` | Backend | MongoDB connection string | `mongodb://localhost:27017/pwd_cases` |
+| `JWT_SECRET` | Backend | Secret for signing admin JWTs (required in production) | — |
+| `ADMIN_INIT_PASSWORD` | Backend | Password for the initial admin account, used only when no admin exists | — |
+| `BACKEND_URL` | Frontend | Vite dev proxy target | `http://localhost:5001` |
+
+## Testing
+
+```bash
+cd backend && npm test     # importer and API tests
+cd frontend && npm test    # frontend unit tests
+cd frontend && npm run lint
+```
+
+To include the database integration tests, set `MONGO_TEST_URI` to a disposable MongoDB instance. Tests create and drop only a uniquely named `laborlens_import_test_*` database. CI runs the full suite against MongoDB 9.0.4.
+
+## Data imports
+
+Large DOL workbooks are stream-processed, fully validated before any case is written, and upserted by `CASE_NUMBER`. In production, Kubernetes CronJobs check DOL every Sunday and backfill historical files hourly until the archive is complete.
+
+```bash
+cd backend
+npm run import:dol -- --discover                                # list current files, no writes
+npm run import:dol                                              # import current files
+npm run import:dol -- --discover --from-year=2008               # inventory historical files
+npm run import:dol -- --from-year=2008 --max-files=2 --backfill # resume backfill (safe to rerun)
+npm run import:dol -- --force                                   # replay already-imported files
+```
+
+Scheduling, validation rules, duplicate handling, provenance and cluster commands are documented in [Automatic DOL imports](docs/automatic-imports.md).
 
 ## Deployment
 
-The project uses GitHub Actions + ArgoCD on k3s:
+The project deploys with GitHub Actions and ArgoCD on k3s:
 
-1. Push to `main` → GitHub Actions builds and pushes images to `ghcr.io/blueandhack/laborlens-*`
-2. CI commits updated image tags to `k8s/`
-3. ArgoCD detects the change and syncs the cluster automatically
+1. A push to `main` runs the tests, then builds and pushes images to `ghcr.io/blueandhack/laborlens-*`.
+2. CI commits the new image tags to [`k8s/`](k8s/).
+3. ArgoCD detects the change and syncs the cluster.
 
 To deploy your own instance:
 
-1. Edit `k8s/argocd-app.yaml` with your repo URL
-2. Create the required secret on your cluster:
+1. Set your repository URL in [`k8s/argocd-app.yaml`](k8s/argocd-app.yaml).
+2. Create the required secret (see [`docs/secret.example.yaml`](docs/secret.example.yaml)):
    ```bash
+   kubectl create namespace laborlens
    kubectl create secret generic laborlens-secrets \
      --from-literal=jwt-secret='...' \
      --from-literal=admin-init-password='...' \
-     -n pwd-lookup
-   kubectl label secret laborlens-secrets -n pwd-lookup app.kubernetes.io/instance=external
+     -n laborlens
+   kubectl label secret laborlens-secrets -n laborlens app.kubernetes.io/instance=external
    ```
-3. Update `k8s/ingress.yaml` with your domain
-4. Apply the ArgoCD app:
+3. Set your domain in [`k8s/ingress.yaml`](k8s/ingress.yaml).
+4. Apply the ArgoCD application:
    ```bash
    kubectl apply -f k8s/argocd-app.yaml
    ```
 
-See `docs/secret.example.yaml` for the secret format.
+Optional encrypted backups and isolated restore testing are covered in the [Google Drive backup guide](docs/google-drive-backup.md).
 
-## Data Source
+## Documentation
 
-Import DOL disclosure data from:
-- [Foreign Labor Certification Data Center](https://flcdatacenter.com/) — PWD datasets
-- [DOL PERM Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance) — PERM datasets
+| Topic | Document |
+|---|---|
+| Automatic and historical imports | [docs/automatic-imports.md](docs/automatic-imports.md) |
+| Historical import audit | [docs/historical-import-audit.md](docs/historical-import-audit.md) |
+| H-1B LCA data and coverage | [docs/h1b-data.md](docs/h1b-data.md) |
+| USCIS H-1B petition decisions | [docs/uscis-h1b.md](docs/uscis-h1b.md) |
+| USCIS I-140 statistics | [docs/i140.md](docs/i140.md) |
+| Employer identities | [docs/employers.md](docs/employers.md) |
+| Worksite map | [docs/map.md](docs/map.md) |
+| Search insights | [docs/search-insights.md](docs/search-insights.md) |
+| Search sorting | [docs/search-sorting.md](docs/search-sorting.md) |
+| Search performance | [docs/performance.md](docs/performance.md) |
+| MongoDB upgrade and recovery | [docs/mongodb-upgrade.md](docs/mongodb-upgrade.md) |
+| Encrypted backups | [docs/google-drive-backup.md](docs/google-drive-backup.md) |
+| SEO audit | [docs/seo-strategy.md](docs/seo-strategy.md) |
 
-## Automatic DOL imports
+## Contributing
 
-The `laborlens-auto-import` Kubernetes CronJob checks the official DOL performance
-page every **Sunday at 3:00 AM America/Los_Angeles**. It checks the latest **PWD, PERM and H-1B** releases. Historical backfill covers
-**all three programs from FY2008 onward**, prioritizing the newest cumulative releases and
-retaining all form variants. Up to six changed files are handled per weekly run.
-The `laborlens-history-import` CronJob resumes two pending files each hour at
-minute 15, oldest first, until the archive is complete. It skips completed files
-without downloading them again and yields safely when another import is active.
-Worksite and appendix files are excluded because they are not case disclosures.
+Bug reports and pull requests are welcome. Please [open an issue](https://github.com/blueandhack/LaborLens/issues) to discuss larger changes first, and run the tests before submitting a PR.
 
-DOL publishes PERM files back to **2008** and national PWD files starting in
-**2010**. Missing PWD 2008–2009 files are reported as a coverage gap, not invented.
-H-1B legacy layouts and the verified FY2010 field recovery are documented in
-[H-1B data coverage and import notes](docs/h1b-data.md).
-See [the complete historical audit](docs/historical-import-audit.md) and its
-[per-file JSON results](docs/historical-import-audit.json).
-
-Files stream to temporary disk and records are upserted by `CASE_NUMBER`. HTTP
-validators and SHA-256 hashes skip successfully imported files that have not
-changed. Revised files at the same URL are reimported. A failed/partial import
-is retried safely, and Kubernetes retries a failed job once. Both jobs have a
-six-hour deadline and a shared lease so only one import writes at a time.
-
-Every workbook receives a **full-row preflight before any case writes**. Legacy
-headers, schema aliases, the 1904 Excel date system, and zero-padded postal codes
-are supported. Invalid optional dates/numbers become null with original values
-retained in `_DOL_RAW_VALUES`; Excel error cells are retained in `_DOL_CELL_ERRORS`.
-Missing case identifiers prevent the entire file from being imported.
-
-Duplicates select the latest recorded decision/review event. Identical repeats
-are collapsed; distinct records, including same-event worksite variants, are
-retained in `_DOL_ALTERNATE_RECORDS`. Same-event ties prefer explicit review dates,
-then the first source row. Missing pay periods are displayed as unreported;
-the application never assumes an annual wage or shifts a calendar date by the
-viewer's time zone.
-
-Historical imports cannot overwrite tracked newer releases. For pre-existing
-records without provenance, they fill only missing canonical/search fields,
-preferring that record's own legacy aliases. Existing nonempty values are kept.
-New or refreshed records receive `_DOL_SOURCE` provenance, including source URL,
-fiscal year, quarter, file hash, and mapping version.
-
-Automatic imports, manual uploads, and clearing data share an expiring MongoDB
-lease so they cannot write over each other. Failures are recorded instead of
-silently counting incomplete imports as successful. Import history survives pod
-restarts in `import_runs` and `import_sources`. **Administration** in the footer
-opens `/admin/data` (the old `/import` URL redirects there). Automatic imports
-show the latest checks, coverage gaps, file progress, and searchable file history.
-The live dashboard shows separate H-1B, PWD, and PERM release-file progress,
-active-file case counters, and a clickable fiscal-year / quarter coverage grid.
-It refreshes every 15 seconds. **Imported** means that quarterly release was
-imported directly; **Covered** means a later cumulative or annual file includes
-the quarter. Select a cell to inspect its source files and validation details.
-Validation reports open inline with issue counts, example rows, missing values,
-and field mappings; JSON export remains available. Manual uploads and access
-controls have separate sections, with dataset deletion tucked under manual
-upload. Case details expose invalid original values and alternate records.
-Year dropdown caches refresh within 10 minutes after a scheduled import.
-
-The CronJob uses the same backend image as the web API; CI updates both image
-tags together. Temporary files disappear when the job pod is removed. Job logs
-are retained for seven days; durable history remains in MongoDB.
-
-```bash
-# Discover current file URLs without changing the database
-cd backend
-npm run import:dol -- --discover
-
-# Import now using MONGO_URI from the environment or backend/.env
-npm run import:dol
-
-# Inventory all available historical files
-npm run import:dol -- --discover --from-year=2008
-
-# Resume two pending historical files (safe to rerun)
-npm run import:dol -- --from-year=2008 --max-files=2 --backfill
-
-# Replay current files even when previously imported (for recovery)
-npm run import:dol -- --force
-```
-
-From a cluster administrator session:
-
-```bash
-kubectl -n laborlens get cronjob laborlens-auto-import
-kubectl -n laborlens get cronjob laborlens-history-import
-kubectl -n laborlens create job --from=cronjob/laborlens-auto-import laborlens-import-manual-$(date +%s)
-kubectl -n laborlens create job --from=cronjob/laborlens-history-import laborlens-history-manual-$(date +%s)
-kubectl -n laborlens logs job/<job-name> -f
-```
-
-Run importer tests with `cd backend && npm test`. To include database integration
-tests, provide `MONGO_TEST_URI` pointing to a disposable MongoDB instance. Tests
-create and drop only a uniquely named `laborlens_import_test_*` database.
+If LaborLens is useful to you, a ⭐ on GitHub helps others find it.
