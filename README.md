@@ -11,7 +11,7 @@
 [![Issues](https://img.shields.io/github/issues/blueandhack/LaborLens?logo=github)](https://github.com/blueandhack/LaborLens/issues)
 
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vite.dev)
+[![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev)
 [![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)](https://expressjs.com)
 [![MongoDB](https://img.shields.io/badge/MongoDB-9.0-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com)
@@ -72,7 +72,7 @@ Coverage: PERM and H-1B from FY2008, PWD from FY2010 (DOL links no national PWD 
 
 ```
 Browser ──► Frontend :3000 ──/api──► Backend :5001 ──► MongoDB :27017
-           React 19 + Vite 7        Express 5 + Mongoose 9   MongoDB 9.0.4
+           React 19 + Vite 8        Express 5 + Mongoose 9   MongoDB 9.0.4
            (build-time prerender)   (Node 24)
 ```
 
