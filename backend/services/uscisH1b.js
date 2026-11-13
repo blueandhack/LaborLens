@@ -438,11 +438,14 @@ async function getUscisBreakdown(db, input = {}) {
     if (!by) throw invalid('Unknown breakdown');
     const filters = filtersOf(by === 'state' ? { industry: input.industry } : { state: input.state }, info);
     const rows = await trends.get(`breakdown|${info.revision}|${by}|${filters.state}|${filters.industry}`, () => db.collection(ROWS).aggregate([
-        { $match: { ...rowMatch({ ...filters, whole: true }), [by]: { $type: 'string', $ne: '' } } },
+        // No condition on the grouped field: one would make MongoDB walk its index and fetch every
+        // row one by one, far slower than reading the collection through. Rows without one are skipped below.
+        { $match: rowMatch({ ...filters, whole: true }) },
         { $group: { _id: { code: '$' + by, fiscalYear: '$fiscalYear' }, ...sumStage } },
     ], { maxTimeMS: 15000, allowDiskUse: true }).toArray());
     const groups = new Map();
     for (const { _id, ...totals } of rows) {
+        if (typeof _id.code !== 'string' || !_id.code) continue;
         if (!groups.has(_id.code)) groups.set(_id.code, []);
         groups.get(_id.code).push({ fiscalYear: _id.fiscalYear, ...totals });
     }

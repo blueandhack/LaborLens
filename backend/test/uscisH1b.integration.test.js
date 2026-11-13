@@ -87,7 +87,11 @@ test('USCIS petition decisions import, group, link to employers and answer queri
     const initialBy = result => Object.fromEntries(result.groups.map(group => [group.code, group.years.map(year => [year.fiscalYear, year.initialApprovals])]));
     assert.deepEqual(initialBy(await uscis.getUscisBreakdown(db, { by: 'industry' })), { '31-33': [[2022, 10]], 54: [[2016, 85], [2022, 106], [2023, 7]] });
     assert.deepEqual(initialBy(await uscis.getUscisBreakdown(db, { by: 'industry', state: 'CA', industry: '54' })), { '31-33': [[2022, 10]] }, 'the industry filter does not narrow an industry breakdown');
-    assert.deepEqual(initialBy(await uscis.getUscisBreakdown(db, { by: 'state', industry: '54' })), { NJ: [[2016, 85]], TX: [[2022, 106], [2023, 7]] });
+    await db.collection(uscis.ROWS).insertOne({ ...row(2022, 'NOWHERE LLC', [4, 0, 0, 0]), state: null });
+    uscis.clearUscisCache();
+    assert.deepEqual(initialBy(await uscis.getUscisBreakdown(db, { by: 'state', industry: '54' })), { NJ: [[2016, 85]], TX: [[2022, 106], [2023, 7]] }, 'rows without a state are left out');
+    await db.collection(uscis.ROWS).deleteOne({ employer: 'NOWHERE LLC' });
+    uscis.clearUscisCache();
     await assert.rejects(uscis.getUscisBreakdown(db, { by: 'city' }), { status: 400 });
     await assert.rejects(uscis.getUscisBreakdown(db, { by: 'state', industry: '00' }), { status: 400 });
 
