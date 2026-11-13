@@ -1,6 +1,9 @@
 /* Outcome colors, the same in every statistics chart (validated for CVD separation on each theme). */
 :root { --stat-approved: #3987e5; --stat-denied: #d95926; --stat-pending: #199e70; }
 [data-theme="light"] { --stat-approved: #2a78d6; --stat-denied: #eb6834; --stat-pending: #1baf7a; }
+/* Compared series take these slots in order (blue, orange, aqua, yellow; validated as a set on both surfaces). */
+:root { --stat-s1: var(--stat-approved); --stat-s2: var(--stat-denied); --stat-s3: var(--stat-pending); --stat-s4: #c98500; }
+[data-theme="light"] { --stat-s4: #eda100; }
 
 .stat-figure { margin: 0; min-width: 0; }
 .stat-figure figcaption h3 { font-size: 16px; margin: 0 0 4px; }
@@ -50,3 +53,10 @@
 .stat-swatch.tone-denied { background: var(--stat-denied); }
 .stat-swatch.tone-pending { background: var(--stat-pending); }
 .stat-swatch.is-incomplete { background: transparent; border: 2px dashed var(--text-secondary); }
+
+/* Compared series */
+.stat-line.tone-s1 { stroke: var(--stat-s1); } .stat-line.tone-s2 { stroke: var(--stat-s2); } .stat-line.tone-s3 { stroke: var(--stat-s3); } .stat-line.tone-s4 { stroke: var(--stat-s4); }
+.stat-point.tone-s1, .stat-swatch.tone-s1 { fill: var(--stat-s1); background: var(--stat-s1); }
+.stat-point.tone-s2, .stat-swatch.tone-s2 { fill: var(--stat-s2); background: var(--stat-s2); }
+.stat-point.tone-s3, .stat-swatch.tone-s3 { fill: var(--stat-s3); background: var(--stat-s3); }
+.stat-point.tone-s4, .stat-swatch.tone-s4 { fill: var(--stat-s4); background: var(--stat-s4); }

@@ -41,7 +41,9 @@ function Axis({ width, right, max, format }) {
 }
 
 function Labels({ rows, x, band }) {
-  const every = Math.max(1, Math.ceil(46 / band));
+  // About 7px per monospace character, plus a gap between labels.
+  const widest = Math.max(4, ...rows.map(row => String(row.label).length + (row.incomplete ? 1 : 0)));
+  const every = Math.max(1, Math.ceil((widest * 7 + 12) / band));
   return rows.map((row, index) => (index === rows.length - 1 || index % every === 0 && rows.length - 1 - index >= every)
     ? <text key={row.key} className="stat-label" x={x(index)} y={HEIGHT - BOTTOM + 18} textAnchor="middle">{row.label}{row.incomplete ? '*' : ''}</text> : null);
 }
@@ -92,6 +94,19 @@ export function StackedColumns({ title, subtitle, rows, series, format = compact
   </Frame>;
 }
 
+// Direct labels at each line's last point, nudged apart so close lines stay readable.
+const LABEL_GAP = 14;
+function endLabels(series, rows, y) {
+  const labels = series.map(item => {
+    const last = rows.map(row => row.values[item.key]).filter(Number.isFinite).at(-1);
+    return last === undefined ? null : { key: item.key, text: item.label, y: y(last) };
+  }).filter(Boolean).sort((a, b) => a.y - b.y);
+  labels.forEach((label, index) => { if (index) label.y = Math.max(label.y, labels[index - 1].y + LABEL_GAP); });
+  const overflow = (labels.at(-1)?.y ?? 0) - (HEIGHT - BOTTOM);
+  if (overflow > 0) labels.forEach(label => { label.y -= overflow; });
+  return labels;
+}
+
 // Lines on one zero-based scale; incomplete rows are hollow points on a dashed segment.
 export function Lines({ title, subtitle, rows, series, format = compact, tooltip, describe }) {
   const [ref, width] = useWidth();
@@ -113,14 +128,13 @@ export function Lines({ title, subtitle, rows, series, format = compact, tooltip
         const firstIncomplete = points.findIndex(point => point.row.incomplete);
         const solid = firstIncomplete < 0 ? points : points.slice(0, firstIncomplete);
         const dashed = firstIncomplete < 0 ? [] : points.slice(Math.max(0, firstIncomplete - 1));
-        const last = points.at(-1);
         return <g key={item.key}>
           <path className={`stat-line tone-${item.tone}`} d={path(solid)} />
           {dashed.length > 1 && <path className={`stat-line tone-${item.tone} is-incomplete`} d={path(dashed)} />}
           {points.map(point => <circle key={point.row.key} className={`stat-point tone-${item.tone}${point.row.incomplete ? ' is-incomplete' : ''}`} cx={x(point.index)} cy={y(point.value)} r={hover === point.index ? 5 : 4} />)}
-          {series.length > 1 && last && <text className="stat-end" x={width - right + 12} y={y(last.value) + 4}>{item.label}</text>}
         </g>;
       })}
+      {series.length > 1 && endLabels(series, rows, y).map(label => <text key={label.key} className="stat-end" x={width - right + 12} y={label.y + 4}>{label.text}</text>)}
       <line className="stat-baseline" x1={LEFT} x2={width - right + 8} y1={HEIGHT - BOTTOM} y2={HEIGHT - BOTTOM} />
       {hovered && <line className="stat-crosshair" x1={x(hover)} x2={x(hover)} y1={TOP} y2={HEIGHT - BOTTOM} />}
       <Labels rows={rows} x={x} band={band} />
