@@ -100,6 +100,8 @@ jobs:
         with:
           context: ./frontend
           file: ./frontend/Dockerfile.prod
+          build-args: |
+            APP_VERSION=${{ github.sha }}
           push: true
           provenance: false
           sbom: false

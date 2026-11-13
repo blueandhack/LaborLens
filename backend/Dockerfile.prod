@@ -3,6 +3,8 @@ WORKDIR /usr/src/app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+# Server-rendered employer pages show the same footer version as the frontend image.
+ARG APP_VERSION=""
 RUN npm run build && npm prune --omit=dev
 
 FROM node:24-alpine

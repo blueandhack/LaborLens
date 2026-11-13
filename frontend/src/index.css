@@ -227,6 +227,11 @@ body {
   font-size: 12px;
 }
 
+.footer-link.footer-version {
+  font-family: "IBM Plex Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 .footer-nav-label {
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;

@@ -14,6 +14,7 @@ import I140View from './components/I140View';
 import PageSEO from './components/PageSEO';
 import SiteHeader from './components/SiteHeader';
 import { LoadingBar } from './components/Loading';
+import { APP_VERSION, APP_VERSION_SHORT, APP_VERSION_URL } from './utils/appVersion';
 import './index.css';
 
 const ImportView = lazy(() => import('./components/ImportView'));
@@ -93,6 +94,13 @@ function App(props) {
             <span className="footer-nav-label">Operator</span>
             <Link to="/admin/data" className="footer-link">Administration</Link>
             <a href="/backups/" className="footer-link">Backups</a>
+            {APP_VERSION && (APP_VERSION_URL ? (
+              <a href={APP_VERSION_URL} target="_blank" rel="noopener noreferrer" className="footer-link footer-version" title={`Deployed commit ${APP_VERSION}`}>
+                Version {APP_VERSION_SHORT}
+              </a>
+            ) : (
+              <span className="footer-link footer-version">Version {APP_VERSION_SHORT}</span>
+            ))}
           </nav>
         </footer>
       </div>
