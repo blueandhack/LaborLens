@@ -1,39 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FiArrowRight, FiRefreshCw } from 'react-icons/fi';
-import { cachedJSON, getJSON } from '../utils/api';
+import { FiArrowRight, FiRefreshCw, FiStar } from 'react-icons/fi';
+import { useJSON } from '../utils/useJSON';
+import { browserStore } from '../utils/browserStore';
 import { PageSkeleton } from './Loading';
 import { stateName } from '../utils/states';
 import {
-  SERIES, USCIS_SORTS, coverageLabel, formatCount, formatRate, fyLabel, location, rate, readUscisState, seriesValues, uscisEmployersURL, uscisOverviewURL, writeUscisState,
+  SERIES, USCIS_SORTS, coverageLabel, formatCount, formatRate, fyLabel, location, rate, readUscisState, seriesValues, uscisEmployersURL, uscisOverviewURL, viewOf, writeUscisState,
 } from '../utils/uscisPresentation';
+import { CompareCheck, MAX_COMPARE } from './Compare';
+import UscisCompare from './UscisCompare';
 import { ApprovalsChart, DenialRateChart, TrendTable } from './UscisCharts';
 import YearRange from './YearRange';
 import { inRange, normalizeRange } from '../utils/yearRange';
 import './UscisView.css';
 
-function useJSON(url) {
-  const [response, setResponse] = useState({ url: null, data: null, error: null });
-  const [retry, setRetry] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    getJSON(url, { signal: controller.signal })
-      .then(data => setResponse({ url, data, error: null }))
-      .catch(error => { if (!controller.signal.aborted) setResponse({ url, data: null, error: error.status === 400 ? error.message : 'USCIS approval data could not load. Please try again.' }); });
-    return () => controller.abort();
-  }, [url, retry]);
-  const retryLoad = () => setRetry(value => value + 1);
-  // A kept or prefetched response shows on the first paint, without a loading state.
-  const cached = response.url === url ? undefined : cachedJSON(url);
-  if (cached !== undefined) return { url, data: cached, error: null, loading: false, retry: retryLoad };
-  return { ...response, loading: response.url !== url, retry: retryLoad };
-}
+const FAILURE = 'USCIS approval data could not load. Please try again.';
+// The visitor's own filters and comparisons, kept in this browser.
+const viewStore = browserStore('h1bApprovalsView');
+const readView = () => viewOf(readUscisState(new URLSearchParams(viewStore.read())));
 
 function Stat({ label, value, detail }) {
   return <div className="uscis-stat"><dt>{label}</dt><dd>{value}</dd><small>{detail}</small></div>;
 }
 
-function Employers({ employers, state, update, industries, range }) {
+function Employers({ employers, state, update, industries, range, onCompare }) {
   const { data, error, loading, retry } = employers;
   const [draft, setDraft] = useState(state.q);
   const [shownQ, setShownQ] = useState(state.q);
@@ -47,7 +38,7 @@ function Employers({ employers, state, update, industries, range }) {
   const rows = data?.employers || [];
   return <section className="uscis-employers" aria-labelledby="uscis-employers-title">
     <header>
-      <div><h2 id="uscis-employers-title">Petitioners</h2><p>Each row combines the spellings of one petitioner name; underlined names link to the matching LaborLens employer profile.{range.single ? ` Rankings cover ${fyLabel(range.from)}.` : ` Rankings cover ${fyLabel(range.from)}–${fyLabel(range.to)}${range.whole ? ', every imported fiscal year' : ''}.`}</p></div>
+      <div><h2 id="uscis-employers-title">Petitioners</h2><p>Each row combines the spellings of one petitioner name; underlined names link to the matching LaborLens employer profile. Tick up to {MAX_COMPARE} to compare them{state.employers.length > 0 && <> (<a href="#uscis-compare">{state.employers.length} in the chart above</a>)</>}.{range.single ? ` Rankings cover ${fyLabel(range.from)}.` : ` Rankings cover ${fyLabel(range.from)}–${fyLabel(range.to)}${range.whole ? ', every imported fiscal year' : ''}.`}</p></div>
       <div className="uscis-employer-controls">
         <label htmlFor="uscis-search">Petitioner name<input id="uscis-search" className="search-input" type="search" value={draft} placeholder="Starts with…" autoComplete="off"
           onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') update({ q: draft, page: 1 }); }} /></label>
@@ -57,9 +48,10 @@ function Employers({ employers, state, update, industries, range }) {
     </header>
     {state.sort === 'denialRate' && <p className="uscis-note">Only petitioners with at least 20 decisions in this selection are ranked by denial rate.</p>}
     {error ? <div className="search-state" role="alert"><p>{error}</p><button className="btn" type="button" onClick={retry}>Try again</button></div>
-      : <div className={`uscis-table-scroll${loading ? ' is-loading' : ''}`} aria-busy={loading}><table className="uscis-employer-table">
-        <thead><tr><th scope="col">Petitioner</th><th scope="col">Initial approved</th><th scope="col">Initial denied</th><th scope="col">Continuing approved</th><th scope="col">Continuing denied</th><th scope="col">Denial rate</th></tr></thead>
+      : <div className={`uscis-table-scroll${loading ? ' is-loading' : ''}`} aria-busy={loading}><table className="uscis-employer-table compare-scorecard">
+        <thead><tr><th scope="col" className="compare-check">Chart</th><th scope="col">Petitioner</th><th scope="col">Initial approved</th><th scope="col">Initial denied</th><th scope="col">Continuing approved</th><th scope="col">Continuing denied</th><th scope="col">Denial rate</th></tr></thead>
         <tbody>{rows.map(row => <tr key={row.key}>
+          <CompareCheck slot={state.employers.indexOf(row.key)} label={row.name} count={state.employers.length} keepOne={false} onToggle={() => onCompare(row.key)} />
           <th scope="row"><span className="uscis-employer-name">{row.profile ? <Link to={'/employers/' + row.profile}>{row.name}</Link> : row.name}</span>
             <small>{[location(row.location), industries.find(item => item.code === row.industry)?.label].filter(Boolean).join(' · ')}</small></th>
           <td>{formatCount(row.initialApprovals)}</td><td>{formatCount(row.initialDenials)}</td><td>{formatCount(row.continuingApprovals)}</td><td>{formatCount(row.continuingDenials)}</td>
@@ -81,9 +73,19 @@ export default function UscisView() {
   const state = readUscisState(params);
   const update = changes => setParams(writeUscisState({ ...state, page: 1, ...changes }));
   // While a new selection loads, the previous one stays on screen (dimmed).
-  const overview = useJSON(uscisOverviewURL(state));
+  const overview = useJSON(uscisOverviewURL(state), FAILURE);
   // Requested together with the overview, not after it: the table needs only the URL's filters.
-  const employers = useJSON(uscisEmployersURL(state));
+  const employers = useJSON(uscisEmployersURL(state), FAILURE);
+  // Changes to the comparisons keep the petitioner page.
+  const updateCompare = changes => setParams(writeUscisState({ ...state, ...changes }));
+  const savedView = useSyncExternalStore(viewStore.subscribe, readView, () => '');
+  const currentView = viewOf(state), isSaved = Boolean(savedView) && savedView === currentView;
+  // A plain visit opens on the kept view, written into the address so links share it.
+  useEffect(() => {
+    if (params.toString()) return;
+    const saved = readView();
+    if (saved) setParams(new URLSearchParams(saved), { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const data = overview.data;
   const [hover, setHover] = useState(null);
 
@@ -124,7 +126,10 @@ export default function UscisView() {
         <option value="">All industries</option>
         {data.industries.map(item => <option key={item.code} value={item.code}>{item.code} · {item.label}</option>)}
       </select></label>
-      {filtered && <button type="button" className="text-button" onClick={() => setParams(writeUscisState({ sort: state.sort }))}>Clear filters</button>}
+      {(currentView || savedView) && <button type="button" className="compare-save" aria-pressed={isSaved} onClick={() => viewStore.write(isSaved ? '' : currentView)}
+        title={isSaved ? 'This page opens with these filters and comparisons in this browser. Select to stop.' : 'Open this page with these filters and comparisons next time, in this browser'}>
+        <FiStar aria-hidden="true" />{isSaved ? 'My view' : 'Save as my view'}</button>}
+      {filtered && <button type="button" className="text-button" onClick={() => setParams(writeUscisState({ ...state, from: '', to: '', state: '', industry: '', q: '', page: 1 }))}>Clear filters</button>}
     </form>
 
     <section className={`uscis-summary${overview.loading ? ' is-loading' : ''}`} aria-labelledby="uscis-summary-title" aria-busy={overview.loading}>
@@ -152,7 +157,10 @@ export default function UscisView() {
       <TrendTable rows={trend} />
     </section>
 
-    <Employers employers={employers} state={state} industries={data.industries} range={range} update={changes => setParams(writeUscisState({ ...state, ...changes }))} />
+    <UscisCompare data={data} state={state} range={range} onChange={updateCompare} onFilter={update} petitioners={employers.data?.employers} />
+
+    <Employers employers={employers} state={state} industries={data.industries} range={range} update={updateCompare}
+      onCompare={key => updateCompare({ by: 'employer', employers: state.employers.includes(key) ? state.employers.filter(item => item !== key) : [...state.employers, key] })} />
 
     <section className="uscis-method" aria-labelledby="uscis-method-title">
       <h2 id="uscis-method-title">What these numbers mean</h2>
@@ -161,6 +169,7 @@ export default function UscisView() {
         <li><strong>Workers, not petitions.</strong> Counts are approved or denied workers (beneficiaries); one petition can name several.</li>
         <li><strong>Initial and continuing.</strong> {SERIES.map(series => `${series.label}: ${series.description.toLowerCase()}.`).join(' ')}</li>
         <li><strong>Petitioner location.</strong> State and city are the petitioner’s mailing address, not where the employee works. Industry is the two-digit NAICS code the petitioner reported (99: unknown).</li>
+        <li><strong>Your view.</strong> “Save as my view” keeps your state, industry and comparisons in this browser only, so the page opens on them next time.</li>
         <li><strong>Names as filed.</strong> USCIS uses the most common spelling for each tax ID; older files abbreviate and cut names short. LaborLens combines spellings that differ only in punctuation or common abbreviations, and joins a cut-off name to the full name it begins with. Data is entered from paper forms and may contain errors.</li>
         {missingRecent && <li><strong>Coverage.</strong> LaborLens has {coverageLabel(years)}. USCIS currently publishes later fiscal years only in its interactive hub; they will be added when they can be imported.</li>}
       </ul>

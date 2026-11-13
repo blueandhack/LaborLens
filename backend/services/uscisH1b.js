@@ -428,6 +428,47 @@ async function getUscisOverview(db, input = {}) {
         employers: info.employers, linked: info.linked, updatedAt: info.updatedAt };
 }
 
+// Yearly totals for every industry or every state, over all years (the page narrows
+// them to its range). An industry breakdown follows the state filter, a state
+// breakdown the industry filter. Kept a day, like the overall trend.
+async function getUscisBreakdown(db, input = {}) {
+    const info = await meta(db);
+    if (!info) return { available: false, groups: [] };
+    const by = ['industry', 'state'].includes(input.by) ? input.by : null;
+    if (!by) throw invalid('Unknown breakdown');
+    const filters = filtersOf(by === 'state' ? { industry: input.industry } : { state: input.state }, info);
+    const rows = await trends.get(`breakdown|${info.revision}|${by}|${filters.state}|${filters.industry}`, () => db.collection(ROWS).aggregate([
+        { $match: { ...rowMatch({ ...filters, whole: true }), [by]: { $type: 'string', $ne: '' } } },
+        { $group: { _id: { code: '$' + by, fiscalYear: '$fiscalYear' }, ...sumStage } },
+    ], { maxTimeMS: 15000, allowDiskUse: true }).toArray());
+    const groups = new Map();
+    for (const { _id, ...totals } of rows) {
+        if (!groups.has(_id.code)) groups.set(_id.code, []);
+        groups.get(_id.code).push({ fiscalYear: _id.fiscalYear, ...totals });
+    }
+    return { available: true, by, filters: { state: filters.state, industry: filters.industry },
+        groups: [...groups].map(([code, years]) => ({ code, years: years.sort((a, b) => a.fiscalYear - b.fiscalYear) })).sort((a, b) => a.code.localeCompare(b.code)) };
+}
+
+// Up to four petitioners' yearly totals, to compare them; unknown names are left out.
+const MAX_COMPARE = 4;
+async function getUscisEmployerTrends(db, input = {}) {
+    const info = await meta(db);
+    if (!info) return { available: false, employers: [] };
+    if (input.employers !== undefined && typeof input.employers !== 'string') throw invalid('Invalid petitioners');
+    const keys = [...new Set(String(input.employers || '').split(',').map(key => key.trim()).filter(Boolean))];
+    if (keys.length > MAX_COMPARE || keys.some(key => key.length > 200)) throw invalid(`Choose up to ${MAX_COMPARE} petitioners`);
+    const rows = keys.length ? await db.collection(EMPLOYERS).find({ _id: { $in: keys } }, { projection: { name: 1, location: 1, industry: 1, years: 1, link: 1 }, maxTimeMS: 2000 }).toArray() : [];
+    const slugs = await employerSlugs(db, rows.filter(row => row.link?.id).map(row => row.link.id));
+    const found = new Map(rows.map(row => [row._id, row]));
+    return { available: true, employers: keys.filter(key => found.has(key)).map(key => {
+        const row = found.get(key);
+        return { key, name: row.name || key, location: row.location || null, industry: row.industry || null, profile: row.link?.id ? slugs.get(row.link.id) || null : null,
+            years: row.years.map(year => ({ fiscalYear: year.fiscalYear, initialApprovals: year.initialApprovals, initialDenials: year.initialDenials,
+                continuingApprovals: year.continuingApprovals, continuingDenials: year.continuingDenials })) };
+    }) };
+}
+
 const SORTS = {
     approvals: { field: 'approvals', order: { approvals: -1, _id: 1 } }, initial: { field: 'initialApprovals', order: { initialApprovals: -1, _id: 1 } },
     denials: { field: 'denials', order: { denials: -1, _id: 1 } }, denialRate: { field: 'denialRate', order: { denialRate: -1, decisions: -1, _id: 1 } },
@@ -501,12 +542,12 @@ async function getUscisStatus(db) {
 
 module.exports = { parseCsv: records, decodeText: decode, ROWS, EMPLOYERS, STATE_ID, OFFICIAL_URL, OFFICIAL_YEARS, PARTIAL_YEARS, INDUSTRIES, industryOf, expanded,
     parseUscisFile, parseUscisStream, HUB_CSV_URL, importUscisRows, recomputeUscisTotals, rebuildUscisEmployers, linkUscisEmployers, ensureUscisIndexes,
-    getUscisOverview, listUscisEmployers, uscisForIdentity, getUscisStatus, clearUscisCache: clearCaches, warmUscisCache };
+    getUscisOverview, getUscisBreakdown, getUscisEmployerTrends, listUscisEmployers, uscisForIdentity, getUscisStatus, clearUscisCache: clearCaches, warmUscisCache };
 
 // Builds the default page's data ahead of visitors: at start-up, then every ten
 // minutes, which is a cache hit unless an import (another process) changed the data.
 function warmUscisCache(db, { everyMs = 10 * 60 * 1000 } = {}) {
-    const warm = () => Promise.all([getUscisOverview(db()), listUscisEmployers(db())])
+    const warm = () => Promise.all([getUscisOverview(db()), listUscisEmployers(db()), getUscisBreakdown(db(), { by: 'industry' }), getUscisBreakdown(db(), { by: 'state' })])
         .catch(error => console.error('USCIS cache warm-up failed:', error.message));
     warm();
     return setInterval(warm, everyMs).unref();

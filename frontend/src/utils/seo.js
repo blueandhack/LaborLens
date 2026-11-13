@@ -24,7 +24,7 @@ export function getPageSEO(pathname, search = '') {
   const params = new URLSearchParams(search);
   const filtered = Boolean(program && SEARCH_RESULT_KEYS.some(key => params.get(key)) || path === '/employers' && ['q', 'sort', 'page'].some(key => params.get(key))
     || path === '/map' && ['program', 'year', 'occupation', 'metric', 'view'].some(key => params.get(key))
-    || path === '/h1b-approvals' && ['from', 'to', 'fy', 'state', 'industry', 'q', 'sort', 'page'].some(key => params.get(key))
+    || path === '/h1b-approvals' && ['from', 'to', 'fy', 'state', 'industry', 'q', 'sort', 'page', 'by', 'industries', 'states', 'employers', 'metric'].some(key => params.get(key))
     || path === '/i140' && ['category', 'country', 'from', 'to', 'compare', 'metric'].some(key => params.get(key)));
   // The homepage leads with the brand so a search for the name finds it.
   const title = path === '/' && !filtered ? 'LaborLens: H-1B, PERM & Prevailing Wage Data Search' : program ? `${program === 'h1b' ? 'H1B Salary Database & LCA Search' : program === 'perm' ? 'PERM Database & Employer Case Search' : 'Prevailing Wage Determination Search'} | LaborLens`

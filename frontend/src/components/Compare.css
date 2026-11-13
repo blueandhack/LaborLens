@@ -1,0 +1,29 @@
+/* Shared by the statistics pages' compare sections (I-140, H-1B approvals). */
+.compare-save { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; flex: none; border: 1px solid var(--border-color-strong); border-radius: 6px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.compare-save:hover { color: var(--text-primary); background: var(--input-bg); }
+.compare-save[aria-pressed="true"] { color: var(--text-primary); }
+.compare-save[aria-pressed="true"] svg { fill: currentColor; }
+.compare-save:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* Comparison table, toggles and chart */
+.compare-scorecard tbody th, .compare-scorecard thead th:nth-child(2) { min-width: 250px; width: 30%; text-align: left; }
+.compare-scorecard td small { display: block; font-size: 11px; color: var(--text-muted); }
+.compare-scorecard tr.is-sub .compare-pick { padding-left: 18px; }
+.compare-scorecard tr.is-total th, .compare-scorecard tr.is-total td { border-bottom-color: var(--border-color-strong); }
+.compare-scorecard tr.is-selected th, .compare-scorecard tr.is-selected td { background: var(--input-bg); }
+.compare-pick { background: none; border: 0; padding: 4px 0; min-height: 32px; font: inherit; color: var(--text-primary); text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--text-muted); text-underline-offset: 3px; }
+.compare-pick:hover { color: var(--focus-ring); }
+.compare-pick[aria-pressed="true"] { font-weight: 600; text-decoration: none; }
+.compare-pick:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.compare-scorecard th.compare-check, .compare-scorecard td.compare-check { text-align: left; width: 1%; padding-right: 4px; }
+.compare-check label { display: inline-flex; align-items: center; gap: 8px; min-width: 44px; min-height: 32px; cursor: pointer; }
+.compare-check .stat-swatch.is-empty { visibility: hidden; }
+.compare-check input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
+.compare-check input:disabled { cursor: not-allowed; }
+.compare-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 20px 0 14px; }
+.compare-segmented { max-width: 100%; overflow-x: auto; }
+.compare-segmented button { flex: none; white-space: nowrap; }
+.compare-chart { max-width: 1100px; }
+.compare-scorecard td .text-button { min-height: 32px; }
+.compare-more { margin-top: 10px; min-height: 36px; }
+.compare-empty { color: var(--text-secondary); font-size: 14px; padding: 8px 0 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }

@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
-const { getUscisOverview, listUscisEmployers, parseUscisFile, parseUscisStream, importUscisRows, STATE_ID } = require('../services/uscisH1b');
+const { getUscisOverview, getUscisBreakdown, getUscisEmployerTrends, listUscisEmployers, parseUscisFile, parseUscisStream, importUscisRows, STATE_ID } = require('../services/uscisH1b');
 
 // A year of the hub's long CSV is about 100 MB, so uploads go to disk and are read as a stream.
 const upload = multer({ dest: '/tmp/uscis_uploads/', limits: { fileSize: 256 * 1024 * 1024, files: 1 } });
@@ -31,6 +31,8 @@ function createUscisRoutes({ db, authMiddleware }) {
     };
     router.get('/', respond(getUscisOverview));
     router.get('/employers', respond(listUscisEmployers));
+    router.get('/breakdown', respond(getUscisBreakdown));
+    router.get('/compare', respond(getUscisEmployerTrends));
 
     // An H-1B Employer Data Hub export (one or more complete fiscal years). The
     // file is checked before replying; the import then runs in the background.

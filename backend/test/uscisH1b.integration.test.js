@@ -83,6 +83,22 @@ test('USCIS petition decisions import, group, link to employers and answer queri
     assert.deepEqual(profile.years.map(year => [year.fiscalYear, year.initialApprovals, year.partial]), [[2016, 85, false], [2022, 100, false], [2023, 7, true]]);
     assert.equal(await uscis.uscisForIdentity(db, [idFor('nobody')]), null);
 
+    // Breakdowns by industry and by state, each following the other filter.
+    const initialBy = result => Object.fromEntries(result.groups.map(group => [group.code, group.years.map(year => [year.fiscalYear, year.initialApprovals])]));
+    assert.deepEqual(initialBy(await uscis.getUscisBreakdown(db, { by: 'industry' })), { '31-33': [[2022, 10]], 54: [[2016, 85], [2022, 106], [2023, 7]] });
+    assert.deepEqual(initialBy(await uscis.getUscisBreakdown(db, { by: 'industry', state: 'CA', industry: '54' })), { '31-33': [[2022, 10]] }, 'the industry filter does not narrow an industry breakdown');
+    assert.deepEqual(initialBy(await uscis.getUscisBreakdown(db, { by: 'state', industry: '54' })), { NJ: [[2016, 85]], TX: [[2022, 106], [2023, 7]] });
+    await assert.rejects(uscis.getUscisBreakdown(db, { by: 'city' }), { status: 400 });
+    await assert.rejects(uscis.getUscisBreakdown(db, { by: 'state', industry: '00' }), { status: 400 });
+
+    // Petitioners to compare: in the order asked, unknown names left out, at most four.
+    const compared = await uscis.getUscisEmployerTrends(db, { employers: 'globex systems inc,nobody,cognizant technology solutions us corp' });
+    assert.deepEqual(compared.employers.map(row => [row.key, row.years.map(year => [year.fiscalYear, year.initialApprovals])]),
+        [['globex systems inc', [[2022, 10]]], ['cognizant technology solutions us corp', [[2016, 85], [2022, 100], [2023, 7]]]]);
+    assert.equal(compared.employers[1].profile, slugFor('cognizant technology solutions us corp'));
+    assert.deepEqual((await uscis.getUscisEmployerTrends(db, {})).employers, []);
+    await assert.rejects(uscis.getUscisEmployerTrends(db, { employers: 'a,b,c,d,e' }), { status: 400 });
+
     // Replacing a year with a much smaller (filtered) export is refused.
     await assert.rejects(uscis.importUscisRows(db, [row(2022, 'GLOBEX SYSS INC', [1, 0, 0, 0])]), /under half/);
     assert.equal((await uscis.getUscisOverview(db, { fy: '2022' })).totals.initialApprovals, 100 + 10 + 3 + 1 + 2, 'the year is unchanged');
@@ -94,6 +110,8 @@ test('USCIS petition decisions import, group, link to employers and answer queri
     const base = `http://127.0.0.1:${server.address().port}/api/uscis-h1b`;
     assert.equal((await fetch(base + '?fy=2022').then(response => response.json())).totals.initialApprovals, 116);
     assert.equal((await fetch(base + '/employers?sort=nope')).status, 400);
+    assert.deepEqual((await fetch(base + '/breakdown?by=state').then(response => response.json())).groups.map(group => group.code), ['CA', 'NJ', 'TX']);
+    assert.equal((await fetch(base + '/compare?employers=globex%20systems%20inc').then(response => response.json())).employers[0].name, 'Globex Syss Inc');
     const types = ['New Employment', 'Continuation', 'Change with Same Employer', 'New Concurrent', 'Change of Employer', 'Amended'];
     const file = ['Fiscal Year\tEmployer (Petitioner) Name\tTax ID\tIndustry (NAICS) Code\tPetitioner City\tPetitioner State\tPetitioner Zip Code\t' + types.flatMap(type => [type + ' Approval', type + ' Denial']).join('\t'),
         '2025\tGlobex Systems Inc\t1234\t54\tOakland\tCA\t94607\t4\t1\t2\t0\t0\t0\t1\t0\t0\t0\t0\t0'].join('\n');

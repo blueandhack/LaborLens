@@ -141,3 +141,9 @@
 .year-range-presets button[aria-pressed="true"] { background: var(--btn-bg); color: var(--btn-text); }
 .year-range-presets button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 @media (max-width: 600px) { .year-range, .year-range-fields label { flex: 1 1 100%; } .year-range-fields label select { flex: 1; } }
+
+/* Compare section */
+.uscis-compare { border-top: 1px solid var(--border-color-strong); margin-top: 28px; padding-top: 28px; }
+.uscis-compare-title { font-size: 20px; margin: 0; }
+.uscis-compare .compare-controls:first-of-type { margin-top: 14px; }
+.uscis-controls .compare-save { align-self: end; }

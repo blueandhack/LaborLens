@@ -52,15 +52,6 @@ export function writeI140State(state, savedCategory = '') {
   return params;
 }
 
-// The viewer's own category, kept in this browser only.
-const SAVED_KEY = 'i140Category';
-export function readSavedCategory() {
-  try { const value = localStorage.getItem(SAVED_KEY); return CATEGORY_CODES.includes(value) ? value : ''; } catch { return ''; }
-}
-export function writeSavedCategory(value) {
-  try { if (value) localStorage.setItem(SAVED_KEY, value); else localStorage.removeItem(SAVED_KEY); } catch { /* The page works without browser storage. */ }
-}
-
 // Denied share of decided petitions.
 export const denialRate = (approved, denied) => approved + denied > 0 ? denied / (approved + denied) : null;
 

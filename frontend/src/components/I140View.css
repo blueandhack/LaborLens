@@ -18,35 +18,9 @@
 .i140-range-note { font-size: 14px; font-weight: 400; color: var(--text-secondary); }
 .i140-page .uscis-controls { gap: 16px 28px; }
 
-/* Category picker and the saved default */
+/* Category picker */
 .i140-category { display: flex; align-items: end; gap: 10px; flex: 1 1 380px; max-width: 620px; min-width: 0; }
 .i140-category .uscis-industry { flex: 1 1 auto; max-width: none; }
-.i140-save { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; flex: none; border: 1px solid var(--border-color-strong); border-radius: 6px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
-.i140-save:hover { color: var(--text-primary); background: var(--input-bg); }
-.i140-save[aria-pressed="true"] { color: var(--text-primary); }
-.i140-save[aria-pressed="true"] svg { fill: currentColor; }
-.i140-save:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-
-/* Compare categories */
-.i140-scorecard tbody th, .i140-scorecard thead th:nth-child(2) { min-width: 250px; width: 30%; text-align: left; }
-.i140-scorecard td small { display: block; font-size: 11px; color: var(--text-muted); }
-.i140-scorecard tr.is-sub .i140-pick { padding-left: 18px; }
-.i140-scorecard tr.is-total th, .i140-scorecard tr.is-total td { border-bottom-color: var(--border-color-strong); }
-.i140-scorecard tr.is-selected th, .i140-scorecard tr.is-selected td { background: var(--input-bg); }
-.i140-pick { background: none; border: 0; padding: 4px 0; min-height: 32px; font: inherit; color: var(--text-primary); text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--text-muted); text-underline-offset: 3px; }
-.i140-pick:hover { color: var(--focus-ring); }
-.i140-pick[aria-pressed="true"] { font-weight: 600; text-decoration: none; }
-.i140-pick:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.i140-scorecard th.i140-check, .i140-scorecard td.i140-check { text-align: left; width: 1%; padding-right: 4px; }
-.i140-check label { display: inline-flex; align-items: center; gap: 8px; min-width: 44px; min-height: 32px; cursor: pointer; }
-.i140-check .stat-swatch.is-empty { visibility: hidden; }
-.i140-check input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
-.i140-check input:disabled { cursor: not-allowed; }
-.i140-compare-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 20px 0 14px; }
-.i140-compare-controls .year-range-presets { max-width: 100%; overflow-x: auto; }
-.i140-compare-controls .year-range-presets button { flex: none; white-space: nowrap; }
-.i140-compare-chart { max-width: 1100px; }
-
 /* The visa-backlog columns that hold the chosen category */
 .i140-awaiting .is-focus { background: var(--input-bg); }
 .i140-awaiting th.is-focus { color: var(--text-primary); font-weight: 600; }

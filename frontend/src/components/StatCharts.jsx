@@ -124,13 +124,13 @@ export function Lines({ title, subtitle, rows, series, format = compact, tooltip
       <Axis width={width} right={right - 8} max={max} format={format} />
       {series.map(item => {
         const points = rows.map((row, index) => ({ row, index, value: row.values[item.key] })).filter(point => Number.isFinite(point.value));
-        const path = list => list.map((point, position) => `${position ? 'L' : 'M'}${x(point.index)},${y(point.value)}`).join('');
-        const firstIncomplete = points.findIndex(point => point.row.incomplete);
-        const solid = firstIncomplete < 0 ? points : points.slice(0, firstIncomplete);
-        const dashed = firstIncomplete < 0 ? [] : points.slice(Math.max(0, firstIncomplete - 1));
+        // A segment touching an incomplete point is dashed; the rest are solid.
+        const segments = points.slice(1).map((point, position) => ({ from: points[position], to: point, dashed: Boolean(points[position].row.incomplete || point.row.incomplete) }));
+        const path = dashed => segments.filter(segment => segment.dashed === dashed)
+          .map(({ from, to }) => `M${x(from.index)},${y(from.value)}L${x(to.index)},${y(to.value)}`).join('');
         return <g key={item.key}>
-          <path className={`stat-line tone-${item.tone}`} d={path(solid)} />
-          {dashed.length > 1 && <path className={`stat-line tone-${item.tone} is-incomplete`} d={path(dashed)} />}
+          <path className={`stat-line tone-${item.tone}`} d={path(false)} />
+          {segments.some(segment => segment.dashed) && <path className={`stat-line tone-${item.tone} is-incomplete`} d={path(true)} />}
           {points.map(point => <circle key={point.row.key} className={`stat-point tone-${item.tone}${point.row.incomplete ? ' is-incomplete' : ''}`} cx={x(point.index)} cy={y(point.value)} r={hover === point.index ? 5 : 4} />)}
         </g>;
       })}

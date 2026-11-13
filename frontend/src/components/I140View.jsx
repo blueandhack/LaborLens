@@ -5,9 +5,11 @@ import { cachedJSON, getJSON } from '../utils/api';
 import { PageSkeleton } from './Loading';
 import { STATES } from '../utils/states';
 import { compact, formatCount, formatRate } from '../utils/uscisPresentation';
-import { COMPARE_METRICS, INCOMPLETE_SHARE, MAX_COMPARE, SHORT_LABELS, awaitingColumns, backlogMonths, categorySummary, denialRate, formatMonths, levelOf,
-  quarterLabel, quarterMonths, readI140State, readSavedCategory, suggestedCompare, titleCase, writeI140State, writeSavedCategory } from '../utils/i140Presentation';
+import { CATEGORY_CODES, COMPARE_METRICS, INCOMPLETE_SHARE, MAX_COMPARE, SHORT_LABELS, awaitingColumns, backlogMonths, categorySummary, denialRate, formatMonths, levelOf,
+  quarterLabel, quarterMonths, readI140State, suggestedCompare, titleCase, writeI140State } from '../utils/i140Presentation';
 import { Legend, Lines, StackedColumns } from './StatCharts';
+import { CompareChart, CompareCheck, Segmented } from './Compare';
+import { browserStore } from '../utils/browserStore';
 import YearRange from './YearRange';
 import { inRange, normalizeRange } from '../utils/yearRange';
 import './UscisView.css';
@@ -21,15 +23,8 @@ const shortMonths = value => Number.isFinite(value) ? `${Math.round(value)} mo` 
 const signed = value => Number.isFinite(value) ? `${value > 0 ? '+' : value < 0 ? '−' : ''}${formatRate(Math.abs(value))}` : '—';
 
 // The saved category lives in this browser; the prerendered page has none.
-const savedListeners = new Set();
-const savedStore = {
-  subscribe(listener) {
-    savedListeners.add(listener);
-    window.addEventListener('storage', listener);
-    return () => { savedListeners.delete(listener); window.removeEventListener('storage', listener); };
-  },
-  set(value) { writeSavedCategory(value); savedListeners.forEach(listener => listener()); },
-};
+const savedStore = browserStore('i140Category');
+const readSaved = () => { const value = savedStore.read(); return CATEGORY_CODES.includes(value) ? value : ''; };
 
 function Breakdown({ title, note, rows, category, kind }) {
   const [open, setOpen] = useState(false);
@@ -55,7 +50,7 @@ function Breakdown({ title, note, rows, category, kind }) {
 // Every category side by side for one period, and up to four of them over time.
 function Compare({ data, all, start, end, rangeIndexes, category, compare, suggested, metric, periodLabel, onChange }) {
   const series = compare.map((code, index) => ({ key: code, label: SHORT_LABELS[code], tone: `s${index + 1}` }));
-  const legend = series.map(item => ({ ...item, label: data.categories.find(entry => entry.code === item.key)?.label }));
+  const names = Object.fromEntries(data.categories.map(item => [item.code, item.label]));
   const measure = COMPARE_METRICS.find(item => item.key === metric);
   const valueOf = (index, code) => {
     const values = all[index].categories[code] || {};
@@ -68,20 +63,18 @@ function Compare({ data, all, start, end, rangeIndexes, category, compare, sugge
       title: `${quarterLabel(quarter.fiscalYear, quarter.quarter)} · ${quarterMonths(quarter.fiscalYear, quarter.quarter)}`, values: Object.fromEntries(compare.map(code => [code, valueOf(index, code)])) };
   });
   const toggle = code => onChange({ compare: compare.includes(code) ? compare.filter(item => item !== code) : [...compare, code] });
-  const full = compare.length >= MAX_COMPARE;
   return <section className="uscis-trends i140-compare" aria-labelledby="i140-compare">
     <h2 id="i140-compare" className="i140-section-title">Compare categories</h2>
     <p className="uscis-note">All categories for {periodLabel}. Tick up to {MAX_COMPARE} to chart them together; select a name to show it above.</p>
-    <div className="uscis-table-scroll"><table className="uscis-employer-table i140-scorecard">
-      <thead><tr><th scope="col" className="i140-check">Chart</th><th scope="col">Category</th><th scope="col">Received</th><th scope="col">vs. prior period</th><th scope="col">Approved</th><th scope="col">Denied</th>
+    <div className="uscis-table-scroll"><table className="uscis-employer-table compare-scorecard">
+      <thead><tr><th scope="col" className="compare-check">Chart</th><th scope="col">Category</th><th scope="col">Received</th><th scope="col">vs. prior period</th><th scope="col">Approved</th><th scope="col">Denied</th>
         <th scope="col">Denial rate</th><th scope="col">Pending at end</th><th scope="col"><abbr title="Pending petitions ÷ average decided per quarter over the last four quarters">Backlog</abbr></th></tr></thead>
       <tbody>{data.categories.map(item => {
         const row = categorySummary(all, start, end, item.code);
-        const sub = item.level !== item.code && item.code !== 'all', slot = compare.indexOf(item.code);
+        const sub = item.level !== item.code && item.code !== 'all';
         return <tr key={item.code} className={[item.code === category && 'is-selected', sub && 'is-sub', item.code === 'all' && 'is-total'].filter(Boolean).join(' ') || undefined}>
-          <td className="i140-check"><label><input type="checkbox" checked={slot >= 0} disabled={slot >= 0 ? compare.length === 1 : full} onChange={() => toggle(item.code)} aria-label={`Chart ${item.label}`} />
-            <i className={`stat-swatch${slot >= 0 ? ` tone-s${slot + 1}` : ' is-empty'}`} aria-hidden="true" /></label></td>
-          <th scope="row"><button type="button" className="i140-pick" aria-pressed={item.code === category} onClick={() => onChange({ category: item.code })}>{item.label}</button></th>
+          <CompareCheck slot={compare.indexOf(item.code)} label={item.label} count={compare.length} onToggle={() => toggle(item.code)} />
+          <th scope="row"><button type="button" className="compare-pick" aria-pressed={item.code === category} onClick={() => onChange({ category: item.code })}>{item.label}</button></th>
           <td>{formatCount(row.received)}</td>
           <td>{signed(row.receivedChange)}</td>
           <td>{formatCount(row.approved)}</td><td>{formatCount(row.denied)}</td>
@@ -90,30 +83,20 @@ function Compare({ data, all, start, end, rangeIndexes, category, compare, sugge
         </tr>;
       })}</tbody>
     </table></div>
-    <div className="i140-compare-controls">
-      <div className="year-range-presets" role="group" aria-label="Measure to chart">
-        {COMPARE_METRICS.map(item => <button key={item.key} type="button" aria-pressed={item.key === metric} onClick={() => onChange({ metric: item.key })}>{item.label}</button>)}
-      </div>
+    <div className="compare-controls">
+      <Segmented label="Measure to chart" options={COMPARE_METRICS} value={metric} onChange={key => onChange({ metric: key })} />
       {compare.join() !== suggested.join() && <button type="button" className="text-button" onClick={() => onChange({ compare: null })}>Reset to suggested</button>}
     </div>
-    <Legend series={legend} />
-    {rows.length > 0 && <div className="i140-compare-chart">
-      <Lines title={measure.title} subtitle={measure.months ? 'Pending ÷ average decided per quarter over the last four quarters · zero-based scale' : measure.rate ? 'Denied ÷ (approved + denied) · zero-based scale' : 'Petitions (primary beneficiaries) · zero-based scale'}
-        rows={rows} series={series} format={measure.rate ? value => `${Math.round(value * 100)}%` : measure.months ? value => compact(Math.round(value)) : compact}
-        describe={row => `${row.title}: ${series.map(item => `${item.label} ${format(row.values[item.key])}`).join(', ')}`}
-        tooltip={row => <Values rows={series.map(item => [item.label, format(row.values[item.key]), item.tone])} />} />
-    </div>}
-    <details className="uscis-table-view"><summary>Show the chart as a table</summary><div className="uscis-table-scroll"><table>
-      <thead><tr><th scope="col">Quarter</th>{series.map(item => <th key={item.key} scope="col">{item.label}</th>)}</tr></thead>
-      <tbody>{[...rows].reverse().map(row => <tr key={row.key}><th scope="row">{row.title}</th>{series.map(item => <td key={item.key}>{format(row.values[item.key])}</td>)}</tr>)}</tbody>
-    </table></div></details>
+    <CompareChart title={measure.title} firstColumn="Quarter" rows={rows} series={series} names={names} format={format}
+      subtitle={measure.months ? 'Pending ÷ average decided per quarter over the last four quarters · zero-based scale' : measure.rate ? 'Denied ÷ (approved + denied) · zero-based scale' : 'Petitions (primary beneficiaries) · zero-based scale'}
+      axisFormat={measure.rate ? value => `${Math.round(value * 100)}%` : measure.months ? value => compact(Math.round(value)) : compact} />
     <p className="uscis-note">Categories overlap: EB-2 includes NIW and the advanced-degree category, and “All categories” includes everything. Backlog is how long the pending petitions would take to decide at the recent pace, not a USCIS processing time; see <a href="https://egov.uscis.gov/processing-times/" target="_blank" rel="noreferrer">USCIS processing times</a> for those.</p>
   </section>;
 }
 
 export default function I140View() {
   const [params, setParams] = useSearchParams();
-  const saved = useSyncExternalStore(savedStore.subscribe, readSavedCategory, () => '');
+  const saved = useSyncExternalStore(savedStore.subscribe, readSaved, () => '');
   const state = readI140State(params, saved);
   const update = changes => setParams(writeI140State({ ...state, ...changes }, saved));
   // A saved category opens in the address too, so the link shares what is shown.
@@ -193,7 +176,7 @@ export default function I140View() {
         <label htmlFor="i140-category" className="uscis-industry">Preference category<select id="i140-category" className="search-input" value={category} onChange={event => update({ category: event.target.value })}>
           {data.categories.map(item => <option key={item.code} value={item.code}>{item.level !== item.code && item.code !== 'all' ? '— ' : ''}{item.label}</option>)}
         </select></label>
-        {(category !== 'all' || saved) && <button type="button" className="i140-save" aria-pressed={isSaved} onClick={() => savedStore.set(isSaved || category === 'all' ? '' : category)}
+        {(category !== 'all' || saved) && <button type="button" className="compare-save" aria-pressed={isSaved} onClick={() => savedStore.write(isSaved || category === 'all' ? '' : category)}
           title={isSaved ? 'This page opens on this category in this browser. Select to stop.' : 'Open this page on this category next time, in this browser'}>
           <FiStar aria-hidden="true" />{isSaved ? 'My category' : 'Make my default'}</button>}
       </div>
