@@ -21,4 +21,5 @@ ARG APP_VERSION=""
 ENV APP_VERSION=$APP_VERSION
 EXPOSE 5001
 # Node itself is PID 1 so it receives SIGTERM and can shut down gracefully (npm does not pass it on reliably).
+USER node
 CMD ["node", "server.js"]

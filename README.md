@@ -178,6 +178,8 @@ To deploy your own instance:
    kubectl create secret generic laborlens-secrets \
      --from-literal=jwt-secret='...' \
      --from-literal=admin-init-password='...' \
+     --from-literal=mongodb-app-uri='mongodb://laborlens_app:...@laborlens-mongodb:27017/pwd_cases?authSource=pwd_cases' \
+     --from-literal=mongodb-backup-local-uri='mongodb://laborlens_backup:...@127.0.0.1:27017/pwd_cases?authSource=admin' \
      -n laborlens
    kubectl label secret laborlens-secrets -n laborlens app.kubernetes.io/instance=external
    ```

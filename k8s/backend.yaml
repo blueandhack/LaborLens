@@ -13,11 +13,21 @@ spec:
     metadata:
       labels:
         app: laborlens-backend
+        access-mongodb: "true"
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: backend
         image: ghcr.io/blueandhack/laborlens-backend:84cc458bf95cb039f6e177b8d6eb997c612e455d
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          runAsNonRoot: true
         ports:
         - containerPort: 5001
         resources:
@@ -40,7 +50,10 @@ spec:
         - name: PORT
           value: "5001"
         - name: MONGO_URI
-          value: "mongodb://laborlens-mongodb:27017/pwd_cases"
+          valueFrom:
+            secretKeyRef:
+              name: laborlens-secrets
+              key: mongodb-app-uri
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:

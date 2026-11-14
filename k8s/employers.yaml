@@ -18,6 +18,7 @@ spec:
         metadata:
           labels:
             app: laborlens-employer-refresh
+            access-mongodb: "true"
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false
@@ -30,7 +31,10 @@ spec:
             command: ["node", "scripts/refresh-employers.js", "--worksites", "--directory", "--map", "--profiles"]
             env:
             - name: MONGO_URI
-              value: "mongodb://laborlens-mongodb:27017/pwd_cases"
+              valueFrom:
+                secretKeyRef:
+                  name: laborlens-secrets
+                  key: mongodb-app-uri
             - name: NODE_OPTIONS
               value: "--max-old-space-size=512"
             resources:

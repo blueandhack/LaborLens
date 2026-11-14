@@ -36,7 +36,13 @@ spec:
           runAsUser: 999
           runAsGroup: 999
           runAsNonRoot: true
-        args: ["--wiredTigerCacheSizeGB=0.375"]
+        args: ["--auth", "--wiredTigerCacheSizeGB=0.375"]
+        env:
+        - name: MONGO_BACKUP_URI
+          valueFrom:
+            secretKeyRef:
+              name: laborlens-secrets
+              key: mongodb-backup-local-uri
         resources:
           requests:
             memory: 640Mi
@@ -85,3 +91,26 @@ spec:
     - protocol: TCP
       port: 27017
       targetPort: 27017
+---
+# MongoDB currently uses an existing persistent volume without database auth.
+# Constrain its network trust boundary to the application jobs that need it;
+# backup dumps execute inside this MongoDB pod and use loopback.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: laborlens-mongodb-ingress
+  namespace: laborlens
+spec:
+  podSelector:
+    matchLabels:
+      app: laborlens-mongodb
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              access-mongodb: "true"
+      ports:
+        - protocol: TCP
+          port: 27017

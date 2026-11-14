@@ -190,9 +190,15 @@ def dump_database(kubectl, pod, target, lease):
     with open(source, 'rb') as binary:
         command(kubectl + ['exec', '-i', pod, '--', 'sh', '-c',
                           f'cat > {remote_bin} && chmod 700 {remote_bin}'], stdin=binary)
-    args = kubectl + ['exec', pod, '--', remote_bin,
-                     f'--uri=mongodb://127.0.0.1:27017/{database}', '--archive', '--gzip',
-                     '--numParallelCollections=1', '--excludeCollection=import_locks']
+    # Authentication is supplied to the MongoDB pod through a Kubernetes
+    # secret. Expand it only inside the pod instead of copying it to the backup
+    # host or placing it in this process's command line.
+    remote_command = (
+        f'test -n "$MONGO_BACKUP_URI" && exec {remote_bin} '
+        f'--uri="$MONGO_BACKUP_URI" --db={database} --archive --gzip '
+        '--numParallelCollections=1 --excludeCollection=import_locks'
+    )
+    args = kubectl + ['exec', pod, '--', 'sh', '-c', remote_command]
     log('Dumping in the MongoDB pod; application searches remain available')
     with target.open('wb') as output:
         process = subprocess.Popen(args, stdout=output)

@@ -5,7 +5,7 @@ services:
     image: mongo:9.0.4
     container_name: pwd_mongodb
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodb_data:/data/db
 

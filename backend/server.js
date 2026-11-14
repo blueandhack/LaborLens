@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const multer = require('multer');
+const { corsOptions, securityHeaders } = require('./services/httpSecurity');
 
 const uploadRoute = require('./routes/upload');
 const { router: searchRoute, invalidateCache } = require('./routes/search');
@@ -14,7 +16,9 @@ const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/pwd_cases';
 
 // Middleware
-app.use(cors());
+app.disable('x-powered-by');
+app.use(securityHeaders);
+app.use(cors(corsOptions()));
 app.use(express.json());
 // Not ready while shutting down, so the ingress stops sending new requests here.
 let shuttingDown = false;
@@ -31,6 +35,20 @@ app.use('/api/map', require('./routes/map').createMapRoutes({ db: () => mongoose
 app.use('/api/i140', require('./routes/i140').createI140Routes({ db: () => mongoose.connection.db }));
 app.use('/api/uscis-h1b', require('./routes/uscis').createUscisRoutes({ db: () => mongoose.connection.db, authMiddleware: require('./routes/admin').authMiddleware }));
 app.use('/api/admin', adminRoute);
+
+// Keep parser and upload failures predictable and avoid Express returning an
+// HTML stack trace to API clients.
+app.use((error, _req, res, _next) => {
+    if (res.headersSent) return _next(error);
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'The uploaded file is too large.' });
+    }
+    if (error instanceof multer.MulterError || error?.type === 'entity.too.large') {
+        return res.status(error?.type === 'entity.too.large' ? 413 : 400).json({ error: 'The request could not be accepted.' });
+    }
+    console.error('Unhandled request error:', error?.message || error);
+    res.status(500).json({ error: 'Server error' });
+});
 
 // MongoDB connection
 mongoose.connect(MONGO_URI, { autoIndex: process.env.NODE_ENV !== 'production', maxPoolSize: 8,

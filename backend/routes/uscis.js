@@ -5,7 +5,9 @@ const fs = require('node:fs');
 const { getUscisOverview, getUscisBreakdown, getUscisEmployerTrends, listUscisEmployers, parseUscisFile, parseUscisStream, importUscisRows, STATE_ID } = require('../services/uscisH1b');
 
 // A year of the hub's long CSV is about 100 MB, so uploads go to disk and are read as a stream.
-const upload = multer({ dest: '/tmp/uscis_uploads/', limits: { fileSize: 256 * 1024 * 1024, files: 1 } });
+const upload = multer({ dest: '/tmp/uscis_uploads/', limits: {
+    fileSize: 256 * 1024 * 1024, files: 1, fields: 2, parts: 3, fieldSize: 1024,
+} });
 
 async function readUpload(file) {
     const hash = createHash('sha256');

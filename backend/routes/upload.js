@@ -12,7 +12,9 @@ const { invalidateCache } = require('./search');
 const { noteInsightsChange, refreshGlobalInsights } = require('../services/searchInsights');
 
 const router = express.Router();
-const upload = multer({ dest: '/tmp/pwd_uploads/', limits: { fileSize: 768 * 1024 * 1024 } });
+const upload = multer({ dest: '/tmp/pwd_uploads/', limits: {
+    fileSize: 768 * 1024 * 1024, files: 1, fields: 2, parts: 3, fieldSize: 1024,
+} });
 let currentJob = { status: 'idle', processed: 0, total: 0, inserted: 0, updated: 0, logs: [], message: '' };
 
 router.get('/status', authMiddleware, (req, res) => res.json(currentJob));
