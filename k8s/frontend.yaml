@@ -17,7 +17,7 @@ spec:
       automountServiceAccountToken: false
       containers:
       - name: frontend
-        image: ghcr.io/blueandhack/laborlens-frontend:34be0e4738d227857ed8d47ad68d1f89baa0adfc
+        image: ghcr.io/blueandhack/laborlens-frontend:09e4fcf9880872c48913796c819187df93681c9b
         imagePullPolicy: Always
         ports:
         - containerPort: 80
