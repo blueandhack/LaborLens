@@ -21,7 +21,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: backend
-        image: ghcr.io/blueandhack/laborlens-backend:84cc458bf95cb039f6e177b8d6eb997c612e455d
+        image: ghcr.io/blueandhack/laborlens-backend:34be0e4738d227857ed8d47ad68d1f89baa0adfc
         imagePullPolicy: Always
         securityContext:
           allowPrivilegeEscalation: false
