@@ -1,6 +1,6 @@
 # MongoDB 9 upgrade
 
-MongoDB is pinned to `mongo:9.0.4`; the backend and its integration tests use Node 24, Mongoose 9.12, and the MongoDB Node driver 7.8. MongoDB's installed Node driver requires Node 20.19 or later. CI runs the real import integration suite against MongoDB 9.0.4.
+MongoDB is pinned to `mongo:9.0.8`; the backend and its integration tests use Node 24, Mongoose 9.12, and the MongoDB Node driver 7.8. MongoDB's installed Node driver requires Node 20.19 or later. CI runs the real import integration suite against MongoDB 9.0.8.
 
 ## Migration and recovery
 
@@ -28,7 +28,7 @@ During preparation, additional diagnostic shells exhausted SkyLion's small memor
 
 ## Local development
 
-Fresh Docker Compose deployments use MongoDB 9.0.4. An existing `mongodb_data` volume from 8.2 must be backed up and migrated through 8.3 before starting 9.0; changing the image tag alone does not migrate FCV. Preserve the old volume until the upgraded copy has passed verification.
+Fresh Docker Compose deployments use MongoDB 9.0.8. An existing `mongodb_data` volume from 8.2 must be backed up and migrated through 8.3 before starting 9.0; changing the image tag alone does not migrate FCV. Preserve the old volume until the upgraded copy has passed verification.
 
 ## References
 

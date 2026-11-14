@@ -29,7 +29,7 @@ spec:
       automountServiceAccountToken: false
       containers:
       - name: mongodb
-        image: mongo:9.0.4
+        image: mongo:9.0.8
         # Start as mongodb directly to avoid a hang in the image's gosu wrapper.
         # The existing data volume is already owned by UID/GID 999.
         securityContext:

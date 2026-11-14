@@ -49,7 +49,7 @@ def main():
     if manifest.get('database') != 'pwd_cases' or manifest['archiveSha256'] != last['sha256']:
         raise RuntimeError('Backup manifest does not match last-success status')
     name = 'laborlens-drive-restore-' + secrets.token_hex(6)
-    image = 'mongo:9.0.4'
+    image = 'mongo:9.0.8'
     run(['docker', 'image', 'inspect', image], stdout=subprocess.DEVNULL)
     run(['docker', 'run', '--detach', '--rm', '--name', name, '--network', 'none',
          '--user', '999:999', '--memory=1536m', '--cpus=2', image,

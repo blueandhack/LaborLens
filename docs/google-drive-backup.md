@@ -7,7 +7,7 @@ The optional utilities in `ops/backup/` create encrypted MongoDB backups in Goog
 - A Linux backup host with Python 3.9+, Node available in the backend pod, `kubectl`, SSH, systemd, and rclone.
 - Access to the LaborLens Kubernetes namespace through the backup host's private kubeconfig. The provided service uses the standard k3s kubeconfig location; adapt it for other distributions.
 - Compatible `mongodump` and `mongorestore` binaries installed at `/opt/laborlens-backup/bin/` on the backup host. The runner expects Database Tools 100.20.0. Check the tools' OS/CPU compatibility before installation.
-- For the local restore verifier, Docker with the `mongo:9.0.4` image available.
+- For the local restore verifier, Docker with the `mongo:9.0.8` image available.
 
 Choose your own SSH target and keep it outside tracked files:
 

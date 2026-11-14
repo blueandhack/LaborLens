@@ -72,7 +72,7 @@ Coverage: PERM and H-1B from FY2008, PWD from FY2010 (DOL links no national PWD 
 
 ```
 Browser ──► Frontend :3000 ──/api──► Backend :5001 ──► MongoDB :27017
-           React 19 + Vite 8        Express 5 + Mongoose 9   MongoDB 9.0.4
+           React 19 + Vite 8        Express 5 + Mongoose 9   MongoDB 9.0.8
            (build-time prerender)   (Node 24)
 ```
 
@@ -89,9 +89,9 @@ Browser ──► Frontend :3000 ──/api──► Backend :5001 ──► Mon
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) with Docker Compose, **or**
-- Node.js 24 and MongoDB 9.0.4
+- Node.js 24 and MongoDB 9.0.8
 
-MongoDB is pinned to 9.0.4. Read the [MongoDB migration and recovery notes](docs/mongodb-upgrade.md) before reusing an older database volume.
+MongoDB is pinned to 9.0.8. Read the [MongoDB migration and recovery notes](docs/mongodb-upgrade.md) before reusing an older database volume.
 
 ### With Docker (recommended)
 
@@ -144,7 +144,7 @@ cd frontend && npm test    # frontend unit tests
 cd frontend && npm run lint
 ```
 
-To include the database integration tests, set `MONGO_TEST_URI` to a disposable MongoDB instance. Tests create and drop only a uniquely named `laborlens_import_test_*` database. CI runs the full suite against MongoDB 9.0.4.
+To include the database integration tests, set `MONGO_TEST_URI` to a disposable MongoDB instance. Tests create and drop only a uniquely named `laborlens_import_test_*` database. CI runs the full suite against MongoDB 9.0.8.
 
 ## Data imports
 
