@@ -271,6 +271,7 @@ async function ensureIdentityIndexes(db) {
     await identities.createIndex({ searchKeys: 1 });
     await identities.createIndex({ featured: 1, featuredRank: 1 });
     await identities.createIndex({ generation: 1 });
+    await identities.createIndex({ total: -1, _id: 1 }, { name: 'profile_backfill_v1' });
     for (const program of ['h1b', 'perm', 'pwd']) await identities.createIndex(
         { [`programs.${program}.count`]: -1, searchKey: 1, _id: 1 }, { name: `directory_${program}_v1` });
 }

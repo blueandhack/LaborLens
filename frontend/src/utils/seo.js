@@ -43,10 +43,9 @@ export function getPageSEO(pathname, search = '') {
     ? 'Understand LaborLens H-1B, PERM, and prevailing wage data: DOL sources, historical coverage, reported wage periods, case dates, and validation.'
     : 'Research public U.S. Department of Labor H-1B LCA, PERM labor certification, and prevailing wage disclosure records with LaborLens.';
   const indexable = Boolean((program || ['/data', '/employers', '/map', '/h1b-approvals', '/i140'].includes(path)) && !filtered);
-  const casePage = /^\/cases\/[a-f\d]{24}$/i.test(path);
   return {
     title, description, canonical: indexable ? SITE_ORIGIN + path : null,
-    robots: indexable || casePage ? 'index, follow' : 'noindex, follow',
+    robots: indexable ? 'index, follow' : 'noindex, follow',
     structuredData: indexable ? {
       '@context': 'https://schema.org', '@graph': [
         SITE_ENTITIES[0],
@@ -67,13 +66,16 @@ export function getEmployerSEO(profile) {
   } : null };
 }
 
+// Individual case pages are mostly one record's fields, which search engines
+// treat as thin content. They are never indexed (nginx also sends the header);
+// employer profiles are the indexed pages, and case links are still followed.
 export function getCaseSEO(record, program) {
   const data = presentCase(record, program);
   return {
     title: `${record.CASE_NUMBER} · ${data.employer} · ${programs[program].label} | LaborLens`,
     description: `${programs[program].label} disclosure ${record.CASE_NUMBER}: ${data.employer}, ${data.title}. ${programs[program].wageLabel}: ${data.wage === 'N/A' ? 'not reported' : data.wage}. View the case and DOL source details.`,
     canonical: SITE_ORIGIN + '/cases/' + String(record._id).toLowerCase(),
-    robots: 'index, follow', structuredData: null,
+    robots: 'noindex, follow', structuredData: null,
   };
 }
 

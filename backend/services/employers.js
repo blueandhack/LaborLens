@@ -238,7 +238,64 @@ async function featuredEmployers(db, limit) {
         .map(row => row.keys ? row : singleIdentity(row));
 }
 
-async function refreshFeatured(db, models, { signal, maxProfiles = 20, onProgress = () => {} } = {}) {
+// Each snapshot's program list, without reading its summaries back out.
+async function snapshotPrograms(db, ids) {
+    const rows = await db.collection('employer_profiles').aggregate([
+        { $match: { version: VERSION, ...(ids ? { _id: { $in: ids } } : {}) } },
+        { $project: { updatedAt: 1, programs: { $map: { input: { $objectToArray: { $ifNull: ['$summaries', {}] } }, in: '$$this.k' } } } },
+    ], { maxTimeMS: 30000 }).toArray();
+    return new Map(rows.map(row => [row._id, row]));
+}
+const isComplete = (identity, snapshot) => Boolean(snapshot) && Object.entries(identity.programs || {}).every(([program, info]) => !info?.count || snapshot.programs.includes(program));
+const totalFilings = identity => Object.values(identity.programs || {}).reduce((sum, info) => sum + (info?.count || 0), 0);
+
+// Indexable profiles: every identity whose current summary is complete, not
+// only the featured ones. Very small employers are left to directory links.
+const SITEMAP_MIN_FILINGS = 50, SITEMAP_LIMIT = 50000;
+async function sitemapEmployers(db) {
+    const collection = db.collection(await identitiesReady(db) ? 'employer_identities' : 'employers');
+    const snapshots = await snapshotPrograms(db);
+    // A combined identity's snapshot ID is `<identity id>:names:<scope>`.
+    const ids = [...new Set([...snapshots.keys()].map(id => String(id).slice(0, 24)))];
+    const rows = [];
+    for (let start = 0; start < ids.length; start += 1000) {
+        const found = await collection.find({ _id: { $in: ids.slice(start, start + 1000) } },
+            { projection: { key: 1, keys: 1, slug: 1, scope: 1, programs: 1, featured: 1 }, maxTimeMS: 5000 }).toArray();
+        for (const row of found) {
+            const identity = row.keys ? row : singleIdentity(row), snapshot = snapshots.get(cacheIdFor(identity)), total = totalFilings(identity);
+            if (!isComplete(identity, snapshot) || (!identity.featured && total < SITEMAP_MIN_FILINGS)) continue;
+            rows.push({ slug: identity.slug || slugFor(identity.key), updatedAt: snapshot.updatedAt, total });
+        }
+    }
+    return rows.sort((a, b) => b.total - a.total || a.slug.localeCompare(b.slug)).slice(0, SITEMAP_LIMIT);
+}
+
+// After the featured profiles, prepare missing summaries for the largest
+// employers until the time budget runs out, so coverage grows each night.
+// Existing summaries are left alone; they refresh when visited.
+async function backfillProfiles(db, models, { signal, budgetMs, minFilings = 100, skip = new Set(), onProgress = () => {} } = {}) {
+    if (!(budgetMs > 0) || !await identitiesReady(db)) return 0;
+    const deadline = Date.now() + budgetMs;
+    const candidates = await db.collection('employer_identities').find({ total: { $gte: minFilings } }, {
+        projection: { key: 1, keys: 1, name: 1, slug: 1, scope: 1, programs: 1 }, sort: { total: -1, _id: 1 }, limit: 50000, maxTimeMS: 30000,
+    }).toArray();
+    let built = 0;
+    for (let start = 0; start < candidates.length && Date.now() < deadline; start += 500) {
+        const page = candidates.slice(start, start + 500).filter(identity => !skip.has(identity._id));
+        const snapshots = await snapshotPrograms(db, page.map(cacheIdFor));
+        for (const identity of page) {
+            if (Date.now() >= deadline) break;
+            if (isComplete(identity, snapshots.get(cacheIdFor(identity)))) continue;
+            signal?.throwIfAborted();
+            try { await computeProfile(db, models, identity, { signal, maxTimeMS: 120000 }); built++; }
+            catch (error) { signal?.throwIfAborted(); await onProgress({ event: 'profile-failed', employer: identity.name, error: error.message }); continue; }
+            await onProgress({ event: 'profile-backfill', employer: identity.name, completed: built });
+        }
+    }
+    return built;
+}
+
+async function refreshFeatured(db, models, { signal, maxProfiles = 20, backfillMs = 0, onProgress = () => {} } = {}) {
     const collection = db.collection(await identitiesReady(db) ? 'employer_identities' : 'employers');
     const requested = await db.collection('employer_profile_requests').find().sort({ requestedAt: 1 }).limit(maxProfiles).toArray();
     const top = await collection.find({ 'programs.h1b.count': { $gt: 0 } }).sort({ 'programs.h1b.count': -1, _id: 1 }).limit(maxProfiles).toArray();
@@ -263,5 +320,6 @@ async function refreshFeatured(db, models, { signal, maxProfiles = 20, onProgres
         if (identity) await computeProfile(db, models, identity, { signal, maxTimeMS: 120000 });
         else await db.collection('employer_profile_requests').deleteOne({ _id: request._id });
     }
+    await backfillProfiles(db, models, { signal, budgetMs: backfillMs, skip: attempted, onProgress });
 }
-module.exports = { idFor, slugFor, profileSlugFor, searchKey, publicEmployer, resolveIdentity, ensureEmployerIndexes, listEmployers, suggestions, refreshDirectory, profilePipeline, computeProfile, getProfile, refreshFeatured, featuredEmployers, clearEmployerProgram, cacheIdFor };
+module.exports = { idFor, slugFor, profileSlugFor, searchKey, publicEmployer, resolveIdentity, ensureEmployerIndexes, listEmployers, suggestions, refreshDirectory, profilePipeline, computeProfile, getProfile, refreshFeatured, backfillProfiles, featuredEmployers, sitemapEmployers, clearEmployerProgram, cacheIdFor };

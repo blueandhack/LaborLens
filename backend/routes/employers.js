@@ -2,7 +2,7 @@ const express = require('express');
 const { readFile } = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
-const { getProfile, suggestions, publicEmployer, listEmployers, cacheIdFor, featuredEmployers } = require('../services/employers');
+const { getProfile, suggestions, publicEmployer, listEmployers, featuredEmployers, sitemapEmployers } = require('../services/employers');
 let renderer;
 async function renderDocument(url, profile, employers) {
     renderer ||= import(pathToFileURL(path.resolve(__dirname, '../../frontend/dist-ssr/entry-server.js')).href);
@@ -44,13 +44,16 @@ function createEmployerRoutes({ db, models, render = renderDocument }) {
             res.type('html').set('Cache-Control', 'public, max-age=60').send(await render(req.originalUrl, null, directory));
         } catch (error) { next(error); }
     });
+    // Building the list reads every summary, so each process reuses it for an hour.
+    let sitemap = null;
     pages.get('/sitemap.xml', async (_req, res, next) => {
         try {
-            const rows = await featuredEmployers(db(), 100);
-            const documents = await db().collection('employer_profiles').find({ _id: { $in: rows.map(cacheIdFor) } }, { projection: { updatedAt: 1 } }).toArray();
-            const updated = new Map(documents.map(row => [row._id, row.updatedAt]));
-            const xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + [...new Map(rows.map(row => [row.slug, row])).values()].filter(row => updated.has(cacheIdFor(row))).map(row => `<url><loc>https://laborlens.fyi/employers/${row.slug}</loc><lastmod>${updated.get(cacheIdFor(row)).toISOString()}</lastmod></url>`).join('') + '</urlset>';
-            res.type('application/xml').set('Cache-Control', 'public, max-age=300').send(xml);
+            if (!sitemap || sitemap.expires < Date.now()) {
+                const rows = await sitemapEmployers(db());
+                const xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + [...new Map(rows.map(row => [row.slug, row])).values()].map(row => `<url><loc>https://laborlens.fyi/employers/${row.slug}</loc><lastmod>${row.updatedAt.toISOString()}</lastmod></url>`).join('') + '</urlset>';
+                sitemap = { xml, expires: Date.now() + 60 * 60 * 1000 };
+            }
+            res.type('application/xml').set('Cache-Control', 'public, max-age=300').send(sitemap.xml);
         } catch (error) { next(error); }
     });
     pages.get('/:slug', async (req, res, next) => {

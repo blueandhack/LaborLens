@@ -6,7 +6,7 @@ const { randomUUID } = require('node:crypto');
 const { programs, searchIndexes } = require('../services/searchConfig');
 const { groups } = require('../services/employerGroups');
 const { refreshIdentities, findIdentity } = require('../services/employerIdentity');
-const { refreshDirectory, computeProfile, getProfile, suggestions, slugFor, idFor, listEmployers, cacheIdFor, refreshFeatured } = require('../services/employers');
+const { refreshDirectory, computeProfile, getProfile, suggestions, slugFor, idFor, listEmployers, cacheIdFor, refreshFeatured, backfillProfiles, sitemapEmployers } = require('../services/employers');
 const { searchCases, countCases, invalidateCounts } = require('../services/caseSearch');
 const { computeInsights } = require('../services/searchInsights');
 const { createEmployerRoutes } = require('../routes/employers');
@@ -189,5 +189,22 @@ test('employer identities combine spelling variants, FEIN-linked renames and rev
             const featured = await (await fetch(base + '/api/employers')).json();
             assert(featured.employers.some(row => row.groupId === group.id));
         } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+    });
+    await t.test('nightly backfill prepares missing summaries and the sitemap lists every complete, substantial profile', async () => {
+        const identities = connection.db.collection('employer_identities');
+        await connection.db.collection('employer_profiles').deleteMany({});
+        await identities.updateMany({}, { $unset: { featured: '', featuredRank: '' } });
+        assert.equal(await backfillProfiles(connection.db, models, { budgetMs: 0 }), 0, 'no budget, no work');
+        const all = await identities.find().toArray();
+        const built = await backfillProfiles(connection.db, models, { budgetMs: 60000, minFilings: 1 });
+        assert.equal(built, all.length);
+        for (const identity of all) assert(await connection.db.collection('employer_profiles').findOne({ _id: cacheIdFor(identity) }), identity.name);
+        assert.equal(await backfillProfiles(connection.db, models, { budgetMs: 60000, minFilings: 1 }), 0, 'complete summaries are not rebuilt');
+        const listed = (await sitemapEmployers(connection.db)).map(row => row.slug).sort();
+        assert.deepEqual(listed, all.filter(row => row.total >= 50).map(row => row.slug).sort(), 'small unfeatured employers stay out of the sitemap');
+        await identities.updateOne({ _id: all[0]._id }, { $set: { featured: true, featuredRank: 0 } });
+        assert((await sitemapEmployers(connection.db)).some(row => row.slug === all[0].slug), 'featured profiles are always listed');
+        await connection.db.collection('employer_profiles').updateOne({ _id: cacheIdFor(all[0]) }, { $set: { summaries: {} } });
+        assert(!(await sitemapEmployers(connection.db)).some(row => row.slug === all[0].slug), 'incomplete summaries are not indexable');
     });
 });

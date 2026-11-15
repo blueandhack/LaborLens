@@ -36,13 +36,14 @@ test('private and unknown pages are noindex and do not claim a homepage canonica
   assert(!PUBLIC_PATHS.some(path => /admin|backups|cases|import/.test(path)));
 });
 
-test('case metadata describes an hourly LCA as reported and uses a stable case canonical', () => {
+test('case metadata describes an hourly LCA as reported, uses a stable case canonical and is never indexed', () => {
   const page = getCaseSEO({ _id: 'ABCDEF1234567890ABCDEF12', CASE_NUMBER: 'I-200-26001-100000', EMPLOYER_NAME: 'Research & Systems', JOB_TITLE: 'Engineer', WAGE_RATE_OF_PAY_FROM: 78.25, WAGE_UNIT_OF_PAY: 'Hour' }, 'h1b');
   assert.equal(page.canonical, SITE_ORIGIN + '/cases/abcdef1234567890abcdef12');
   assert.match(page.description, /78.25.*Hour/);
   assert.match(page.title, /Research & Systems/);
-  assert.equal(page.robots, 'index, follow');
+  assert.equal(page.robots, 'noindex, follow');
   assert.equal(getPageSEO('/cases/abcdef1234567890abcdef12').canonical, null);
+  assert.equal(getPageSEO('/cases/abcdef1234567890abcdef12').robots, 'noindex, follow', 'the shell must not say index before the record loads');
 });
 
 test('the homepage leads with the brand and describes the site and its publisher for name searches', () => {

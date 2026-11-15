@@ -37,7 +37,7 @@ The directory groups covered employer-name index metadata, then reads one projec
 
 The identity phase backfills each reported name's `nameKey`, scans FEIN-bearing PERM/PWD records in natural order (only recent disclosures carry FEINs), groups USCIS rows into shared tax-ID/ZIP buckets inside MongoDB (about a minute in production), groups directory names by `nameKey` inside MongoDB, and merges FEIN/reviewed links in memory. Only linked clusters are buffered, so memory stays bounded. Each run upserts `employer_identities` with a new generation, writes `identity`/`identitySlug` onto changed reported names, and retires identities from older generations only after every name has its current identity. Until the first build finishes, directory and profile reads fall back to exact reported names. A name added by a directory refresh is its own identity until the next build.
 
-Profile summaries are materialized separately, using a narrow projection before bounded MongoDB facets. A refresh warms up to twenty initial profiles, including Synthropic where reported, plus requested profiles. Initial featured selection uses imported H-1B volume; it is not a recommendation or ranking of employers. Additional profiles build on demand, with one active computation per API process, per-query deadlines, retries after failures, and an explicit preparation state. Pending profiles remain noindex. Existing snapshots remain readable with their timestamp while a refresh runs.
+Profile summaries are materialized separately, using a narrow projection before bounded MongoDB facets. A refresh warms up to twenty initial profiles, including Synthropic where reported, plus requested profiles, then spends up to `PROFILE_BACKFILL_MINUTES` (default 90) preparing missing summaries for the largest employers with at least 100 filings. Existing summaries are not rebuilt by the backfill; they refresh when visited. Initial featured selection uses imported H-1B volume; it is not a recommendation or ranking of employers. Additional profiles build on demand, with one active computation per API process, per-query deadlines, retries after failures, and an explicit preparation state. Pending profiles remain noindex. Existing snapshots remain readable with their timestamp while a refresh runs.
 
 The daily `laborlens-employer-refresh` CronJob runs on skycat with a 512 MiB Node heap, a one-core CPU limit, and a 768 MiB memory limit. A renewable database lease also prevents manual and scheduled refreshes from overlapping. Administrative program clearing removes corresponding directory counts and profile caches.
 
@@ -55,7 +55,7 @@ Worksite search is enabled per program only after normalization and all required
 
 Employer directory and profile requests are routed by the ingress to Express. The backend image includes the frontend's production React server bundle, template, and pruned runtime dependencies. It renders the same components used by the browser, with escaped JSON bootstrap data, unique metadata, canonical URLs, real 404s, and canonical-slug redirects. The frontend serves the matching hashed assets. CI builds the backend from the repository root; `deploy.sh` uses the same context.
 
-Completed featured profiles appear in `/employers/sitemap.xml`; robots.txt advertises that sitemap. Directory and case-result links provide crawlable profile discovery. Unknown profiles have real HTTP 404 responses; pending summaries remain noindex. No ranking outcome is promised.
+Every profile with a complete current summary appears in `/employers/sitemap.xml` (featured profiles always; others when the employer has at least 50 filings), largest first, up to 50,000 URLs, cached per API process for an hour; robots.txt advertises that sitemap. Directory and case-result links provide crawlable profile discovery. Unknown profiles have real HTTP 404 responses; pending summaries remain noindex. No ranking outcome is promised.
 
 ## Verification
 
@@ -67,7 +67,7 @@ Browser verification uses a separate local database and real APIs/SSR. It exerci
 
 The directory browses every employer identity in pages of 24. Its default is most imported H-1B applications; alternatives are PERM volume, PWD volume, and normalized name A–Z/Z–A. Counts combine the identity's filing names and include all imported years and all case statuses. Equal volumes use normalized name and then stable ID. Sorting and prefix search apply before pagination, and their URL parameters survive browser navigation. Autocomplete retains its separate bounded suggestions endpoint.
 
-Identity sort indexes cover the selected program count, normalized search name and stable ID; prefix searches read a multikey index of every member's search name and normalized name. Only the displayed employers are then fetched. The profile sitemap still includes completed featured summaries. Additional employer summaries prepare on demand.
+Identity sort indexes cover the selected program count, normalized search name and stable ID; prefix searches read a multikey index of every member's search name and normalized name. Only the displayed employers are then fetched. The profile sitemap includes every completed summary that meets its size threshold. Additional employer summaries prepare on demand.
 
 
 ## Reviewed filing-name groups

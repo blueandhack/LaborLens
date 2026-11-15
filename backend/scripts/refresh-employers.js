@@ -10,6 +10,8 @@ const { refreshMap } = require('../services/map');
 const { linkUscisEmployers, EMPLOYERS: USCIS_EMPLOYERS } = require('../services/uscisH1b');
 const { createRunRecorder } = require('../services/siteStatus');
 let run = null;
+// Minutes per night spent preparing summaries for employers that have none yet.
+const BACKFILL_MINUTES = Number(process.env.PROFILE_BACKFILL_MINUTES ?? 90);
 // Progress lines go to the job log and, throttled, to the administration page.
 const log = value => { console.log(JSON.stringify({ time: new Date().toISOString(), ...value })); return run?.event(value); };
 async function main() {
@@ -55,7 +57,7 @@ async function main() {
         // The map skips programs whose cases are unchanged since its last build.
         // Profiles follow it: their worksite maps use the map's learned city areas.
         if (!args.length || args.includes('--map') || args.includes('--map-force')) { await run.step('Worksite map'); await refreshMap(db, models, { signal: controller.signal, onProgress: log, force: args.includes('--map-force') }); }
-        if (!args.length || args.includes('--profiles')) { await run.step('Featured employer profiles'); await refreshFeatured(db, models, { signal: controller.signal, onProgress: log }); }
+        if (!args.length || args.includes('--profiles')) { await run.step('Featured employer profiles'); await refreshFeatured(db, models, { signal: controller.signal, onProgress: log, backfillMs: BACKFILL_MINUTES * 60 * 1000 }); }
         await run?.finish();
     } catch (error) {
         await run?.finish(error);

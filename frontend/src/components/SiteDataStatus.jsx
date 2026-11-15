@@ -10,7 +10,7 @@ const Pill = ({ tone, children }) => <span className={`site-status-pill ${tone}`
 function RefreshRun({ refresh }) {
   const state = refreshState(refresh);
   return <section className="site-status-card" aria-labelledby="site-refresh-heading">
-    <header><div><h4 id="site-refresh-heading">Nightly refresh</h4><p className="admin-help">Daily at 2:30 AM Pacific: worksite fields, employer directory and identities, the worksite map, then featured profiles.</p></div><Pill tone={state.tone}>{state.label}</Pill></header>
+    <header><div><h4 id="site-refresh-heading">Nightly refresh</h4><p className="admin-help">Daily at 2:30 AM Pacific: worksite fields, employer directory and identities, the worksite map, featured profiles, then summaries for more large employers.</p></div><Pill tone={state.tone}>{state.label}</Pill></header>
     {refresh && <>
       <dl className="site-status-facts">
         <div><dt>{refresh.running ? 'Started' : 'Last started'}</dt><dd>{formatImportDate(refresh.startedAt)}</dd></div>
